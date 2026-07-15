@@ -1,0 +1,2 @@
+# Optional page-cache backend. PostgreSQL remains the only source of truth.
+redis>=5.0,<7.0

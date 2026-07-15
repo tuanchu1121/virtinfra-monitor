@@ -1,0 +1,58 @@
+name: Publish v50 source archives
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    services:
+      timescaledb:
+        image: timescale/timescaledb:2.27.2-pg17
+        env:
+          POSTGRES_DB: bw_monitor_test
+          POSTGRES_USER: bw_monitor
+          POSTGRES_PASSWORD: bw_monitor_test_password
+        ports: ['55432:5432']
+        options: >-
+          --health-cmd "pg_isready -U bw_monitor -d bw_monitor_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install validation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt PyYAML
+
+      - name: Validate release
+        env:
+          BW_TEST_DATABASE_URL: postgresql://bw_monitor:bw_monitor_test_password@127.0.0.1:55432/bw_monitor_test
+        run: bash ./tools/release-audit.sh --use-current-python
+
+      - name: Build archives
+        run: bash ./tools/build-dist.sh
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* \
+              --title "VirtInfra Monitor $GITHUB_REF_NAME" \
+              --generate-notes
+          fi

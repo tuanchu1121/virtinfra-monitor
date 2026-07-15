@@ -1,0 +1,73 @@
+name: VirtInfra Monitor v50 CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      timescaledb:
+        image: timescale/timescaledb:2.27.2-pg17
+        env:
+          POSTGRES_DB: bw_monitor_test
+          POSTGRES_USER: bw_monitor
+          POSTGRES_PASSWORD: bw_monitor_test_password
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U bw_monitor -d bw_monitor_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install validation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt PyYAML
+
+      - name: Static and installer preflight
+        run: bash ./preflight.sh --use-current-python --skip-live
+
+      - name: Full PostgreSQL application integration
+        env:
+          BW_TEST_DATABASE_URL: postgresql://bw_monitor:bw_monitor_test_password@127.0.0.1:55432/bw_monitor_test
+        run: python tests/test_v50_postgres_integration.py
+
+      - name: Validate Timescale schema on a fresh full app schema
+        env:
+          PGPASSWORD: bw_monitor_test_password
+        run: |
+          psql -h 127.0.0.1 -p 55432 -U bw_monitor -d bw_monitor_test \
+            -v ON_ERROR_STOP=1 -f postgres/sql/001_bootstrap.sql
+          psql -h 127.0.0.1 -p 55432 -U bw_monitor -d bw_monitor_test \
+            -v ON_ERROR_STOP=1 -f postgres/sql/002_timescale.sql
+          psql -h 127.0.0.1 -p 55432 -U bw_monitor -d bw_monitor_test \
+            -v ON_ERROR_STOP=1 -f postgres/sql/003_native_indexes.sql
+          psql -h 127.0.0.1 -p 55432 -U bw_monitor -d bw_monitor_test \
+            -v ON_ERROR_STOP=1 -f postgres/sql/004_storage_v2.sql
+          test "$(psql -h 127.0.0.1 -p 55432 -U bw_monitor -d bw_monitor_test \
+            -Atc "SELECT current_setting('timescaledb.license', true)")" = "timescale"
+          test "$(psql -h 127.0.0.1 -p 55432 -U bw_monitor -d bw_monitor_test \
+            -Atc "SELECT count(*) FROM timescaledb_information.hypertables WHERE hypertable_name IN ('vm_chart_5m','vm_raw_detail_5m','node_chart_5m')")" = "3"
+          test "$(psql -h 127.0.0.1 -p 55432 -U bw_monitor -d bw_monitor_test \
+            -Atc "SELECT count(*) FROM timescaledb_information.jobs WHERE hypertable_name IN ('vm_chart_5m','vm_raw_detail_5m','node_chart_5m') AND proc_name IN ('policy_retention','policy_compression')")" = "5"
+
+      - name: Release audit
+        env:
+          BW_TEST_DATABASE_URL: postgresql://bw_monitor:bw_monitor_test_password@127.0.0.1:55432/bw_monitor_test
+        run: bash ./tools/release-audit.sh --use-current-python

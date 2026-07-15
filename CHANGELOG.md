@@ -1,3 +1,12 @@
+## 50.4.4-prod-r1-manifest-consumption-ui-fix
+
+- Fixed the root `SHA256SUMS` manifest shipped with 50.4.3, which still contained hashes from an earlier source state and caused installer/update verification to fail.
+- Kept the 50.4.3 Consumption UI refresh: Public and Private IPs under each node with copy buttons, clearer Physical/VM Public/Private sections, and stronger RX/TX/TOTAL color separation.
+- Kept the Consumption authentication fix using the canonical `TOKEN` for `/push/bandwidth-consumption`.
+- Made `tools/build-dist.sh` regenerate and verify the canonical source manifest before packaging.
+- Made release audit refresh the manifest before preflight, and made preflight verify manifest hashes and exact file coverage.
+- Added a manifest contract test so missing, stale or extra manifest entries fail validation before release.
+
 ## 50.4.3-prod-r1-consumption-ui-refresh
 
 - Kept the 50.4.2 Consumption authentication hotfix so `/push/bandwidth-consumption` continues using the canonical `TOKEN` and no longer throws `NameError: API_TOKEN`.

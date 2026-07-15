@@ -13,19 +13,19 @@ while (($#)); do
 done
 cd "$ROOT"
 
-args=()
-((USE_CURRENT)) && args+=(--use-current-python)
-((SKIP_LIVE)) && args+=(--skip-live)
-bash ./preflight.sh "${args[@]}"
-
-printf '\n==> Refresh repository checksum manifest before bootstrap tests\n'
+printf '\n==> Refresh repository checksum manifest before preflight\n'
 find . \
   -path './.git' -prune -o \
   -path './dist' -prune -o \
   -type d -name __pycache__ -prune -o \
-  -type f ! -name SHA256SUMS -print0 \
+  -type f ! -name SHA256SUMS ! -name '*.pyc' ! -name '*.pyo' -print0 \
 | sort -z | xargs -0 sha256sum > SHA256SUMS
 sha256sum -c SHA256SUMS >/dev/null
+
+args=()
+((USE_CURRENT)) && args+=(--use-current-python)
+((SKIP_LIVE)) && args+=(--skip-live)
+bash ./preflight.sh "${args[@]}"
 
 printf '\n==> Verify product shell entry points\n'
 for f in install.sh update.sh setup.sh backup.sh restore.sh doctor.sh db-check.sh audit.sh collect-diagnostics.sh uninstall.sh install-agent.sh uninstall-agent.sh \

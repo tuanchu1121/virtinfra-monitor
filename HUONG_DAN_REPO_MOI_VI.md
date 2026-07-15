@@ -1,6 +1,6 @@
 # HƯỚNG DẪN ĐẦY ĐỦ CHO REPO MỚI `virtinfra-monitor`
 
-> Release: `50.4.2-prod-r1-consumption-auth-fix`
+> Release: `50.4.4-prod-r1-manifest-consumption-ui-fix`
 >
 > Repo chuẩn duy nhất: `tuanchu1121/virtinfra-monitor`
 >
@@ -59,7 +59,7 @@ https://github.com/tuanchu1121/virtinfra-monitor
 1. Giải nén file:
 
 ```text
-virtinfra-monitor-50.4.2-prod-r1-consumption-auth-fix.zip
+virtinfra-monitor-50.4.4-prod-r1-manifest-consumption-ui-fix.zip
 ```
 
 2. Mở GitHub Desktop.
@@ -95,7 +95,7 @@ Sai:
 
 ```text
 virtinfra-monitor\
-└── virtinfra-monitor-50.4.2-prod-r1-consumption-auth-fix\
+└── virtinfra-monitor-50.4.4-prod-r1-manifest-consumption-ui-fix\
     ├── app\
     ├── deploy\
     └── install.sh
@@ -113,7 +113,7 @@ Trong GitHub Desktop:
 
 ```text
 Summary:
-Release 50.4.2 Consumption authentication fix
+Release 50.4.4 manifest + Consumption UI fix
 ```
 
 Sau đó:
@@ -158,7 +158,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Kết quả phải là:
 
 ```text
-50.4.2-prod-r1-consumption-auth-fix
+50.4.4-prod-r1-manifest-consumption-ui-fix
 ```
 
 Kiểm tra hai file Storage V2:
@@ -272,7 +272,7 @@ virtinfra-monitorctl urls
 Version phải là:
 
 ```text
-50.4.2-prod-r1-consumption-auth-fix
+50.4.4-prod-r1-manifest-consumption-ui-fix
 ```
 
 Storage V2 cần thấy:
@@ -617,7 +617,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 ```text
 [ ] Repo đúng: tuanchu1121/virtinfra-monitor
 [ ] Branch đúng: main
-[ ] VERSION trả đúng 50.4.2-prod-r1-consumption-auth-fix
+[ ] VERSION trả đúng 50.4.4-prod-r1-manifest-consumption-ui-fix
 [ ] app/storage_v2.py trả HTTP 200
 [ ] postgres/sql/004_storage_v2.sql trả HTTP 200
 [ ] install.sh nằm ở root repo

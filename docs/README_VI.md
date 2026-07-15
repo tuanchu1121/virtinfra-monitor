@@ -1,6 +1,6 @@
 # VIRTINFRA MONITOR: TÀI LIỆU VẬN HÀNH
 
-> Release `50.4.2-prod-r1-consumption-auth-fix`
+> Release `50.4.4-prod-r1-manifest-consumption-ui-fix`
 
 Runtime hiện tại dùng PostgreSQL 17 + TimescaleDB làm nguồn dữ liệu duy nhất.
 

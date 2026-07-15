@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.4.2-prod-r1-consumption-auth-fix`
+Release: `50.4.4-prod-r1-manifest-consumption-ui-fix`
 
 ## Final data path
 

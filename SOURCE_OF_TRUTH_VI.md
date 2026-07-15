@@ -1,6 +1,6 @@
 # SOURCE OF TRUTH VẬN HÀNH
 
-> Release: `50.4.2-prod-r1-consumption-auth-fix`
+> Release: `50.4.4-prod-r1-manifest-consumption-ui-fix`
 >
 > Tài liệu này được đối chiếu trực tiếp với `install.sh`, `deploy/postgres/*`, `deploy/agent/*`, `postgres/docker-compose.yml`, `app/app.py` và các test contract hiện tại.
 

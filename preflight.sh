@@ -26,9 +26,14 @@ fail(){ echo "ERROR: $*" >&2; exit 1; }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.4.2-prod-r1-consumption-auth-fix" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.4.4-prod-r1-manifest-consumption-ui-fix" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/bw_pg.py && -f deploy/agent/agent.py ]] || fail "full source tree is incomplete"
 [[ ! -d release && ! -d enterprise ]] || fail "legacy duplicate runtime trees must not be shipped"
+
+log "Verify canonical source checksum manifest"
+[[ -f SHA256SUMS ]] || fail "SHA256SUMS is missing"
+sha256sum -c SHA256SUMS >/dev/null || fail "SHA256SUMS contains stale or missing hashes"
+python3 tests/test_manifest_contract.py
 
 log "Reject generated data, caches and obvious secrets"
 find . -path './.git' -prune -o -path './dist' -prune -o -type d -name __pycache__ -prune -exec rm -rf {} +

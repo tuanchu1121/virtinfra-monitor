@@ -28313,7 +28313,7 @@ def api_v1_performance_v48140():
             try: redis_ok = bool(client.ping())
             except Exception: redis_ok = False
         return jsonify({
-            "version":"50.4.2-prod-r1-consumption-auth-fix",
+            "version":"50.4.4-prod-r1-manifest-consumption-ui-fix",
             "database":{
                 "engine":"PostgreSQL + TimescaleDB",
                 "database":pg.get("database"),
@@ -28618,7 +28618,7 @@ def page(title, content):
 # protocol. Agents submit one compact node aggregate for each completed local
 # 2-hour bucket. VM UUIDs and per-VM history are deliberately not stored.
 
-V5030_RELEASE = "50.4.2-prod-r1-consumption-auth-fix"
+V5030_RELEASE = "50.4.4-prod-r1-manifest-consumption-ui-fix"
 V5030_BW_TABLE = "node_bandwidth_consumption_2h"
 V5030_BW_BUCKET_SECONDS = 2 * 3600
 V5030_BW_RETENTION_SECONDS = 7 * 86400

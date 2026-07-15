@@ -18,6 +18,15 @@ args=()
 ((SKIP_LIVE)) && args+=(--skip-live)
 bash ./preflight.sh "${args[@]}"
 
+printf '\n==> Refresh repository checksum manifest before bootstrap tests\n'
+find . \
+  -path './.git' -prune -o \
+  -path './dist' -prune -o \
+  -type d -name __pycache__ -prune -o \
+  -type f ! -name SHA256SUMS -print0 \
+| sort -z | xargs -0 sha256sum > SHA256SUMS
+sha256sum -c SHA256SUMS >/dev/null
+
 printf '\n==> Verify product shell entry points\n'
 for f in install.sh update.sh setup.sh backup.sh restore.sh doctor.sh db-check.sh audit.sh collect-diagnostics.sh uninstall.sh install-agent.sh uninstall-agent.sh \
   deploy/postgres/*.sh deploy/agent/*.sh ansible/*.sh tools/*.sh; do

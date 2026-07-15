@@ -1,6 +1,6 @@
 # Storage V2 deployment and verification
 
-Release: `50.4.0-prod-r1-storage-v2`
+Release: `50.4.2-prod-r1-consumption-auth-fix`
 
 This package is designed for a new deployment. It does not import history from another monitor. Current application functionality, Agent payload and route compatibility remain part of the release.
 
@@ -10,7 +10,7 @@ This package is designed for a new deployment. It does not import history from a
 2. Open the extracted folder in GitHub Desktop with **File > Add local repository**.
 3. Commit all files.
 4. Push to the configured repository and branch.
-5. Confirm `VERSION` contains `50.4.0-prod-r1-storage-v2` and `SHA256SUMS` is included.
+5. Confirm `VERSION` contains `50.4.2-prod-r1-consumption-auth-fix` and `SHA256SUMS` is included.
 
 ## Database image requirement
 
@@ -21,14 +21,14 @@ Keep the default `timescale/timescaledb:2.27.2-pg17` image. Storage V2 requires 
 Public IP:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/install.sh | \
+curl -fsSL https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/install.sh | \
 bash -s -- --public-ip YOUR_MONITOR_IP --port 8080
 ```
 
 Domain and HTTPS:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/install.sh | \
+curl -fsSL https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/install.sh | \
 bash -s -- --domain monitor.example.com --email ops@example.com
 ```
 

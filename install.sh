@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-REPO="${BW_GITHUB_REPO:-tuanchu1121/bw-monitor-production.1}"
+REPO="${BW_GITHUB_REPO:-tuanchu1121/virtinfra-monitor}"
 REF="${BW_GITHUB_REF:-main}"
 TOKEN="${GITHUB_TOKEN:-}"
 SELF_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$PWD}")" 2>/dev/null && pwd || true)"
@@ -24,6 +24,8 @@ repo_complete() {
     postgres/sql/004_storage_v2.sql \
     requirements.txt \
     VERSION \
+    CANONICAL_REPOSITORY \
+    HUONG_DAN_REPO_MOI_VI.md \
     SHA256SUMS
   do
     [[ -f "$root/$path" ]] || missing+=("$path")

@@ -176,6 +176,9 @@ bw_payload = {
     "estimated": 0,
     "agent_version": 13,
 }
+bw_unauthorized = client.post("/push/bandwidth-consumption", json=bw_payload, headers={"X-Token": "wrong-token"})
+assert bw_unauthorized.status_code == 401, bw_unauthorized.get_data(as_text=True)
+
 bw_response = client.post("/push/bandwidth-consumption", json=bw_payload, headers={"X-Token": "v50-integration-token"})
 assert bw_response.status_code == 200, bw_response.get_data(as_text=True)
 assert bw_response.get_json().get("ok") is True

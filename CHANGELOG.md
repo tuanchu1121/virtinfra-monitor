@@ -1,4 +1,31 @@
-## 50.4.0-prod-r1-storage-v2
+## 50.4.3-prod-r1-consumption-ui-refresh
+
+- Kept the 50.4.2 Consumption authentication hotfix so `/push/bandwidth-consumption` continues using the canonical `TOKEN` and no longer throws `NameError: API_TOKEN`.
+- Refreshed the main `Consumption` page layout to make each node clearer and easier to scan.
+- Added Public IP and Private IP directly under each node name, each with its own copy button.
+- Pulled the latest public/private node IPs directly from `node_bridge_addresses_latest` while preserving existing search, filters and hidden-node behavior.
+- Restyled Physical Public, Physical Private, VM Public and VM Private metric groups with clearer color separation and more prominent RX/TX/TOTAL values.
+- Preserved the existing route, payload, aggregation logic, retention and database schema.
+
+## 50.4.2-prod-r1-consumption-auth-fix
+
+- Fixed `/push/bandwidth-consumption` returning HTTP 500 because the route referenced the undefined legacy name `API_TOKEN`.
+- Reused the canonical `TOKEN` value already used by `/push`, preserving the same `X-Token` authentication contract for both Agent endpoints.
+- Added an always-on AST regression test that fails preflight if the Consumption route references `API_TOKEN`, omits `TOKEN`, or stops reading the `X-Token` header.
+- Added live integration assertions for rejected and accepted Consumption tokens when a disposable PostgreSQL test database is available.
+- Kept the Agent payload, endpoint, bucket format, Consumption calculations, database schema, UI, retention and all existing routes unchanged.
+
+## 50.4.1-prod-r1-standalone-repo
+
+- Made `tuanchu1121/virtinfra-monitor` the canonical and default repository everywhere.
+- Removed every runtime, installer, updater, Agent bootstrap, publishing and documentation reference to the previous repository.
+- Updated `install.sh`, `update.sh`, `install-agent.sh`, `uninstall-agent.sh`, `virtinfra-monitorctl`, PostgreSQL installer and GitHub publishing defaults.
+- Added `CANONICAL_REPOSITORY` as an explicit repository contract.
+- Added a release test that fails if the previous repository name appears anywhere in the source tree.
+- Added a complete Vietnamese beginner guide for creating the new repository, publishing with GitHub Desktop, installing Monitor, installing Agent, updating, verifying and troubleshooting.
+- Preserved all Storage V2, Dashboard, Abuse, Storage I/O, Consumption, API, route and Agent behavior from 50.4.0.
+
+## 50.4.1-prod-r1-standalone-repo
 
 - Preserved all existing Flask routes, HTML/CSS, chart rendering, API responses, Agent protocol, Authentication, Abuse behavior, Storage I/O and Consumption behavior.
 - Added `vm_chart_5m`, an exact 5-minute Timescale hypertable for VM network, CPU, RAM and aggregate disk chart metrics with 7-day retention.

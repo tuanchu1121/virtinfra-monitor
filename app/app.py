@@ -28313,7 +28313,7 @@ def api_v1_performance_v48140():
             try: redis_ok = bool(client.ping())
             except Exception: redis_ok = False
         return jsonify({
-            "version":"50.4.0-prod-r1-storage-v2",
+            "version":"50.4.2-prod-r1-consumption-auth-fix",
             "database":{
                 "engine":"PostgreSQL + TimescaleDB",
                 "database":pg.get("database"),
@@ -28618,7 +28618,7 @@ def page(title, content):
 # protocol. Agents submit one compact node aggregate for each completed local
 # 2-hour bucket. VM UUIDs and per-VM history are deliberately not stored.
 
-V5030_RELEASE = "50.4.0-prod-r1-storage-v2"
+V5030_RELEASE = "50.4.2-prod-r1-consumption-auth-fix"
 V5030_BW_TABLE = "node_bandwidth_consumption_2h"
 V5030_BW_BUCKET_SECONDS = 2 * 3600
 V5030_BW_RETENTION_SECONDS = 7 * 86400
@@ -28771,7 +28771,7 @@ def _v5030_set_bandwidth_accept_after(ts=None):
 
 @app.route("/push/bandwidth-consumption", methods=["POST"])
 def push_bandwidth_consumption():
-    if request.headers.get("X-Token", "") != API_TOKEN:
+    if request.headers.get("X-Token", "") != TOKEN:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
 
     payload = request.get_json(silent=True)
@@ -28869,6 +28869,8 @@ def _v5030_status_name(last_push):
 def _v5030_row_values(row, expected_buckets):
     item = dict(row)
     item["node"] = str(item.get("node") or "")
+    item["public_ipv4"] = compact_ipv4(item.get("public_ipv4") or "")
+    item["private_ipv4"] = compact_ipv4(item.get("private_ipv4") or "")
     for name in V5030_BW_COUNTER_COLUMNS:
         item[name] = max(0, safe_int(item.get(name), 0))
     item["bucket_count"] = max(0, safe_int(item.get("bucket_count"), 0))
@@ -28945,7 +28947,13 @@ def _v5030_bandwidth_rows(start, end, expected_buckets, q=""):
                 COALESCE(SUM(b.vm_private_rx_bytes),0) AS vm_private_rx_bytes,
                 COALESCE(SUM(b.vm_private_tx_bytes),0) AS vm_private_tx_bytes,
                 COALESCE(MAX(b.received_at),0) AS last_received,
-                COALESCE(SUM(CASE WHEN b.estimated=1 THEN 1 ELSE 0 END),0) AS estimated_count
+                COALESCE(SUM(CASE WHEN b.estimated=1 THEN 1 ELSE 0 END),0) AS estimated_count,
+                COALESCE((SELECT primary_ipv4 FROM node_bridge_addresses_latest ba
+                          WHERE ba.node=ni.node AND LOWER(COALESCE(ba.role,''))='public'
+                          ORDER BY ba.last_seen DESC LIMIT 1),'') AS public_ipv4,
+                COALESCE((SELECT primary_ipv4 FROM node_bridge_addresses_latest ba
+                          WHERE ba.node=ni.node AND LOWER(COALESCE(ba.role,''))='private'
+                          ORDER BY ba.last_seen DESC LIMIT 1),'') AS private_ipv4
             FROM node_inventory ni
             LEFT JOIN node_bandwidth_consumption_2h b
               ON b.node=ni.node
@@ -28973,6 +28981,8 @@ def _v5030_bandwidth_rows(start, end, expected_buckets, q=""):
                 "vm_private_tx_bytes": row[11],
                 "last_received": row[12],
                 "estimated_count": row[13],
+                "public_ipv4": row[14],
+                "private_ipv4": row[15],
             }
             result.append(_v5030_row_values(mapped, expected_buckets))
         return result
@@ -29014,17 +29024,34 @@ def _v5030_sort_link(label, key, current, order, **kwargs):
     )
 
 
+def _v5030_group_tone(prefix, diff=False):
+    if diff or prefix.startswith("public_difference") or prefix.startswith("private_difference"):
+        return "difference"
+    tones = {
+        "physical_public": "physical-public",
+        "physical_private": "physical-private",
+        "vm_public": "vm-public",
+        "vm_private": "vm-private",
+    }
+    return tones.get(prefix, "neutral")
+
+
 def _v5030_metric_group(title, prefix, item, diff=False):
     rx = item.get(prefix + "_rx", 0)
     tx = item.get(prefix + "_tx", 0)
     total = item.get(prefix + "_total", 0)
     formatter = _v5030_fmt_signed if diff else human
+    tone = _v5030_group_tone(prefix, diff=diff)
     return """
-      <div class="bwcons-group">
+      <div class="bwcons-group %s">
         <div class="bwcons-group-title">%s</div>
-        <div class="bwcons-triplet"><span>RX<b>%s</b></span><span>TX<b>%s</b></span><span>TOTAL<b>%s</b></span></div>
+        <div class="bwcons-triplet">
+          <span class="rx">RX<b>%s</b></span>
+          <span class="tx">TX<b>%s</b></span>
+          <span class="total">TOTAL<b>%s</b></span>
+        </div>
       </div>
-    """ % (escape(title), formatter(rx), formatter(tx), formatter(total))
+    """ % (tone, escape(title), formatter(rx), formatter(tx), formatter(total))
 
 
 def _v5030_summary_card(title, prefix, totals, tone):
@@ -29123,15 +29150,32 @@ def bandwidth_consumption_page():
             groups.append(_v5030_metric_group("Public Difference", "public_difference", row, diff=True))
         if section in {"all", "private_difference"}:
             groups.append(_v5030_metric_group("Private Difference", "private_difference", row, diff=True))
+        public_ip = str(row.get("public_ipv4") or "").strip()
+        private_ip = str(row.get("private_ipv4") or "").strip()
+        ip_lines = []
+        if public_ip:
+            ip_lines.append(
+                '<span class="bwcons-ip public"><small>Public</small><span class="mono">%s</span><button type="button" class="copy-btn" data-copy="%s" title="Copy Public IP">⧉</button></span>'
+                % (escape(public_ip), escape(public_ip, quote=True))
+            )
+        if private_ip:
+            ip_lines.append(
+                '<span class="bwcons-ip private"><small>Private</small><span class="mono">%s</span><button type="button" class="copy-btn" data-copy="%s" title="Copy Private IP">⧉</button></span>'
+                % (escape(private_ip), escape(private_ip, quote=True))
+            )
         table_rows.append("""
           <tr>
-            <td class="bwcons-node"><a href="%s"><b>%s</b></a><span class="status %s">%s</span></td>
+            <td class="bwcons-node">
+              <div class="bwcons-node-main"><a href="%s"><b>%s</b></a><span class="status %s">%s</span></div>
+              <div class="bwcons-node-ips">%s</div>
+            </td>
             <td><div class="bwcons-groups">%s</div></td>
-            <td><span class="status %s">%s</span><small>%s%%</small></td>
+            <td><span class="status %s">%s</span><small>%s%% complete</small></td>
             <td><b>%s</b><small>%s</small></td>
           </tr>
         """ % (
             escape(href, quote=True), escape(node), badge_cls, state.title(),
+            "".join(ip_lines) if ip_lines else '<span class="bwcons-ip muted"><small>IP</small><span class="mono">-</span></span>',
             "".join(groups), coverage_cls, escape(coverage_text), round(row["coverage_ratio"] * 100.0, 1),
             fmt_full(row["last_received"]) if row["last_received"] else "-",
             "Latest completed bucket: " + fmt_full(end),
@@ -29171,9 +29215,10 @@ def bandwidth_consumption_page():
     <style id="v5030-bandwidth-consumption-css">
       .bwcons-hero{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}.bwcons-hero h2{margin:4px 0}.bwcons-hero p{margin:0;color:var(--muted,#667085)}
       .bwcons-periods,.bwcons-sortbar{display:flex;gap:7px;flex-wrap:wrap}.bwcons-periods a,.bwcons-sortbar a{padding:7px 10px;border:1px solid var(--line,#dfe5ec);border-radius:9px;text-decoration:none;font-size:12px}.bwcons-periods a.active,.bwcons-sortbar a.active{background:#1677ff;color:#fff;border-color:#1677ff}
-      .bwcons-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(180px,1fr));gap:12px}.bwcons-summary{padding:15px}.bwcons-summary>span{display:block;font-weight:800;margin-bottom:10px}.bwcons-summary>div{display:flex;justify-content:space-between;padding:5px 0}.bwcons-summary small{color:var(--muted,#667085)}.bwcons-summary b{font-variant-numeric:tabular-nums}.bwcons-summary.public{border-top:3px solid #1677ff}.bwcons-summary.private{border-top:3px solid #8b5cf6}.bwcons-summary.vmpublic{border-top:3px solid #12a150}.bwcons-summary.vmprivate{border-top:3px solid #f59e0b}
-      .bwcons-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.bwcons-toolbar input{min-width:260px;flex:1}.bwcons-toolbar select{min-width:150px}.bwcons-sortbar{margin-top:12px}.bwcons-table{min-width:1120px}.bwcons-table th:nth-child(1){width:180px}.bwcons-table th:nth-child(3){width:150px}.bwcons-table th:nth-child(4){width:190px}
-      .bwcons-node{vertical-align:top}.bwcons-node>a{display:block;margin-bottom:8px}.bwcons-groups{display:grid;grid-template-columns:repeat(3,minmax(195px,1fr));gap:8px}.bwcons-group{border:1px solid var(--line,#e2e8f0);border-radius:10px;padding:8px}.bwcons-group-title{font-size:11px;font-weight:800;text-transform:uppercase;color:var(--muted,#667085);margin-bottom:6px}.bwcons-triplet{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.bwcons-triplet span{font-size:10px;color:var(--muted,#667085)}.bwcons-triplet b{display:block;margin-top:2px;color:var(--text,#111827);font-size:12px;font-variant-numeric:tabular-nums}.bwcons-table td>small{display:block;margin-top:6px;color:var(--muted,#667085)}
+      .bwcons-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(180px,1fr));gap:12px}.bwcons-summary{padding:15px;background:linear-gradient(180deg,#ffffff 0%%,#f8fbff 100%%)}.bwcons-summary>span{display:block;font-weight:800;margin-bottom:10px}.bwcons-summary>div{display:flex;justify-content:space-between;padding:5px 0}.bwcons-summary small{color:var(--muted,#667085)}.bwcons-summary b{font-variant-numeric:tabular-nums}.bwcons-summary.public{border-top:3px solid #1677ff}.bwcons-summary.private{border-top:3px solid #8b5cf6}.bwcons-summary.vmpublic{border-top:3px solid #12a150}.bwcons-summary.vmprivate{border-top:3px solid #f59e0b}
+      .bwcons-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.bwcons-toolbar input{min-width:260px;flex:1}.bwcons-toolbar select{min-width:150px}.bwcons-sortbar{margin-top:12px}.bwcons-table{min-width:1220px}.bwcons-table th:nth-child(1){width:235px}.bwcons-table th:nth-child(3){width:160px}.bwcons-table th:nth-child(4){width:190px}
+      .bwcons-node{vertical-align:top}.bwcons-node-main{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}.bwcons-node-main a{display:block}.bwcons-node-ips{display:flex;flex-direction:column;gap:6px}.bwcons-ip{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;width:max-content;padding:5px 8px;border-radius:999px;border:1px solid var(--line,#d9e2ec);background:#f8fafc;color:#344054}.bwcons-ip small{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#667085)}.bwcons-ip .mono{font-size:12px;font-variant-numeric:tabular-nums}.bwcons-ip.public{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8}.bwcons-ip.private{background:#f5f3ff;border-color:#d8b4fe;color:#6d28d9}.bwcons-ip.muted{background:#f8fafc;border-color:#e5e7eb;color:#667085}.bwcons-ip .copy-btn{margin-left:2px;transform:scale(.86)}
+      .bwcons-groups{display:grid;grid-template-columns:repeat(2,minmax(215px,1fr));gap:10px}.bwcons-group{border:1px solid var(--line,#e2e8f0);border-radius:12px;padding:10px;background:#fff}.bwcons-group.physical-public{background:#eff6ff;border-color:#bfdbfe}.bwcons-group.physical-private{background:#f5f3ff;border-color:#ddd6fe}.bwcons-group.vm-public{background:#ecfdf3;border-color:#a7f3d0}.bwcons-group.vm-private{background:#fff7ed;border-color:#fdba74}.bwcons-group.difference{background:#fff1f3;border-color:#fecdd3}.bwcons-group-title{font-size:11px;font-weight:800;text-transform:uppercase;color:#344054;margin-bottom:6px}.bwcons-triplet{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.bwcons-triplet span{font-size:10px;color:#475467;font-weight:700}.bwcons-triplet span.rx b{color:#1d4ed8}.bwcons-triplet span.tx b{color:#b42318}.bwcons-triplet span.total b{color:#111827}.bwcons-triplet b{display:block;margin-top:3px;font-size:12px;font-variant-numeric:tabular-nums}.bwcons-table td>small{display:block;margin-top:6px;color:var(--muted,#667085)}
       @media(max-width:1250px){.bwcons-summary-grid{grid-template-columns:repeat(2,minmax(180px,1fr))}.bwcons-groups{grid-template-columns:repeat(2,minmax(190px,1fr))}}@media(max-width:760px){.bwcons-summary-grid{grid-template-columns:1fr}.bwcons-toolbar input{min-width:100%%}.bwcons-groups{grid-template-columns:1fr}}
     </style>
     <div class="card bwcons-hero"><div><span class="eyebrow">NODE ACCOUNTING</span><h2>Consumption</h2><p>Physical and aggregate VM traffic remain separate for Public and Private networks. No per-VM UUID history is stored.</p></div><div class="hero-meta"><span>Bucket <b>2 hours</b></span><span>Retention <b>7 days</b></span><span>Timezone <b>%s</b></span></div></div>
@@ -29493,7 +29538,7 @@ _v48140_cached_endpoint("bandwidth_consumption_node_page", V48140_PAGE_CACHE_TTL
 
 
 # ---------------------------------------------------------------------------
-# v50.4.0 storage V2: exact 5-minute charts with short raw detail
+# v50.4.2 Consumption authentication hotfix + storage V2: exact 5-minute charts with short raw detail
 # ---------------------------------------------------------------------------
 # UI routes, HTML/CSS, chart JavaScript, API responses, current-state writers,
 # Abuse and Consumption stay unchanged. Only the backend history source used by

@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 
--- VirtInfra Monitor 50.4.0 storage V2.
+-- VirtInfra Monitor 50.4.2 Consumption authentication hotfix release.
 -- Fresh-deployment schema: exact 5-minute chart points for 7 days, short raw
 -- interface detail for 48 hours, and exact 5-minute physical-node chart points.
 -- Existing current, Abuse, Storage I/O, Consumption and compatibility history

@@ -27,7 +27,7 @@ Bridge roles: public:br0,private:br1
 read -rsp 'Nhap VirtInfra Agent token: ' VIRTINFRA_TOKEN
 echo
 
-curl -fsSL https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/install-agent.sh | env VIRTINFRA_AGENT_API='https://monitor.example.com/push' VIRTINFRA_AGENT_TOKEN="$VIRTINFRA_TOKEN" BW_AGENT_BRIDGE_ROLES='public:br0,private:br1' bash
+curl -fsSL https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/install-agent.sh | env VIRTINFRA_AGENT_API='https://monitor.example.com/push' VIRTINFRA_AGENT_TOKEN="$VIRTINFRA_TOKEN" BW_AGENT_BRIDGE_ROLES='public:br0,private:br1' bash
 
 unset VIRTINFRA_TOKEN
 ```
@@ -51,5 +51,5 @@ Chạy lại installer với API, token và bridge roles đúng. Không dùng `-
 ## Gỡ, giữ state
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/uninstall-agent.sh | bash -s -- --keep-state
+curl -fsSL https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/uninstall-agent.sh | bash -s -- --keep-state
 ```

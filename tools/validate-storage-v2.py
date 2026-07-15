@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compare legacy history rows with Storage V2 for one VM and time range.
 
-The old tables remain written for compatibility in 50.4.0, making this tool
+The old tables remain written for compatibility in 50.4.1, making this tool
 useful on a fresh deployment after 24-48 hours of traffic. It never changes data.
 """
 from __future__ import annotations

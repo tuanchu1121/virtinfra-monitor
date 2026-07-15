@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE="50.4.0-prod-r1-storage-v2"
+RELEASE="50.4.2-prod-r1-consumption-auth-fix"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 APP_SRC="$REPO_ROOT/app"
@@ -15,7 +15,7 @@ CRED_FILE="/root/bw-monitor-credentials.env"
 SERVICE_FILE="/etc/systemd/system/bw-monitor.service"
 NGINX_SITE="/etc/nginx/sites-available/bw-monitor.conf"
 
-GITHUB_REPO="${BW_GITHUB_REPO:-tuanchu1121/bw-monitor-production.1}"
+GITHUB_REPO="${BW_GITHUB_REPO:-tuanchu1121/virtinfra-monitor}"
 GITHUB_REF="${BW_GITHUB_REF:-main}"
 DOMAIN=""; EMAIL=""; PUBLIC_IP=""; PORT="8080"; SSH_PORT=""
 ADMIN_USER="admin"; ADMIN_PASSWORD="${BW_ADMIN_PASSWORD:-}"; MONITOR_TOKEN="${BW_MONITOR_TOKEN:-}"

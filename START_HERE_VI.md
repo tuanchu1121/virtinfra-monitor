@@ -1,6 +1,6 @@
 # BẮT ĐẦU TẠI ĐÂY - VirtInfra Monitor
 
-> Release: `50.4.0-prod-r1-storage-v2`
+> Release: `50.4.2-prod-r1-consumption-auth-fix`
 >
 > Bản này giữ nguyên toàn bộ chức năng, route, giao diện, Agent, Abuse, Storage I/O và Consumption hiện tại; đồng thời bổ sung Storage V2 với chart đúng từng điểm 5 phút trong 7 ngày, raw interface 48 giờ, Timescale retention và rollback reader nhanh.
 
@@ -93,7 +93,7 @@ Trong GitHub Desktop:
 
 ```text
 Summary:
-Release 50.4.0 Storage V2 exact 5-minute charts
+Release 50.4.2 Consumption authentication fix
 
 Commit to main
 → Push origin
@@ -103,13 +103,13 @@ Kiểm tra GitHub đã nhận đúng version:
 
 ```bash
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/VERSION
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 ```
 
 Kết quả phải là:
 
 ```text
-50.4.0-prod-r1-storage-v2
+50.4.2-prod-r1-consumption-auth-fix
 ```
 
 ### Bước B - Update Monitor đang chạy
@@ -127,7 +127,7 @@ virtinfra-monitorctl version
 Kết quả version phải là:
 
 ```text
-50.4.0-prod-r1-storage-v2
+50.4.2-prod-r1-consumption-auth-fix
 ```
 
 Kiểm tra thêm:
@@ -152,7 +152,7 @@ https://DOMAIN-CUA-M/bandwidth-consumption
 
 ### Bước C - Agent
 
-Bản `50.4.0` không thay đổi payload, endpoint, token hay chu kỳ của Agent. Node đang chạy VirtInfra Agent hiện tại không bắt buộc cài lại chỉ để dùng Storage V2.
+Bản `50.4.2` không thay đổi payload, endpoint, token hay chu kỳ của Agent. Node đang chạy VirtInfra Agent hiện tại không bắt buộc cài lại chỉ để dùng Storage V2.
 
 Node chưa có Agent hoặc cần đồng bộ source Agent mới, dùng:
 
@@ -161,7 +161,7 @@ read -rsp 'Nhap VirtInfra Agent token: ' BW_TOKEN
 echo
 
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/install-agent.sh \
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/install-agent.sh \
 | env \
 VIRTINFRA_AGENT_API='https://DOMAIN-CUA-M/push' \
 VIRTINFRA_AGENT_TOKEN="$BW_TOKEN" \

@@ -63,7 +63,7 @@ case "$CMD" in
     ;;
   version) cat "$APP/DEPLOY_VERSION" ;;
   update)
-    repo="${BW_GITHUB_REPO:-tuanchu1121/bw-monitor-production.1}"
+    repo="${BW_GITHUB_REPO:-tuanchu1121/virtinfra-monitor}"
     ref="${BW_GITHUB_REF:-main}"
     exec bash -c 'curl -fsSL "https://raw.githubusercontent.com/$1/$2/update.sh" | bash' _ "$repo" "$ref" ;;
   domain)
@@ -77,13 +77,13 @@ Public URL: %s
         ;;
       set)
         domain="${1:?Usage: virtinfra-monitorctl domain set DOMAIN EMAIL}"; email="${2:?Usage: virtinfra-monitorctl domain set DOMAIN EMAIL}"
-        repo="${BW_GITHUB_REPO:-tuanchu1121/bw-monitor-production.1}"; ref="${BW_GITHUB_REF:-main}"
+        repo="${BW_GITHUB_REPO:-tuanchu1121/virtinfra-monitor}"; ref="${BW_GITHUB_REF:-main}"
         exec bash -c 'curl -fsSL "https://raw.githubusercontent.com/$1/$2/install.sh" | bash -s -- --update --domain "$3" --email "$4"' _ "$repo" "$ref" "$domain" "$email"
         ;;
       remove)
         ip="${1:-${BW_PUBLIC_IP:-}}"; port="${2:-${BW_PUBLIC_PORT:-8080}}"
         [[ -n "$ip" ]] || { echo 'Public IP is required.' >&2; exit 2; }
-        repo="${BW_GITHUB_REPO:-tuanchu1121/bw-monitor-production.1}"; ref="${BW_GITHUB_REF:-main}"
+        repo="${BW_GITHUB_REPO:-tuanchu1121/virtinfra-monitor}"; ref="${BW_GITHUB_REF:-main}"
         exec bash -c 'curl -fsSL "https://raw.githubusercontent.com/$1/$2/install.sh" | bash -s -- --update --ip-mode --public-ip "$3" --port "$4"' _ "$repo" "$ref" "$ip" "$port"
         ;;
       *) echo 'Usage: virtinfra-monitorctl domain status|set DOMAIN EMAIL|remove [IP] [PORT]' >&2; exit 2 ;;

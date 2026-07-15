@@ -17,15 +17,15 @@ Assume:
 
 ```text
 checkout: /.data/agent
-archive:  /root/bw-monitor-50.4.0-prod-r1-storage-v2-github-production.zip
+archive:  /root/virtinfra-monitor-50.4.2-prod-r1-consumption-auth-fix-github-production.zip
 ```
 
 ```bash
 set -euo pipefail
 
-ZIP=/root/bw-monitor-50.4.0-prod-r1-storage-v2-github-production.zip
+ZIP=/root/virtinfra-monitor-50.4.2-prod-r1-consumption-auth-fix-github-production.zip
 REPO=/.data/agent
-TMP=/tmp/bw-monitor-v50-publish
+TMP=/tmp/virtinfra-monitor-v50-publish
 
 apt-get update
 apt-get install -y unzip rsync git python3
@@ -58,13 +58,13 @@ git push origin main
 
 ```bash
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/VERSION
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 ```
 
 Expected:
 
 ```text
-50.4.0-prod-r1-storage-v2
+50.4.2-prod-r1-consumption-auth-fix
 ```
 
 ## Secret review

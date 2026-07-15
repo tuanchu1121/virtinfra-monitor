@@ -1,6 +1,6 @@
 # Storage V2 compatibility matrix
 
-Release: `50.4.0-prod-r1-storage-v2`
+Release: `50.4.2-prod-r1-consumption-auth-fix`
 
 Status values: **UNCHANGED**, **V2 READ**, **V2 WRITE**, **ADDITIVE**, **FALLBACK AVAILABLE**.
 

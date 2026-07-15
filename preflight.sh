@@ -26,7 +26,7 @@ fail(){ echo "ERROR: $*" >&2; exit 1; }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.4.0-prod-r1-storage-v2" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.4.2-prod-r1-consumption-auth-fix" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/bw_pg.py && -f deploy/agent/agent.py ]] || fail "full source tree is incomplete"
 [[ ! -d release && ! -d enterprise ]] || fail "legacy duplicate runtime trees must not be shipped"
 
@@ -78,6 +78,9 @@ PY
 log "Run v50 source contract"
 "$PYTHON" tests/test_v50_contract.py
 
+log "Validate standalone repository contract"
+"$PYTHON" tests/test_repository_contract.py
+
 log "Run storage V2 contract and multi-NIC regression"
 "$PYTHON" tests/test_storage_v2_contract.py
 
@@ -86,6 +89,9 @@ log "Validate source-accurate operations documentation"
 
 log "Run compact Bandwidth Consumption Agent regression"
 "$PYTHON" tests/test_bandwidth_consumption_agent.py
+
+log "Validate Consumption endpoint authentication contract"
+"$PYTHON" tests/test_consumption_auth_contract.py
 
 log "Verify one-command installer and operations flow"
 bash ./tools/test-installer-flow.sh

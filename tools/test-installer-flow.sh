@@ -8,8 +8,20 @@ for f in "$ROOT/install.sh" "$ROOT/update.sh" "$I" "$ROOT/deploy/postgres/bw-mon
   bash -n "$f"
 done
 
-grep -q 'RELEASE="50.4.0-prod-r1-storage-v2"' "$I" || fail "release marker missing"
-grep -q 'tuanchu1121/bw-monitor-production.1' "$ROOT/install.sh" || fail "default GitHub repository is wrong"
+grep -q 'RELEASE="50.4.2-prod-r1-consumption-auth-fix"' "$I" || fail "release marker missing"
+CANONICAL='tuanchu1121/virtinfra-monitor'
+[[ "$(cat "$ROOT/CANONICAL_REPOSITORY")" == "$CANONICAL" ]] || fail "canonical repository contract is wrong"
+for repo_file in \
+  "$ROOT/install.sh" \
+  "$ROOT/update.sh" \
+  "$ROOT/install-agent.sh" \
+  "$ROOT/uninstall-agent.sh" \
+  "$ROOT/deploy/postgres/install-postgres-native.sh" \
+  "$ROOT/deploy/postgres/bw-monitorctl.sh" \
+  "$ROOT/publish-github.sh"
+do
+  grep -q "$CANONICAL" "$repo_file" || fail "canonical GitHub repository is missing from $repo_file"
+done
 grep -q 'deploy/postgres/install-postgres-native.sh' "$ROOT/install.sh" || fail "bootstrap does not launch PostgreSQL-native installer"
 grep -q 'repo_complete()' "$ROOT/install.sh" || fail "bootstrap repository validation missing"
 grep -q 'normalize_shell_modes()' "$ROOT/install.sh" || fail "Windows GitHub Desktop mode normalization missing"

@@ -9,7 +9,7 @@ def need(cond: bool, message: str) -> None:
         raise AssertionError(message)
 
 version = (ROOT / "VERSION").read_text().strip()
-need(version == "50.4.0-prod-r1-storage-v2", f"unexpected VERSION: {version}")
+need(version == "50.4.2-prod-r1-consumption-auth-fix", f"unexpected VERSION: {version}")
 
 app = (ROOT / "app/app.py").read_text()
 pg = (ROOT / "app/bw_pg.py").read_text()
@@ -49,7 +49,7 @@ need("fresh-install PostgreSQL Native" in installer, "fresh-install PostgreSQL-n
 need("does not import SQLite data" in installer, "no-SQLite-migration contract missing")
 
 
-# v50.4.0 exact 5-minute chart storage and short raw detail.
+# v50.4.2 Consumption authentication hotfix with exact 5-minute chart storage and short raw detail.
 need("vm_chart_5m" in storage_sql and "vm_raw_detail_5m" in storage_sql and "node_chart_5m" in storage_sql, "storage V2 tables missing")
 need("chunk_time_interval => 10800::bigint" in storage_sql, "3-hour VM chart/raw chunk interval missing")
 need("drop_after => 604800::bigint" in storage_sql, "7-day chart retention missing")

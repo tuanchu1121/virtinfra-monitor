@@ -1,6 +1,6 @@
 # VIRTINFRA MONITOR: TÀI LIỆU VẬN HÀNH
 
-> Release `50.4.0-prod-r1-storage-v2`
+> Release `50.4.2-prod-r1-consumption-auth-fix`
 
 Runtime hiện tại dùng PostgreSQL 17 + TimescaleDB làm nguồn dữ liệu duy nhất.
 
@@ -55,3 +55,8 @@ Health timer: virtinfra-monitor-health-watch.timer
 Agent service: virtinfra-agent.service
 Consumption: bucket 2 giờ, giữ 7 ngày, không lưu UUID VM
 ```
+
+
+## Hướng dẫn cho người mới
+
+- [Hướng dẫn đầy đủ cho repo mới](../HUONG_DAN_REPO_MOI_VI.md)

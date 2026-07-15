@@ -2,7 +2,7 @@
 
 Production monitoring for KVM/libvirt nodes and virtual machines. PostgreSQL 17 + TimescaleDB is the only runtime data plane. This repository keeps the complete v48/v49 dashboard, Abuse Engine, storage views, Admin tools, REST API and Agent protocol, while replacing the runtime data store with one PostgreSQL 17 + TimescaleDB database.
 
-> Release: `50.4.0-prod-r1-storage-v2`
+> Release: `50.4.2-prod-r1-consumption-auth-fix`
 
 > **Operations source of truth:** [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md)
 >
@@ -128,7 +128,7 @@ apt-get update
 apt-get install -y curl ca-certificates tar
 
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/install.sh \
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/install.sh \
 | bash -s -- \
 --public-ip 203.0.113.10 \
 --port 8080
@@ -163,7 +163,7 @@ Before installation:
 
 ```bash
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/install.sh \
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/install.sh \
 | bash -s -- \
 --domain monitor.example.com \
 --email ops@example.com
@@ -222,7 +222,7 @@ virtinfra-monitorctl domain remove 203.0.113.10 8080
 
 ```bash
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/update.sh \
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/update.sh \
 | bash
 ```
 

@@ -1,6 +1,6 @@
 # VirtInfra Monitor - Toàn bộ command triển khai và bảo trì từ A đến Z
 
-> Release: `50.4.4-prod-r1-manifest-consumption-ui-fix`
+> Release: `50.4.5-prod-r1-consumption-neutral-ui`
 >
 > Chạy command Monitor bằng `root`. Với node KVM, chạy Agent bằng `root` để Agent đọc được libvirt, interface, disk và host metrics.
 
@@ -105,7 +105,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Kết quả mong đợi:
 
 ```text
-50.4.4-prod-r1-manifest-consumption-ui-fix
+50.4.5-prod-r1-consumption-neutral-ui
 ```
 
 ## 2.2 Update chuẩn, có backup trước

@@ -28313,7 +28313,7 @@ def api_v1_performance_v48140():
             try: redis_ok = bool(client.ping())
             except Exception: redis_ok = False
         return jsonify({
-            "version":"50.4.4-prod-r1-manifest-consumption-ui-fix",
+            "version":"50.4.5-prod-r1-consumption-neutral-ui",
             "database":{
                 "engine":"PostgreSQL + TimescaleDB",
                 "database":pg.get("database"),
@@ -28618,7 +28618,7 @@ def page(title, content):
 # protocol. Agents submit one compact node aggregate for each completed local
 # 2-hour bucket. VM UUIDs and per-VM history are deliberately not stored.
 
-V5030_RELEASE = "50.4.4-prod-r1-manifest-consumption-ui-fix"
+V5030_RELEASE = "50.4.5-prod-r1-consumption-neutral-ui"
 V5030_BW_TABLE = "node_bandwidth_consumption_2h"
 V5030_BW_BUCKET_SECONDS = 2 * 3600
 V5030_BW_RETENTION_SECONDS = 7 * 86400
@@ -29006,7 +29006,17 @@ def _v5030_sort_rows(rows, sort_by, order):
 
 def _v5030_fmt_signed(value):
     value = safe_int(value, 0)
-    return ("+" if value > 0 else "") + human(value)
+    sign = "+" if value > 0 else ("-" if value < 0 else "")
+    absolute = abs(float(value))
+    if absolute >= 1024.0 ** 4:
+        scaled, unit = absolute / (1024.0 ** 4), "TB"
+    elif absolute >= 1024.0 ** 3:
+        scaled, unit = absolute / (1024.0 ** 3), "GB"
+    else:
+        # Difference values intentionally use MB as the minimum display unit so
+        # small byte deltas do not expand into long, noisy integer strings.
+        scaled, unit = absolute / (1024.0 ** 2), "MB"
+    return f"{sign}{scaled:.2f} {unit}"
 
 
 def _v5030_sort_link(label, key, current, order, **kwargs):
@@ -29151,18 +29161,12 @@ def bandwidth_consumption_page():
         if section in {"all", "private_difference"}:
             groups.append(_v5030_metric_group("Private Difference", "private_difference", row, diff=True))
         public_ip = str(row.get("public_ipv4") or "").strip()
-        private_ip = str(row.get("private_ipv4") or "").strip()
-        ip_lines = []
-        if public_ip:
-            ip_lines.append(
-                '<span class="bwcons-ip public"><small>Public</small><span class="mono">%s</span><button type="button" class="copy-btn" data-copy="%s" title="Copy Public IP">⧉</button></span>'
-                % (escape(public_ip), escape(public_ip, quote=True))
-            )
-        if private_ip:
-            ip_lines.append(
-                '<span class="bwcons-ip private"><small>Private</small><span class="mono">%s</span><button type="button" class="copy-btn" data-copy="%s" title="Copy Private IP">⧉</button></span>'
-                % (escape(private_ip), escape(private_ip, quote=True))
-            )
+        ip_line = (
+            '<span class="bwcons-ip"><span class="mono">%s</span><button type="button" class="copy-btn" data-copy="%s" title="Copy Public IP">⧉</button></span>'
+            % (escape(public_ip), escape(public_ip, quote=True))
+            if public_ip
+            else '<span class="bwcons-ip muted"><span class="mono">-</span></span>'
+        )
         table_rows.append("""
           <tr>
             <td class="bwcons-node">
@@ -29175,7 +29179,7 @@ def bandwidth_consumption_page():
           </tr>
         """ % (
             escape(href, quote=True), escape(node), badge_cls, state.title(),
-            "".join(ip_lines) if ip_lines else '<span class="bwcons-ip muted"><small>IP</small><span class="mono">-</span></span>',
+            ip_line,
             "".join(groups), coverage_cls, escape(coverage_text), round(row["coverage_ratio"] * 100.0, 1),
             fmt_full(row["last_received"]) if row["last_received"] else "-",
             "Latest completed bucket: " + fmt_full(end),
@@ -29215,10 +29219,10 @@ def bandwidth_consumption_page():
     <style id="v5030-bandwidth-consumption-css">
       .bwcons-hero{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}.bwcons-hero h2{margin:4px 0}.bwcons-hero p{margin:0;color:var(--muted,#667085)}
       .bwcons-periods,.bwcons-sortbar{display:flex;gap:7px;flex-wrap:wrap}.bwcons-periods a,.bwcons-sortbar a{padding:7px 10px;border:1px solid var(--line,#dfe5ec);border-radius:9px;text-decoration:none;font-size:12px}.bwcons-periods a.active,.bwcons-sortbar a.active{background:#1677ff;color:#fff;border-color:#1677ff}
-      .bwcons-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(180px,1fr));gap:12px}.bwcons-summary{padding:15px;background:linear-gradient(180deg,#ffffff 0%%,#f8fbff 100%%)}.bwcons-summary>span{display:block;font-weight:800;margin-bottom:10px}.bwcons-summary>div{display:flex;justify-content:space-between;padding:5px 0}.bwcons-summary small{color:var(--muted,#667085)}.bwcons-summary b{font-variant-numeric:tabular-nums}.bwcons-summary.public{border-top:3px solid #1677ff}.bwcons-summary.private{border-top:3px solid #8b5cf6}.bwcons-summary.vmpublic{border-top:3px solid #12a150}.bwcons-summary.vmprivate{border-top:3px solid #f59e0b}
-      .bwcons-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.bwcons-toolbar input{min-width:260px;flex:1}.bwcons-toolbar select{min-width:150px}.bwcons-sortbar{margin-top:12px}.bwcons-table{min-width:1220px}.bwcons-table th:nth-child(1){width:235px}.bwcons-table th:nth-child(3){width:160px}.bwcons-table th:nth-child(4){width:190px}
-      .bwcons-node{vertical-align:top}.bwcons-node-main{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}.bwcons-node-main a{display:block}.bwcons-node-ips{display:flex;flex-direction:column;gap:6px}.bwcons-ip{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;width:max-content;padding:5px 8px;border-radius:999px;border:1px solid var(--line,#d9e2ec);background:#f8fafc;color:#344054}.bwcons-ip small{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#667085)}.bwcons-ip .mono{font-size:12px;font-variant-numeric:tabular-nums}.bwcons-ip.public{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8}.bwcons-ip.private{background:#f5f3ff;border-color:#d8b4fe;color:#6d28d9}.bwcons-ip.muted{background:#f8fafc;border-color:#e5e7eb;color:#667085}.bwcons-ip .copy-btn{margin-left:2px;transform:scale(.86)}
-      .bwcons-groups{display:grid;grid-template-columns:repeat(2,minmax(215px,1fr));gap:10px}.bwcons-group{border:1px solid var(--line,#e2e8f0);border-radius:12px;padding:10px;background:#fff}.bwcons-group.physical-public{background:#eff6ff;border-color:#bfdbfe}.bwcons-group.physical-private{background:#f5f3ff;border-color:#ddd6fe}.bwcons-group.vm-public{background:#ecfdf3;border-color:#a7f3d0}.bwcons-group.vm-private{background:#fff7ed;border-color:#fdba74}.bwcons-group.difference{background:#fff1f3;border-color:#fecdd3}.bwcons-group-title{font-size:11px;font-weight:800;text-transform:uppercase;color:#344054;margin-bottom:6px}.bwcons-triplet{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.bwcons-triplet span{font-size:10px;color:#475467;font-weight:700}.bwcons-triplet span.rx b{color:#1d4ed8}.bwcons-triplet span.tx b{color:#b42318}.bwcons-triplet span.total b{color:#111827}.bwcons-triplet b{display:block;margin-top:3px;font-size:12px;font-variant-numeric:tabular-nums}.bwcons-table td>small{display:block;margin-top:6px;color:var(--muted,#667085)}
+      .bwcons-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(180px,1fr));gap:12px}.bwcons-summary{padding:15px;background:var(--panel,#fff);border-top:1px solid var(--line,#dfe5ec)}.bwcons-summary>span{display:block;font-weight:800;margin-bottom:10px}.bwcons-summary>div{display:flex;justify-content:space-between;padding:5px 0}.bwcons-summary small{color:var(--muted,#667085)}.bwcons-summary b{font-variant-numeric:tabular-nums;color:var(--text,#111827)}.bwcons-summary.public,.bwcons-summary.private,.bwcons-summary.vmpublic,.bwcons-summary.vmprivate{border-top-color:var(--line,#dfe5ec)}
+      .bwcons-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.bwcons-toolbar input{min-width:260px;flex:1}.bwcons-toolbar select{min-width:150px}.bwcons-sortbar{margin-top:12px}.bwcons-table{min-width:1220px}.bwcons-table th:nth-child(1){width:215px}.bwcons-table th:nth-child(3){width:160px}.bwcons-table th:nth-child(4){width:190px}
+      .bwcons-node{vertical-align:top}.bwcons-node-main{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}.bwcons-node-main a{display:block}.bwcons-node-ips{display:flex;flex-direction:column;gap:6px}.bwcons-ip{display:inline-flex;align-items:center;gap:6px;width:max-content;max-width:100%%;padding:4px 7px;border-radius:8px;border:1px solid var(--line,#d9e2ec);background:var(--panel,#fff);color:var(--muted,#667085)}.bwcons-ip .mono{font-size:11px;font-variant-numeric:tabular-nums;color:var(--text,#111827)}.bwcons-ip.muted{color:var(--muted,#667085)}.bwcons-ip .copy-btn{margin-left:2px;transform:scale(.84)}
+      .bwcons-groups{display:grid;grid-template-columns:repeat(2,minmax(215px,1fr));gap:10px}.bwcons-group,.bwcons-group.physical-public,.bwcons-group.physical-private,.bwcons-group.vm-public,.bwcons-group.vm-private,.bwcons-group.difference{border:1px solid var(--line,#e2e8f0);border-radius:10px;padding:10px;background:var(--panel,#fff)}.bwcons-group-title{font-size:11px;font-weight:800;text-transform:uppercase;color:var(--muted,#667085);margin-bottom:7px}.bwcons-triplet{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.bwcons-triplet span{font-size:10px;color:var(--muted,#667085);font-weight:700}.bwcons-triplet span.rx b,.bwcons-triplet span.tx b{color:var(--text,#111827)}.bwcons-triplet span.total b{color:var(--text,#111827);font-weight:900}.bwcons-triplet b{display:block;margin-top:3px;font-size:12px;font-variant-numeric:tabular-nums}.bwcons-table td>small{display:block;margin-top:6px;color:var(--muted,#667085)}
       @media(max-width:1250px){.bwcons-summary-grid{grid-template-columns:repeat(2,minmax(180px,1fr))}.bwcons-groups{grid-template-columns:repeat(2,minmax(190px,1fr))}}@media(max-width:760px){.bwcons-summary-grid{grid-template-columns:1fr}.bwcons-toolbar input{min-width:100%%}.bwcons-groups{grid-template-columns:1fr}}
     </style>
     <div class="card bwcons-hero"><div><span class="eyebrow">NODE ACCOUNTING</span><h2>Consumption</h2><p>Physical and aggregate VM traffic remain separate for Public and Private networks. No per-VM UUID history is stored.</p></div><div class="hero-meta"><span>Bucket <b>2 hours</b></span><span>Retention <b>7 days</b></span><span>Timezone <b>%s</b></span></div></div>

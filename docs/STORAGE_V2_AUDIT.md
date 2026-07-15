@@ -1,6 +1,6 @@
 # Storage V2 source audit
 
-Release: `50.4.4-prod-r1-manifest-consumption-ui-fix`
+Release: `50.4.5-prod-r1-consumption-neutral-ui`
 
 This audit was generated from the complete `app/app.py`, Agent, installer, PostgreSQL helper, maintenance and deployment source before the Storage V2 read path was enabled. The existing route names, response shapes, templates, CSS, authentication, CSRF, timezone, Agent payload, Abuse policy and Consumption calculations remain unchanged.
 

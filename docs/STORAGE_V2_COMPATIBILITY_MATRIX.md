@@ -1,6 +1,6 @@
 # Storage V2 compatibility matrix
 
-Release: `50.4.4-prod-r1-manifest-consumption-ui-fix`
+Release: `50.4.5-prod-r1-consumption-neutral-ui`
 
 Status values: **UNCHANGED**, **V2 READ**, **V2 WRITE**, **ADDITIVE**, **FALLBACK AVAILABLE**.
 

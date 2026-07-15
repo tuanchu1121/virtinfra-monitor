@@ -1,3 +1,12 @@
+## 50.4.5-prod-r1-consumption-neutral-ui
+
+- Changed the Consumption node rows from bright pastel network cards to the same neutral panel and border treatment used by the rest of the application, including dark mode.
+- Kept Physical Public, Physical Private, VM Public, VM Private and Difference as separate sections while using typography instead of colored backgrounds for hierarchy.
+- Displayed only the node Public IP under the node name and retained its one-click copy button.
+- Changed Public/Private Difference formatting to a signed value with exactly two decimal places, using MB as the minimum unit and automatically scaling to GB or TB.
+- Preserved the Consumption endpoint, 2-hour bucket calculations, retention, sorting, filters, node detail route and database schema.
+- Retained the canonical `TOKEN` authentication fix and exact checksum manifest build safeguards from 50.4.4.
+
 ## 50.4.4-prod-r1-manifest-consumption-ui-fix
 
 - Fixed the root `SHA256SUMS` manifest shipped with 50.4.3, which still contained hashes from an earlier source state and caused installer/update verification to fail.

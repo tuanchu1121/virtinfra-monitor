@@ -1,6 +1,6 @@
 # Đưa VirtInfra Monitor lên GitHub bằng GitHub Desktop
 
-> Dùng cho release `50.4.4-prod-r1-manifest-consumption-ui-fix`.
+> Dùng cho release `50.4.5-prod-r1-consumption-neutral-ui`.
 
 > Source of truth vận hành: [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md).
 >
@@ -76,7 +76,7 @@ update.sh
 Giải nén file ZIP release ra một thư mục riêng, ví dụ:
 
 ```text
-D:\Downloads\virtinfra-monitor-50.4.4-prod-r1-manifest-consumption-ui-fix\
+D:\Downloads\virtinfra-monitor-50.4.5-prod-r1-consumption-neutral-ui\
 ```
 
 Mở thư mục đó. Bên trong phải thấy trực tiếp:
@@ -212,7 +212,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Phải trả về:
 
 ```text
-50.4.4-prod-r1-manifest-consumption-ui-fix
+50.4.5-prod-r1-consumption-neutral-ui
 ```
 
 Kiểm tra file installer:
@@ -248,7 +248,7 @@ virtinfra-monitorctl version
 Phải ra:
 
 ```text
-50.4.4-prod-r1-manifest-consumption-ui-fix
+50.4.5-prod-r1-consumption-neutral-ui
 ```
 
 Kiểm tra:
@@ -290,7 +290,7 @@ Sai:
 
 ```text
 repo-root/
-└── virtinfra-monitor-50.4.4-prod-r1-manifest-consumption-ui-fix/
+└── virtinfra-monitor-50.4.5-prod-r1-consumption-neutral-ui/
     ├── app/
     ├── deploy/
     └── install.sh

@@ -71,7 +71,7 @@ def main() -> int:
         result = module.run_retention(dry_run=False)
         print(json.dumps({
             "ok": True,
-            "version": "50.4.4-prod-r1-manifest-consumption-ui-fix",
+            "version": "50.4.5-prod-r1-consumption-neutral-ui",
             "started_at": started,
             "finished_at": int(time.time()),
             "result": result,

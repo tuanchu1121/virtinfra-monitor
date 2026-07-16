@@ -6,7 +6,7 @@ trap 'rm -rf "$TMP"' EXIT
 COPY="$TMP/repo"
 mkdir -p "$COPY"
 
-tar --exclude='./.git' --exclude='./dist' --exclude='*/__pycache__' --exclude='*/.pytest_cache' \
+tar --exclude='./.git' --exclude='./dist' --exclude='*/__pycache__' \
   -C "$ROOT" -cf - . | tar -C "$COPY" -xf -
 find "$COPY" -type f -name '*.sh' -exec chmod 0644 {} +
 

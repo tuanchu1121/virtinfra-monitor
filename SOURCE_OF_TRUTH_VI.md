@@ -1,8 +1,8 @@
 # SOURCE OF TRUTH VẬN HÀNH
 
-> Release: `50.5.2-prod-r1-native-copy-ingest`
+> Release: `50.5.0-prod-r1-batched-ingest`
 
-> Release: `50.5.2-prod-r1-native-copy-ingest`
+> Release: `50.5.0-prod-r1-batched-ingest`
 >
 > Tài liệu này được đối chiếu trực tiếp với `install.sh`, `deploy/postgres/*`, `deploy/agent/*`, `postgres/docker-compose.yml`, `app/app.py` và các test contract hiện tại.
 

@@ -9,7 +9,7 @@ def need(cond: bool, message: str) -> None:
         raise AssertionError(message)
 
 version = (ROOT / "VERSION").read_text().strip()
-need(version == "50.5.2-prod-r1-native-copy-ingest", f"unexpected VERSION: {version}")
+need(version == "50.5.0-prod-r1-batched-ingest", f"unexpected VERSION: {version}")
 
 app = (ROOT / "app/app.py").read_text()
 pg = (ROOT / "app/bw_pg.py").read_text()

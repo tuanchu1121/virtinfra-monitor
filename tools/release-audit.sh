@@ -17,7 +17,7 @@ printf '\n==> Refresh repository checksum manifest before preflight\n'
 find . \
   -path './.git' -prune -o \
   -path './dist' -prune -o \
-  -type d \( -name __pycache__ -o -name .pytest_cache \) -prune -o \
+  -type d -name __pycache__ -prune -o \
   -type f ! -name SHA256SUMS ! -name '*.pyc' ! -name '*.pyo' -print0 \
 | sort -z | xargs -0 sha256sum > SHA256SUMS
 sha256sum -c SHA256SUMS >/dev/null
@@ -47,7 +47,7 @@ printf '\n==> Generate repository checksum manifest\n'
 find . \
   -path './.git' -prune -o \
   -path './dist' -prune -o \
-  -type d \( -name __pycache__ -o -name .pytest_cache \) -prune -o \
+  -type d -name __pycache__ -prune -o \
   -type f ! -name SHA256SUMS -print0 \
 | sort -z | xargs -0 sha256sum > SHA256SUMS
 sha256sum -c SHA256SUMS >/dev/null

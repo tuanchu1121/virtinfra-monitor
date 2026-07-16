@@ -14,7 +14,7 @@ printf '\n==> Refresh canonical source checksum manifest\n'
 find . \
   -path './.git' -prune -o \
   -path './dist' -prune -o \
-  -type d \( -name __pycache__ -o -name .pytest_cache \) -prune -o \
+  -type d -name __pycache__ -prune -o \
   -type f ! -name SHA256SUMS ! -name '*.pyc' ! -name '*.pyo' -print0 \
 | sort -z | xargs -0 sha256sum > SHA256SUMS
 sha256sum -c SHA256SUMS >/dev/null
@@ -24,7 +24,6 @@ tar \
   --exclude='./.git' \
   --exclude='./dist' \
   --exclude='*/__pycache__' \
-  --exclude='*/.pytest_cache' \
   --exclude='*.pyc' \
   --exclude='*.pyo' \
   -cf - . | tar -xf - -C "$TMP/$NAME"

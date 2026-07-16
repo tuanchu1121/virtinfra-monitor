@@ -58,7 +58,6 @@ def apply_sql(path: Path) -> None:
 
 for migration in (
     "001_bootstrap.sql", "002_timescale.sql", "003_native_indexes.sql", "004_storage_v2.sql",
-    "005_ingest_write_profile.sql",
 ):
     apply_sql(ROOT / "postgres/sql" / migration)
 

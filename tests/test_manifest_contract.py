@@ -19,7 +19,7 @@ def included_files() -> dict[str, Path]:
         if not path.is_file():
             continue
         rel = path.relative_to(ROOT)
-        if any(part in {".git", "dist", "__pycache__", ".pytest_cache"} for part in rel.parts):
+        if any(part in {".git", "dist", "__pycache__"} for part in rel.parts):
             continue
         if path.name == "SHA256SUMS" or path.suffix in {".pyc", ".pyo"}:
             continue

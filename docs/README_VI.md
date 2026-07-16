@@ -1,6 +1,6 @@
 # VIRTINFRA MONITOR: TÀI LIỆU VẬN HÀNH
 
-> Release `50.5.2-prod-r1-native-copy-ingest`
+> Release `50.5.0-prod-r1-batched-ingest`
 
 Runtime hiện tại dùng PostgreSQL 17 + TimescaleDB làm nguồn dữ liệu duy nhất.
 

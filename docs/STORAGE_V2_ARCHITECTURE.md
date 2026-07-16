@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.2-prod-r1-native-copy-ingest`
+Release: `50.5.0-prod-r1-batched-ingest`
 
 ## Final data path
 

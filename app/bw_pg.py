@@ -19,7 +19,7 @@ from typing import Any, Iterable, Sequence
 
 try:
     import psycopg
-    from psycopg import errors, sql as pg_sql
+    from psycopg import errors
     from psycopg_pool import ConnectionPool
 except Exception as exc:  # pragma: no cover - installer provides dependencies
     raise RuntimeError(
@@ -800,47 +800,6 @@ class CompatConnection:
 
     def executemany(self, sql: str, seq_of_params: Iterable[Sequence[Any]]) -> CompatCursor:
         return self.cursor().executemany(sql, seq_of_params)
-
-    def copy_rows(
-        self,
-        table: str,
-        columns: Sequence[str],
-        rows: Iterable[Sequence[Any]],
-    ) -> int:
-        """Stream Python rows to PostgreSQL using native ``COPY FROM STDIN``.
-
-        The method intentionally bypasses the SQLite SQL translator because COPY
-        is PostgreSQL-native. Identifiers are composed with psycopg.sql.Identifier,
-        so callers may safely pass an internal schema-qualified table name.
-        Rows participate in the caller's existing transaction and are rolled back
-        together with the rest of an Agent push if any later stage fails.
-        """
-        table_parts = [part for part in str(table or "").split(".") if part]
-        column_names = [str(column or "") for column in columns]
-        if not table_parts or not column_names:
-            raise ValueError("COPY requires a table and at least one column")
-        if any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", part) for part in table_parts):
-            raise ValueError(f"unsafe COPY table identifier: {table!r}")
-        if any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", column) for column in column_names):
-            raise ValueError(f"unsafe COPY column identifier in {column_names!r}")
-
-        table_sql = pg_sql.SQL(".").join(pg_sql.Identifier(part) for part in table_parts)
-        columns_sql = pg_sql.SQL(",").join(pg_sql.Identifier(column) for column in column_names)
-        statement = pg_sql.SQL("COPY {} ({}) FROM STDIN").format(table_sql, columns_sql)
-
-        count = 0
-        with self._raw.cursor() as cursor:
-            with cursor.copy(statement) as copy:
-                for row in rows:
-                    values = tuple(row)
-                    if len(values) != len(column_names):
-                        raise ValueError(
-                            f"COPY row width {len(values)} does not match {len(column_names)} columns"
-                        )
-                    copy.write_row(values)
-                    count += 1
-        self.total_changes += count
-        return count
 
     def executescript(self, script: str) -> "CompatConnection":
         for statement in _split_sql_script(script):

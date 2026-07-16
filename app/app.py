@@ -3,6 +3,7 @@ import os
 import secrets
 import bw_pg as dbapi
 import storage_v2
+import maintenance_native
 import time
 import math
 import shutil
@@ -9315,6 +9316,7 @@ def admin_page():
 
 
 @app.route("/admin/database-maintenance", methods=["POST"])
+@app.route("/admin/database-maintenance", methods=["POST"])
 def admin_database_maintenance():
     deny = require_admin()
     if deny:
@@ -9324,7 +9326,7 @@ def admin_database_maintenance():
     parameters = {}
     try:
         if action in {"delete_history", "delete_compact"}:
-            required = "DELETE AND OPTIMIZE" if action == "delete_compact" else "DELETE HISTORY"
+            required = "DELETE AND VACUUM" if action == "delete_compact" else "DELETE HISTORY"
             if (request.form.get("confirm_text") or "").strip() != required:
                 raise ValueError(f"Confirmation text must be {required}")
             days = safe_int(request.form.get("days"), 7)
@@ -9340,23 +9342,33 @@ def admin_database_maintenance():
         elif action == "clear_monitoring_data":
             if (request.form.get("confirm_text") or "").strip() != "CLEAR ALL MONITORING DATA":
                 raise ValueError("Confirmation text must be CLEAR ALL MONITORING DATA")
-            parameters["compact"] = request.form.get("compact") == "1"
         elif action == "reset_app_data":
             if (request.form.get("confirm_text") or "").strip() != "RESET ALL APP DATA":
                 raise ValueError("Confirmation text must be RESET ALL APP DATA")
-            parameters["compact"] = request.form.get("compact") == "1"
             parameters["clear_queue"] = True
             parameters["clear_account_logs"] = True
-        elif action != "checkpoint":
+        else:
             raise ValueError("Unknown database maintenance action")
         job_id, unit_name = enqueue_maintenance_job(action, parameters, actor)
         msg = f"Started maintenance job #{job_id} ({action}) as {unit_name}."
-        log_account_event("database_maintenance_queued", username=actor, realm="admin", role="admin", detail=msg)
-        return redirect(url_for("admin_page", dbmsg=msg))
+        log_account_event(
+            "database_maintenance_queued",
+            username=actor,
+            realm="admin",
+            role="admin",
+            detail=msg,
+        )
+        return redirect(url_for("admin_page", section="maintenance", dbmsg=msg) + "#maintenance-queue")
     except Exception as exc:
         err = f"Could not start maintenance: {exc}"
-        log_account_event("database_maintenance_queue_failed", username=actor, realm="admin", role="admin", detail=err[:500])
-        return redirect(url_for("admin_page", dberr=err))
+        log_account_event(
+            "database_maintenance_queue_failed",
+            username=actor,
+            realm="admin",
+            role="admin",
+            detail=err[:500],
+        )
+        return redirect(url_for("admin_page", section="maintenance", dberr=err) + "#maintenance-queue")
 
 def _delete_count(conn, sql, params=()):
     """Execute one DELETE statement and return a stable non-negative row count."""
@@ -13019,9 +13031,10 @@ except Exception:
 # incrementally on every /push; old rows are filtered by last_push/last_seen logic.
 if BACKFILL_CACHE_ON_START:
     rebuild_cache_if_empty()
-if BACKFILL_INVENTORY_ON_START:
+if BACKFILL_INVENTORY_ON_START and os.environ.get("BW_MAINTENANCE_IMPORT", "0") != "1":
     rebuild_inventory_from_usage()
-auto_cleanup_inventory()
+if os.environ.get("BW_MAINTENANCE_IMPORT", "0") != "1":
+    auto_cleanup_inventory()
 
 
 
@@ -14625,11 +14638,13 @@ def _v490_admin_vms_section(q,page_no,per_page):
 
 
 def _v490_live_cache_card():
-    return f"""
-    <div class="card live-cache-card"><div class="section-head"><div><h3>Live 5m snapshot cache</h3><p>Clear only the current/latest dashboard cache. Raw history, hourly/daily rollups, inventory, users, settings and abuse logs are preserved.</p></div><span class="status-chip">Admin only</span></div>
-      <div class="info-strip"><span>Clears <b>Dashboard 5m</b></span><span>Also clears <b>current Top/Node/VM cache</b></span><span>Agents may repopulate on the <b>next push</b></span></div>
-      <form class="danger-inline" method="post" action="{url_for('admin_clear_live_cache')}" onsubmit="return confirm('Clear the live 5m/current snapshot cache? Active agents may send fresh rows again on their next push.')"><input type="hidden" name="csrf_token" value="{escape(csrf_token(),quote=True)}"><label>Type <b>CLEAR LIVE 5M</b><input name="confirm_text" placeholder="CLEAR LIVE 5M" required></label><button class="btn-danger">Queue clear</button></form>
-    </div>"""
+    """The old CLEAR LIVE 5M rescue control is intentionally hidden.
+
+    Clearing current caches does not reduce ongoing CPU/storage work and causes
+    a needless empty-dashboard interval followed by a synchronized repopulation
+    spike. Targeted purge and normal stale-row cleanup are the supported tools.
+    """
+    return ""
 
 
 def admin_page_v490():
@@ -19720,10 +19735,10 @@ def _v48120_admin_database_maintenance():
     try:
         if action=='clear_api_logs':
             if (request.form.get('confirm_text') or '').strip()!='CLEAR API LOGS': raise ValueError('Confirmation text must be CLEAR API LOGS')
-            parameters['kind']='all'; parameters['compact']=request.form.get('compact')=='1'
+            parameters['kind']='all'; parameters['compact']=False
         else:
             if (request.form.get('confirm_text') or '').strip()!='CLEAR ALL API DATA': raise ValueError('Confirmation text must be CLEAR ALL API DATA')
-            parameters['compact']=request.form.get('compact')=='1'
+            parameters['compact']=False
         job_id,unit_name=enqueue_maintenance_job(action,parameters,actor); msg=f'Started maintenance job #{job_id} ({action}) as {unit_name}.'
         log_account_event('database_maintenance_queued',username=actor,realm='admin',role='admin',detail=msg)
         return redirect(url_for('admin_page',dbmsg=msg)+'#maintenance-queue')
@@ -19737,14 +19752,217 @@ app.view_functions['admin_database_maintenance'] = _v48120_admin_database_mainte
 _v48120_maintenance_card_base = database_maintenance_card
 
 
-def database_maintenance_card(message='',error=''):
-    html=_v48120_maintenance_card_base(message,error)
-    api_cards=f'''
-      <div class="card db-danger" style="margin-top:14px;margin-bottom:14px;border-color:#f79009"><h3>API logs</h3><div class="admin-note">Deletes API Request Logs and API Management Events only. API keys remain active and continue to work.</div><form class="bulk-bar" method="post" action="{url_for('admin_database_maintenance')}" onsubmit="return confirm('Permanently clear all API logs?')"><input type="hidden" name="csrf_token" value="{escape(csrf_token(),quote=True)}"><input type="hidden" name="action" value="clear_api_logs"><label>Type <b>CLEAR API LOGS</b><input name="confirm_text" placeholder="CLEAR API LOGS" required></label><label class="enable-line"><input type="checkbox" name="compact" value="1"> VACUUM after clear</label><button class="btn-danger" type="submit">Clear API logs</button></form></div>
-      <div class="card db-danger" style="margin-top:14px;margin-bottom:14px;border:2px solid #d92d20"><h3>All API data</h3><div class="admin-note"><b>External integrations will stop immediately.</b> Deletes every API key, API Request Log and API Management Event. Agent <code>BW_MONITOR_TOKEN</code> is not changed.</div><form class="bulk-bar" method="post" action="{url_for('admin_database_maintenance')}" onsubmit="return confirm('Delete ALL external API keys and API logs? This cannot be undone.')"><input type="hidden" name="csrf_token" value="{escape(csrf_token(),quote=True)}"><input type="hidden" name="action" value="clear_api_data"><label>Type <b>CLEAR ALL API DATA</b><input name="confirm_text" placeholder="CLEAR ALL API DATA" required></label><label class="enable-line"><input type="checkbox" name="compact" value="1"> VACUUM after clear</label><button class="btn-danger" type="submit">Clear all API data</button></form></div>
-    '''
-    marker='<div class="card db-danger reset-all-card"'
-    return html.replace(marker,api_cards+marker,1) if marker in html else html+api_cards
+def database_maintenance_card(message="", error=""):
+    """Render the PostgreSQL-native maintenance control surface."""
+    stats = get_database_maintenance_stats()
+    jobs = get_maintenance_jobs(30)
+    conn = db()
+    try:
+        status_rows = conn.execute(
+            "SELECT status,COUNT(*) FROM maintenance_jobs GROUP BY status"
+        ).fetchall()
+        status_counts = {str(k or "queued"): safe_int(v, 0) for k, v in status_rows}
+    finally:
+        conn.close()
+
+    active_count = status_counts.get("queued", 0) + status_counts.get("running", 0)
+    notice = (
+        f'<div class="error-box">{escape(error)}</div>'
+        if error
+        else (f'<div class="success-box">{escape(message)}</div>' if message else "")
+    )
+
+    rows = ""
+    for (
+        job_id, created_at, started_at, finished_at, action, parameters,
+        status, requested_by, job_message, unit_name,
+    ) in jobs:
+        status = str(status or "queued").lower()
+        label = {"queued": "WAITING", "running": "RUNNING", "ok": "DONE", "error": "FAILED"}.get(status, status.upper())
+        icon = {"queued": "◷", "running": "◉", "ok": "✓", "error": "!"}.get(status, "•")
+        cls = {"queued": "yellow", "running": "yellow", "ok": "active", "error": "red"}.get(status, "yellow")
+        target = _maintenance_target_summary(action, parameters)
+        friendly = _maintenance_friendly_message(action, status, job_message)
+        raw_detail = escape((job_message or "-")[:3500])
+        rows += f"""
+        <tr class="queue-row queue-{escape(status)}">
+          <td class="num"><b>#{job_id}</b></td>
+          <td><b>{escape(_maintenance_action_label(action))}</b><small class="queue-sub">{escape(target)}</small></td>
+          <td><span class="vm-state {cls}">{icon} {escape(label)}</span></td>
+          <td>{fmt_full(created_at)}<small class="queue-sub">{escape(_maintenance_elapsed(started_at, finished_at, created_at, status))}</small></td>
+          <td>{escape(requested_by or '-')}</td>
+          <td><b>{escape(friendly)}</b><details><summary>Technical detail</summary><pre>{raw_detail}</pre><small class="mono">{escape(unit_name or '-')}</small></details></td>
+        </tr>"""
+    if not rows:
+        rows = '<tr><td colspan="6" class="empty">No maintenance jobs yet</td></tr>'
+
+    csrf = escape(csrf_token(), quote=True)
+    endpoint = url_for("admin_database_maintenance")
+    refresh_href = url_for("admin_page", section="maintenance") + "#maintenance-queue"
+
+    return f"""
+    <style id="v5056-maintenance-ui">
+      .maint-grid{{display:grid;grid-template-columns:repeat(2,minmax(320px,1fr));gap:14px;margin:14px 0}}
+      .maint-grid .card{{margin:0!important}}
+      .maint-safe{{border-color:#86b7fe!important}}
+      .maint-danger{{border:1px solid #fca5a5!important}}
+      .maint-nuclear{{border:2px solid #b91c1c!important}}
+      .maint-actions{{display:flex;flex-wrap:wrap;gap:8px;align-items:end}}
+      .maint-actions form{{display:flex;flex-wrap:wrap;gap:8px;align-items:end}}
+      .maint-actions label{{display:grid;gap:4px}}
+      .maint-policy{{display:grid;grid-template-columns:repeat(3,minmax(150px,1fr));gap:8px;margin:10px 0}}
+      .maint-policy>div,.queue-summary>div{{border:1px solid #dbe3ee;border-radius:10px;padding:10px;background:#fff}}
+      .maint-policy small,.queue-sub,.queue-summary small{{display:block;color:#64748b;font-size:11px;margin-top:3px}}
+      .queue-summary{{display:grid;grid-template-columns:repeat(5,minmax(110px,1fr));gap:8px;margin:12px 0}}
+      .queue-table{{min-width:1120px}}.queue-table td{{vertical-align:top}}
+      .queue-table details{{margin-top:5px}}.queue-table summary{{cursor:pointer;color:#2563eb;font-size:11px}}
+      .queue-table pre{{white-space:pre-wrap;max-width:650px;max-height:180px;overflow:auto;font-size:10px}}
+      html[data-theme=dark] .maint-policy>div,html[data-theme=dark] .queue-summary>div{{background:#111827;border-color:#334155}}
+      @media(max-width:980px){{.maint-grid{{grid-template-columns:1fr}}.maint-policy{{grid-template-columns:1fr}}.queue-summary{{grid-template-columns:repeat(2,minmax(110px,1fr))}}}}
+    </style>
+
+    <div class="card" id="maintenance-queue">
+      <div class="table-title-row"><h3>PostgreSQL Maintenance</h3><div class="count-badges"><span>Execution <b>single worker</b></span><span>Active <b>{active_count}</b></span></div></div>
+      {notice}
+      <div class="admin-note"><b>One job at a time.</b> PostgreSQL advisory locking plus a database unique guard prevent duplicate active jobs across Gunicorn workers. Routine retention, history deletion and VACUUM stay online. Only full destructive resets briefly stop Agent ingestion.</div>
+      <div class="queue-summary">
+        <div><small>Waiting</small><b>{status_counts.get('queued', 0)}</b></div>
+        <div><small>Running</small><b>{status_counts.get('running', 0)}</b></div>
+        <div><small>Completed</small><b>{status_counts.get('ok', 0)}</b></div>
+        <div><small>Failed</small><b>{status_counts.get('error', 0)}</b></div>
+        <div><small>PostgreSQL data</small><b>{human(stats['db_size'])}</b></div>
+      </div>
+      <div class="bulk-bar"><a class="btn" href="{escape(refresh_href, quote=True)}">Refresh queue</a><span class="table-hint">WAL reserved/recycled {human(stats['wal_size'])}. Normal VACUUM reuses dead space but does not promise a smaller database file.</span></div>
+    </div>
+
+    <div class="maint-policy">
+      <div><b>Latest 48 hours</b><small>Keep every real 5-minute snapshot.</small></div>
+      <div><b>Days 3–7</b><small>Keep one real snapshot per local hour.</small></div>
+      <div><b>Older than 7 days</b><small>Delete bounded history, events and logs.</small></div>
+    </div>
+
+    <div class="maint-grid">
+      <div class="card maint-safe">
+        <h3>Routine retention</h3>
+        <div class="admin-note">Runs the same bounded policy as <code>bw-monitor-retention.timer</code>. Dashboard and Agent ingestion remain online.</div>
+        <div class="maint-actions">
+          <form method="post" action="{endpoint}" onsubmit="return confirm('Run the normal 2-day raw / 7-day retention policy now?')">
+            <input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="action" value="retention">
+            <button class="btn" type="submit">Run retention now</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card maint-safe">
+        <h3>VACUUM ANALYZE</h3>
+        <div class="admin-note">Online PostgreSQL VACUUM with no maintenance statement timeout. It refreshes planner statistics and makes dead tuples reusable. It does not stop the dashboard and is not VACUUM FULL.</div>
+        <div class="maint-actions">
+          <form method="post" action="{endpoint}" onsubmit="return confirm('Run online PostgreSQL VACUUM ANALYZE?')">
+            <input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="action" value="vacuum">
+            <label>Type <b>VACUUM</b><input name="confirm_text" placeholder="VACUUM" required></label>
+            <button class="btn" type="submit">Run online VACUUM</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card maint-safe">
+        <h3>Manual history cleanup</h3>
+        <div class="admin-note">Deletes history older than the selected age in committed batches while the web remains available. Current/latest tables and inventory are preserved.</div>
+        <div class="maint-actions">
+          <form method="post" action="{endpoint}" onsubmit="return confirm('Delete old history only?')">
+            <input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="action" value="delete_history">
+            <label>Older than<select name="days"><option value="1">1 day</option><option value="3">3 days</option><option value="7" selected>7 days</option></select></label>
+            <label>Type <b>DELETE HISTORY</b><input name="confirm_text" placeholder="DELETE HISTORY" required></label>
+            <button class="btn" type="submit">Delete history</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card maint-safe">
+        <h3>Delete history + VACUUM</h3>
+        <div class="admin-note">Runs the same online batched deletion, then online VACUUM ANALYZE. No intentional Agent outage.</div>
+        <div class="maint-actions">
+          <form method="post" action="{endpoint}" onsubmit="return confirm('Delete old history and then run online VACUUM ANALYZE?')">
+            <input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="action" value="delete_compact">
+            <label>Older than<select name="days"><option value="1">1 day</option><option value="3">3 days</option><option value="7" selected>7 days</option></select></label>
+            <label>Type <b>DELETE AND VACUUM</b><input name="confirm_text" placeholder="DELETE AND VACUUM" required></label>
+            <button class="btn" type="submit">Delete + VACUUM</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card maint-danger">
+        <h3>Clear monitoring data</h3>
+        <div class="admin-note"><b>Destructive monitoring reset.</b> Briefly stops Monitor, then atomically TRUNCATEs monitoring history, current caches, inventory, node logs and abuse rows. Preserves dashboard users, Admin settings, account logs, API keys/logs and maintenance history. Agents repopulate fresh data after restart.</div>
+        <div class="maint-actions">
+          <form method="post" action="{endpoint}" onsubmit="return confirm('Permanently clear all monitoring data?')">
+            <input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="action" value="clear_monitoring_data">
+            <label>Type <b>CLEAR ALL MONITORING DATA</b><input name="confirm_text" placeholder="CLEAR ALL MONITORING DATA" required></label>
+            <button class="btn-danger" type="submit">Clear monitoring data</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card maint-nuclear">
+        <h3>Reset ALL app data + queue</h3>
+        <div class="admin-note"><b>Nuclear operational reset.</b> Briefly stops Monitor and TRUNCATEs monitoring data, inventory, abuse policy history, account logs, API keys/logs and old maintenance rows. Preserves only dashboard users, Admin settings and schema metadata. Agent token is unchanged.</div>
+        <div class="maint-actions">
+          <form method="post" action="{endpoint}" onsubmit="return confirm('Reset all operational app data and clear the maintenance queue?')">
+            <input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="action" value="reset_app_data">
+            <label>Type <b>RESET ALL APP DATA</b><input name="confirm_text" placeholder="RESET ALL APP DATA" required></label>
+            <button class="btn-danger" type="submit">Reset app data + queue</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card maint-danger">
+        <h3>API logs</h3>
+        <div class="admin-note">TRUNCATEs API request logs and API management events. API keys remain active. The Agent token is unrelated and remains unchanged.</div>
+        <div class="maint-actions">
+          <form method="post" action="{endpoint}" onsubmit="return confirm('Clear all API logs?')">
+            <input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="action" value="clear_api_logs">
+            <label>Type <b>CLEAR API LOGS</b><input name="confirm_text" placeholder="CLEAR API LOGS" required></label>
+            <button class="btn-danger" type="submit">Clear API logs</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card maint-nuclear">
+        <h3>All external API data</h3>
+        <div class="admin-note"><b>External integrations stop immediately.</b> TRUNCATEs API keys, request logs and management events. The Agent <code>BW_MONITOR_TOKEN</code> remains unchanged.</div>
+        <div class="maint-actions">
+          <form method="post" action="{endpoint}" onsubmit="return confirm('Delete all external API keys and API logs?')">
+            <input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="action" value="clear_api_data">
+            <label>Type <b>CLEAR ALL API DATA</b><input name="confirm_text" placeholder="CLEAR ALL API DATA" required></label>
+            <button class="btn-danger" type="submit">Clear all API data</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="table-title-row"><h3>Recent maintenance jobs</h3></div>
+      <div class="table-wrap"><table class="queue-table"><thead><tr><th>ID</th><th>ACTION / TARGET</th><th>STATUS</th><th>CREATED / ELAPSED</th><th>REQUESTED BY</th><th>RESULT</th></tr></thead><tbody>{rows}</tbody></table></div>
+    </div>
+    """
+
+
+def _v5056_admin_clear_live_cache_removed():
+    """Retire the old live-cache action without deleting any current data."""
+    deny = require_admin()
+    if deny:
+        return deny
+    message = (
+        "CLEAR LIVE 5M was removed in 50.5.6. Current snapshots were not changed. "
+        "Use targeted VM/node purge for stale inventory or wait for the next Agent push."
+    )
+    return redirect(
+        url_for("admin_page", section="maintenance", dbmsg=message)
+        + "#maintenance-queue"
+    )
+
+
+app.view_functions["admin_clear_live_cache"] = _v5056_admin_clear_live_cache_removed
 
 
 _v48120_action_label_base = _maintenance_action_label
@@ -19753,9 +19971,23 @@ _v48120_friendly_message_base = _maintenance_friendly_message
 
 
 def _maintenance_action_label(action):
-    if action=='clear_api_logs': return 'Clear API logs'
-    if action=='clear_api_data': return 'Clear all API data'
-    return _v48120_action_label_base(action)
+    labels = {
+        "retention": "Run retention",
+        "vacuum": "Online VACUUM ANALYZE",
+        "delete_history": "Delete old history",
+        "delete_compact": "Delete history + VACUUM",
+        "clear_monitoring_data": "Clear monitoring data",
+        "reset_app_data": "Reset all app data + queue",
+        "purge_nodes": "Purge node",
+        "purge_node_vms": "Purge all VMs on node",
+        "purge_vms": "Purge VM",
+        "clear_api_logs": "Clear API logs",
+        "clear_api_data": "Clear all API data",
+        # Historical queue rows from releases before 50.5.6 remain readable.
+        "checkpoint": "Legacy database status",
+        "clear_live_cache": "Legacy current-cache clear",
+    }
+    return labels.get(str(action or "").strip().lower(), str(action or "-").replace("_", " ").title())
 
 
 def _v48122_parse_maintenance_parameters(parameters):
@@ -19794,14 +20026,39 @@ def _maintenance_target_summary(action,parameters):
     return _v48120_target_summary_base(action,parameters)
 
 
-def _maintenance_friendly_message(action,status,message):
-    if action in {'clear_api_logs','clear_api_data'} and status=='ok':
+def _maintenance_friendly_message(action, status, message):
+    action = str(action or "").strip().lower()
+    status = str(status or "").strip().lower()
+    if status == "queued":
+        return "Waiting for the serialized maintenance worker"
+    if status == "running":
+        return "Worker is processing this job"
+    if status == "ok":
         try:
-            data=json.loads(str(message or '{}')); result=(data or {}).get('clear') or (data or {}).get('result') or {}
-            rows=safe_int(result.get('total_deleted'),0)
-            return f"{'API data' if action=='clear_api_data' else 'API logs'} cleared · {rows:,} row(s)"
-        except Exception: return 'API cleanup completed'
-    return _v48120_friendly_message_base(action,status,message)
+            data = json.loads(str(message or "{}")) if not isinstance(message, dict) else message
+            if action in {"clear_api_logs", "clear_api_data"}:
+                result = (data or {}).get("clear") or (data or {}).get("result") or {}
+                rows = safe_int(result.get("estimated_rows_removed", result.get("total_deleted", 0)), 0)
+                return f"{'API data' if action == 'clear_api_data' else 'API logs'} cleared · approximately {rows:,} row(s)"
+            if action == "vacuum":
+                return "Online VACUUM ANALYZE completed"
+            if action == "delete_compact":
+                return "History cleanup and online VACUUM completed"
+            if action == "delete_history":
+                return "History cleanup completed"
+            if action == "clear_monitoring_data":
+                return "Monitoring tables truncated and service restarted"
+            if action == "reset_app_data":
+                return "Operational data reset and maintenance queue cleared"
+            if action == "retention":
+                return "Bounded retention completed"
+            if action in {"purge_nodes", "purge_node_vms", "purge_vms"}:
+                result = (data or {}).get("result", data or {})
+                return f"Completed {safe_int(result.get('count'), 0)} item(s)"
+            return "Completed successfully"
+        except Exception:
+            return "Completed successfully"
+    return str(message or "Job failed")[:240]
 
 
 
@@ -20253,29 +20510,32 @@ def _v48124_maintenance_runner_paths():
 
 
 def enqueue_maintenance_job(action, parameters, actor):
-    """Create exactly one active maintenance job and fail fast when busy.
+    """Create exactly one active PostgreSQL maintenance job.
 
-    v48.12.4 deliberately removes the old 60-unit FIFO model. PostgreSQL's
-    BEGIN IMMEDIATE serializes concurrent HTTP submissions, so a double-click
-    or duplicate request cannot create a second queued/running row.
+    A transaction-scoped PostgreSQL advisory lock serializes concurrent Admin
+    submissions. A partial unique index is the database-level backstop, so a
+    double click or two Gunicorn workers cannot create duplicate active jobs.
     """
     action = str(action or "").strip().lower()
     allowed_actions = {
-        "retention", "checkpoint", "vacuum", "delete_history", "delete_compact",
-        "clear_monitoring_data", "clear_live_cache", "reset_app_data",
+        "retention", "vacuum", "delete_history", "delete_compact",
+        "clear_monitoring_data", "reset_app_data",
         "purge_nodes", "purge_node_vms", "purge_vms",
         "clear_api_logs", "clear_api_data",
     }
     if action not in allowed_actions:
         raise ValueError("Unsupported maintenance action")
+
     systemctl = _v48124_maintenance_runner_paths()
     payload = json.dumps(parameters or {}, separators=(",", ":"), sort_keys=True)
     conn = db()
     job_id = 0
     unit_name = ""
     try:
-        conn.execute(f"PRAGMA busy_timeout={V48124_ENQUEUE_BUSY_TIMEOUT_MS}")
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
+            (maintenance_native.MAINTENANCE_ENQUEUE_LOCK,),
+        )
         stale_before = now_ts() - 24 * 3600
         conn.execute(
             """UPDATE maintenance_jobs
@@ -20295,8 +20555,7 @@ def enqueue_maintenance_job(action, parameters, actor):
             age = max(0, now_ts() - safe_int(created_at, now_ts()))
             raise RuntimeError(
                 f"Maintenance job #{active_id} ({active_action}) is already {active_status} "
-                f"for {age}s as {active_unit or 'worker pending'}. Only one job is allowed; "
-                "wait for it to finish or run the recovery tool if it is stale."
+                f"for {age}s as {active_unit or 'worker pending'}. Only one job is allowed."
             )
         cur = conn.execute(
             """INSERT INTO maintenance_jobs(
@@ -20311,17 +20570,14 @@ def enqueue_maintenance_job(action, parameters, actor):
             (unit_name, job_id),
         )
         conn.commit()
-    except dbapi.OperationalError as exc:
+    except dbapi.IntegrityError as exc:
         try:
             conn.rollback()
         except Exception:
             pass
-        if "locked" in str(exc).lower() or "busy" in str(exc).lower():
-            raise RuntimeError(
-                "Database is busy with another maintenance/write operation. "
-                "No new job was created. Check the active maintenance unit from SSH."
-            ) from exc
-        raise
+        raise RuntimeError(
+            "Another maintenance job became active at the same time. No duplicate job was created."
+        ) from exc
     except Exception:
         try:
             conn.rollback()
@@ -20343,7 +20599,6 @@ def enqueue_maintenance_job(action, parameters, actor):
         msg = (proc.stdout or "systemctl start failed").strip()[:1000]
         conn = db()
         try:
-            conn.execute("PRAGMA busy_timeout=5000")
             conn.execute(
                 "UPDATE maintenance_jobs SET status='error',finished_at=?,message=? WHERE id=?",
                 (now_ts(), msg, job_id),
@@ -28326,7 +28581,7 @@ def api_v1_performance_v48140():
             try: redis_ok = bool(client.ping())
             except Exception: redis_ok = False
         return jsonify({
-            "version":"50.5.5-prod-r1-native-copy-sql-compat-hotfix",
+            "version":"50.5.6-prod-r1-postgres-native-maintenance",
             "database":{
                 "engine":"PostgreSQL + TimescaleDB",
                 "database":pg.get("database"),
@@ -28631,7 +28886,7 @@ def page(title, content):
 # protocol. Agents submit one compact node aggregate for each completed local
 # 2-hour bucket. VM UUIDs and per-VM history are deliberately not stored.
 
-V5030_RELEASE = "50.5.5-prod-r1-native-copy-sql-compat-hotfix"
+V5030_RELEASE = "50.5.6-prod-r1-postgres-native-maintenance"
 V5030_BW_TABLE = "node_bandwidth_consumption_2h"
 V5030_BW_BUCKET_SECONDS = 2 * 3600
 V5030_BW_RETENTION_SECONDS = 7 * 86400

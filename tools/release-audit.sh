@@ -40,7 +40,7 @@ bash ./tools/test-windows-github-desktop.sh
 
 printf '\n==> Verify no duplicate/stale runtime trees\n'
 [[ ! -e release && ! -e enterprise && ! -e deploy/monitor && ! -e deploy/enterprise ]]
-[[ -f app/app.py && -f app/bw_pg.py && -f app/maintenance.py && -f app/retention.py ]]
+[[ -f app/app.py && -f app/bw_pg.py && -f app/maintenance.py && -f app/maintenance_native.py && -f app/retention.py ]]
 [[ -f deploy/agent/agent.py && -f deploy/agent/install-agent.sh ]]
 
 printf '\n==> Generate repository checksum manifest\n'

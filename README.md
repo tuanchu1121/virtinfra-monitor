@@ -1,9 +1,9 @@
 # VirtInfra Monitor v50 PostgreSQL Native
 
-**Release:** `50.5.5-prod-r1-native-copy-sql-compat-hotfix`
+**Release:** `50.5.6-prod-r1-postgres-native-maintenance`
 Production monitoring for KVM/libvirt nodes and virtual machines. PostgreSQL 17 + TimescaleDB is the only runtime data plane. This repository keeps the complete v48/v49 dashboard, Abuse Engine, storage views, Admin tools, REST API and Agent protocol, while replacing the runtime data store with one PostgreSQL 17 + TimescaleDB database.
 
-> Release: `50.5.5-prod-r1-native-copy-sql-compat-hotfix`
+> Release: `50.5.6-prod-r1-postgres-native-maintenance`
 
 > **Operations source of truth:** [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md)
 >
@@ -65,6 +65,15 @@ The Agent behavior is unchanged:
 - Agent deployment through one-command installer or Ansible
 - Consumption after Storage I/O: separate Physical Public, Physical Private, aggregate VM Public and aggregate VM Private RX/TX, node search/filter/sort, coverage and 7-day retention
 
+
+## PostgreSQL-native Maintenance
+
+- one active maintenance job across all Gunicorn workers;
+- routine retention, history deletion and `VACUUM (ANALYZE)` stay online;
+- full monitoring/app resets briefly stop ingestion and use atomic `TRUNCATE`, not millions of row-level DELETEs;
+- targeted purge shares the same per-node advisory lock as `/push`;
+- `CLEAR LIVE 5M` and the misleading Checkpoint control are removed from the main Maintenance page;
+- exact action semantics and preserved data are documented in [`docs/MANAGEMENT.md`](docs/MANAGEMENT.md).
 
 ## Storage V2 operations
 

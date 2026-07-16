@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE="50.5.5-prod-r1-native-copy-sql-compat-hotfix"
+RELEASE="50.5.6-prod-r1-postgres-native-maintenance"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 APP_SRC="$REPO_ROOT/app"
@@ -241,6 +241,7 @@ install -m 0644 "$PG_SRC/sql/002_timescale.sql" "$APP_DIR/postgres/sql/002_times
 install -m 0644 "$PG_SRC/sql/003_native_indexes.sql" "$APP_DIR/postgres/sql/003_native_indexes.sql"
 install -m 0644 "$PG_SRC/sql/004_storage_v2.sql" "$APP_DIR/postgres/sql/004_storage_v2.sql"
 install -m 0644 "$PG_SRC/sql/005_ingest_write_profile.sql" "$APP_DIR/postgres/sql/005_ingest_write_profile.sql"
+install -m 0644 "$PG_SRC/sql/006_postgres_native_maintenance.sql" "$APP_DIR/postgres/sql/006_postgres_native_maintenance.sql"
 
 log "Start PostgreSQL 17 + TimescaleDB"
 "${COMPOSE[@]}" --env-file "$PG_ENV" -f "$APP_DIR/postgres/docker-compose.yml" pull
@@ -260,6 +261,7 @@ log "Install full application code"
 install -m 0644 "$APP_SRC/app.py" "$APP_DIR/app.py"
 install -m 0644 "$APP_SRC/bw_pg.py" "$APP_DIR/bw_pg.py"
 install -m 0644 "$APP_SRC/storage_v2.py" "$APP_DIR/storage_v2.py"
+install -m 0644 "$APP_SRC/maintenance_native.py" "$APP_DIR/maintenance_native.py"
 install -m 0755 "$APP_SRC/maintenance.py" "$APP_DIR/maintenance.py"
 install -m 0755 "$APP_SRC/retention.py" "$APP_DIR/retention.py"
 install -m 0755 "$REPO_ROOT/tools/storage-v2-status.py" "$APP_DIR/tools/storage-v2-status.py"
@@ -383,6 +385,8 @@ docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATA
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/004_storage_v2.sql"
 log "Apply low-write ingest index profile"
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/005_ingest_write_profile.sql"
+log "Apply PostgreSQL-native maintenance guards"
+docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/006_postgres_native_maintenance.sql"
 
 log "Install services and management tools"
 install -m 0644 "$SCRIPT_DIR/bw-monitor.service" "$SERVICE_FILE"

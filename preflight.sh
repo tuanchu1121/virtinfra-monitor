@@ -26,8 +26,8 @@ fail(){ echo "ERROR: $*" >&2; exit 1; }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.5-prod-r1-native-copy-sql-compat-hotfix" ]] || fail "VERSION mismatch"
-[[ -f app/app.py && -f app/bw_pg.py && -f deploy/agent/agent.py ]] || fail "full source tree is incomplete"
+[[ "$(cat VERSION)" == "50.5.6-prod-r1-postgres-native-maintenance" ]] || fail "VERSION mismatch"
+[[ -f app/app.py && -f app/bw_pg.py && -f app/maintenance_native.py && -f deploy/agent/agent.py ]] || fail "full source tree is incomplete"
 [[ ! -d release && ! -d enterprise ]] || fail "legacy duplicate runtime trees must not be shipped"
 
 log "Verify canonical source checksum manifest"
@@ -91,6 +91,9 @@ log "Validate v50.5.4 selected-snapshot detail correctness"
 
 log "Validate v50.5.5 PostgreSQL LIKE compatibility hotfix"
 "$PYTHON" -m pytest -q tests/test_v5055_sql_compat_hotfix.py
+
+log "Validate v50.5.6 PostgreSQL-native maintenance"
+"$PYTHON" -m pytest -q tests/test_v5056_postgres_native_maintenance.py
 
 log "Validate standalone repository contract"
 "$PYTHON" tests/test_repository_contract.py

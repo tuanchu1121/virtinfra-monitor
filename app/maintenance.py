@@ -7,8 +7,9 @@ Usage:
 The Flask application creates the job row and starts:
     bw-monitor-maintenance@JOB_ID.service
 
-This runner loads the sibling VirtInfra Monitor application module so retention and
-history deletion use exactly the same schema and logic as the web application.
+The worker uses PostgreSQL-native maintenance primitives for VACUUM and destructive
+resets. It imports the web application only for retention and targeted purge logic,
+with startup side effects explicitly disabled.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ import shutil
 import signal
 from pathlib import Path
 import bw_pg as dbapi
+import maintenance_native
 import subprocess
 import sys
 import time
@@ -85,6 +87,9 @@ def find_app_file() -> Path:
 
 
 def load_app_module():
+    # Importing app.py must never run startup inventory cleanup from a maintenance
+    # worker. The application checks this flag around import-time side effects.
+    os.environ["BW_MAINTENANCE_IMPORT"] = "1"
     app_file = find_app_file()
     sys.path.insert(0, str(app_file.parent))
     spec = importlib.util.spec_from_file_location("bw_monitor_application", app_file)
@@ -222,36 +227,13 @@ def start_service(service: str) -> None:
 
 
 def checkpoint_database(db_path: str) -> dict[str, Any]:
-    """Return PostgreSQL WAL/database health without forcing a superuser checkpoint."""
-    stats = dbapi.database_stats()
-    return {
-        "engine": "postgresql",
-        "checkpoint": "managed by PostgreSQL",
-        "db_bytes": int(stats.get("db_size", 0)),
-        "wal_bytes": int(stats.get("wal_size", 0)),
-    }
+    """Compatibility helper retained for old queued rows; no checkpoint is forced."""
+    return maintenance_native.database_status()
 
 
 def vacuum_database(db_path: str) -> dict[str, Any]:
-    """Run online PostgreSQL VACUUM (ANALYZE).
-
-    PostgreSQL VACUUM does not require a second full-size copy of the database,
-    so the old SQLite free-space gate is intentionally gone.
-    """
-    before = dbapi.database_size()
-    conn = dbapi.connect(db_path, timeout=3600)
-    try:
-        conn.execute("VACUUM")
-    finally:
-        conn.close()
-    after = dbapi.database_size()
-    return {
-        "engine": "postgresql",
-        "db_bytes_before": before,
-        "db_bytes_after": after,
-        "reclaimed_bytes": max(0, before - after),
-        "note": "VACUUM ANALYZE completed; physical file shrink is not expected",
-    }
+    """Run online PostgreSQL VACUUM (ANALYZE) on a dedicated connection."""
+    return maintenance_native.vacuum_analyze()
 
 
 def _transactional_purge(module, action: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -315,6 +297,10 @@ def _transactional_purge(module, action: str, params: dict[str, Any]) -> dict[st
             try:
                 conn.execute("PRAGMA busy_timeout=60000")
                 conn.execute("BEGIN IMMEDIATE")
+                conn.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
+                    (maintenance_native.NODE_LOCK_PREFIX + node,),
+                )
                 if action == "purge_nodes":
                     deleted = module.purge_node_data(conn, node)
                 else:
@@ -365,6 +351,10 @@ def _transactional_purge(module, action: str, params: dict[str, Any]) -> dict[st
             try:
                 conn.execute("PRAGMA busy_timeout=60000")
                 conn.execute("BEGIN IMMEDIATE")
+                conn.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
+                    (maintenance_native.NODE_LOCK_PREFIX + item["node"],),
+                )
                 deleted = module.purge_vm_data(
                     conn,
                     item["node"],
@@ -476,76 +466,65 @@ def _start_service_reliably(service: str, attempts: int = 3) -> None:
     raise RuntimeError(f"Could not restart {service}: {'; '.join(errors)}")
 
 
-def _offline_vacuum(db_path: str, app_service: str, result: dict[str, Any]) -> None:
-    """VACUUM requires an exclusive maintenance window.
 
-    Keep this window as small as possible.  Callers must complete online/batched
-    deletion before entering this helper.  The service is restarted in a
-    finally block even if VACUUM or checkpointing fails.
-    """
-    was_active = stop_service(app_service)
-    result["service_was_active"] = bool(was_active)
-    vacuum_error: BaseException | None = None
-    try:
-        result["vacuum"] = vacuum_database(db_path)
-    except BaseException as exc:
-        vacuum_error = exc
-    finally:
-        if was_active:
-            try:
-                _start_service_reliably(app_service)
-                result["service_restarted"] = True
-            except BaseException as restart_exc:
-                result["service_restarted"] = False
-                result["restart_error"] = str(restart_exc)
-                if vacuum_error is None:
-                    vacuum_error = restart_exc
-    if vacuum_error is not None:
-        raise vacuum_error
-
-
-def execute_action(module, action: str, params: dict[str, Any]) -> dict[str, Any]:
-    db_path = str(module.DB)
-    if action == "retention":
-        return {"action": action, "result": module.run_retention(dry_run=False)}
+def execute_action(module, action: str, params: dict[str, Any], *, db_path: str) -> dict[str, Any]:
+    # Compatibility for jobs queued immediately before an in-place upgrade.
+    # New 50.5.6 submissions cannot create these actions.
     if action == "checkpoint":
-        return {"action": action, "result": checkpoint_database(db_path)}
+        return {
+            "action": action,
+            "legacy": True,
+            "result": checkpoint_database(db_path),
+            "note": "No checkpoint was forced; PostgreSQL manages checkpoints automatically.",
+        }
+    if action == "clear_live_cache":
+        return {
+            "action": action,
+            "legacy": True,
+            "skipped": True,
+            "note": "CLEAR LIVE 5M was removed in 50.5.6; no current cache was deleted.",
+        }
+
+    if action == "retention":
+        if module is None:
+            raise RuntimeError("Retention requires the application policy module")
+        return {"action": action, "result": module.run_retention(dry_run=False)}
+
     if action == "delete_history":
+        if module is None:
+            raise RuntimeError("History deletion requires the application policy module")
         days = int(params.get("days", 7))
         return {"action": action, "result": module.delete_history_older_than(days)}
+
     if action in {"purge_nodes", "purge_node_vms", "purge_vms"}:
+        if module is None:
+            raise RuntimeError("Targeted purge requires the application purge module")
         return _transactional_purge(module, action, params)
 
     if action not in {
-        "vacuum", "delete_compact", "clear_monitoring_data", "clear_live_cache",
-        "reset_app_data", "clear_api_logs", "clear_api_data"
+        "vacuum",
+        "delete_compact",
+        "clear_monitoring_data",
+        "reset_app_data",
+        "clear_api_logs",
+        "clear_api_data",
     }:
         raise RuntimeError(f"Unsupported maintenance action: {action}")
 
     app_service = detect_app_service()
     result: dict[str, Any] = {"action": action, "service": app_service}
 
-    # Fast API cleanup does not require an outage.  Only an explicitly selected
-    # compact step enters the short exclusive VACUUM window.
-    if action == "clear_api_logs":
-        if not hasattr(module, "clear_api_logs"):
-            raise RuntimeError("Application is missing clear_api_logs()")
-        result["clear"] = module.clear_api_logs(str(params.get("kind", "all")))
-        if bool(params.get("compact", False)):
-            _offline_vacuum(db_path, app_service, result)
+    # PostgreSQL VACUUM is online and runs with statement_timeout=0 on a
+    # dedicated autocommit connection. Gunicorn and Agent ingestion stay up.
+    if action == "vacuum":
+        result["vacuum"] = vacuum_database(db_path)
         return result
 
-    if action == "clear_api_data":
-        if not hasattr(module, "clear_all_api_data"):
-            raise RuntimeError("Application is missing clear_all_api_data()")
-        result["clear"] = module.clear_all_api_data()
-        if bool(params.get("compact", False)):
-            _offline_vacuum(db_path, app_service, result)
-        return result
-
-    # Delete old metric rows in short committed batches while Gunicorn remains
-    # available.  Stop the web service only for the unavoidable VACUUM rewrite.
+    # Manual history deletion stays online. The optional VACUUM that follows is
+    # also online; this operation never creates an intentional Agent outage.
     if action == "delete_compact":
+        if module is None:
+            raise RuntimeError("History deletion requires the application policy module")
         days = int(params.get("days", 7))
         result["delete"] = module.delete_history_older_than(days)
         job_id = int(params.get("_job_id", 0) or 0)
@@ -555,44 +534,44 @@ def execute_action(module, action: str, params: dict[str, Any]) -> dict[str, Any
                     db_path,
                     job_id,
                     "running",
-                    "History deletion completed. Running PostgreSQL VACUUM ANALYZE.",
+                    "History deletion completed. Running online PostgreSQL VACUUM ANALYZE.",
                 )
             except BaseException:
                 pass
-        _offline_vacuum(db_path, app_service, result)
+        result["vacuum"] = vacuum_database(db_path)
         return result
 
-    # The remaining operations alter current-state tables or explicitly request
-    # a standalone VACUUM, so keep the original full offline safety boundary.
+    # API cleanup is small, online and uses TRUNCATE rather than row-by-row
+    # DELETE. API keys are preserved by clear_api_logs and removed by
+    # clear_api_data. The Agent BW_MONITOR_TOKEN is never changed.
+    if action == "clear_api_logs":
+        result["clear"] = maintenance_native.clear_api_logs()
+        result["vacuum_skipped"] = "TRUNCATE already releases the API log relations"
+        return result
+
+    if action == "clear_api_data":
+        result["clear"] = maintenance_native.clear_api_data()
+        result["vacuum_skipped"] = "TRUNCATE already releases the API relations"
+        return result
+
+    # Destructive monitoring/application resets intentionally stop ingestion,
+    # take one global maintenance lock, TRUNCATE the complete allow-list in one
+    # short transaction, and reliably start the service again.
     was_active = False
     action_error: BaseException | None = None
     try:
         was_active = stop_service(app_service)
-        if action == "clear_live_cache":
-            if not hasattr(module, "clear_live_5m_cache"):
-                raise RuntimeError("Application is missing clear_live_5m_cache()")
-            result["clear"] = module.clear_live_5m_cache()
-            result["checkpoint"] = checkpoint_database(db_path)
-        elif action == "clear_monitoring_data":
-            if not hasattr(module, "clear_all_monitoring_data"):
-                raise RuntimeError("Application is missing clear_all_monitoring_data()")
-            result["clear"] = module.clear_all_monitoring_data()
-            result["checkpoint"] = checkpoint_database(db_path)
-            if bool(params.get("compact", False)):
-                result["vacuum"] = vacuum_database(db_path)
+        result["service_was_active"] = bool(was_active)
+        if action == "clear_monitoring_data":
+            result["clear"] = maintenance_native.clear_monitoring_data()
         elif action == "reset_app_data":
-            if not hasattr(module, "reset_all_app_data"):
-                raise RuntimeError("Application is missing reset_all_app_data()")
             current_job_id = int(params.get("_job_id", 0) or 0)
             if current_job_id <= 0:
                 raise RuntimeError("reset_app_data is missing the current maintenance job id")
             result["queue"] = cancel_and_clear_other_maintenance_jobs(db_path, current_job_id)
-            result["reset"] = module.reset_all_app_data()
-            result["checkpoint"] = checkpoint_database(db_path)
-            if bool(params.get("compact", False)):
-                result["vacuum"] = vacuum_database(db_path)
-        else:
-            result["vacuum"] = vacuum_database(db_path)
+            result["reset"] = maintenance_native.reset_app_data()
+        else:  # pragma: no cover - guarded above
+            raise RuntimeError(f"Unsupported destructive action: {action}")
     except BaseException as exc:
         action_error = exc
     finally:
@@ -608,6 +587,11 @@ def execute_action(module, action: str, params: dict[str, Any]) -> dict[str, Any
 
     if action_error is not None:
         raise action_error
+
+    # TRUNCATE already releases relation storage. An automatic post-reset
+    # VACUUM adds downtime and work without benefit, so compact is ignored.
+    result["compact_requested"] = bool(params.get("compact", False))
+    result["compact_skipped"] = True
     return result
 
 class MaintenanceInterrupted(RuntimeError):
@@ -648,12 +632,11 @@ def main() -> int:
 
     install_signal_handlers()
     module = None
-    db_path = ""
+    app_file = None
+    db_path = os.environ.get("BW_MONITOR_DB", "/var/lib/bw-monitor/postgresql")
     lock_handle = None
     job_id = args.job_id
     try:
-        module, app_file = load_app_module()
-        db_path = str(module.DB)
         lock_handle = acquire_lock()
         action, params, current_status = read_job(db_path, job_id)
         params = dict(params)
@@ -661,14 +644,25 @@ def main() -> int:
         if current_status not in {"queued", "running"}:
             raise RuntimeError(f"Maintenance job #{job_id} is already {current_status}")
 
+        application_actions = {
+            "retention", "delete_history", "delete_compact",
+            "purge_nodes", "purge_node_vms", "purge_vms",
+        }
+        if action in application_actions:
+            module, app_file = load_app_module()
+            db_path = str(module.DB)
+            backend = app_file.name
+        else:
+            backend = "maintenance_native.py"
+
         update_job(
             db_path,
             job_id,
             "running",
-            f"Running {action} with {app_file.name} under the exclusive worker lock",
+            f"Running {action} with {backend} under the exclusive worker lock",
             started=True,
         )
-        result = execute_action(module, action, params)
+        result = execute_action(module, action, params, db_path=db_path)
         update_job(db_path, job_id, "ok", compact_json(result), finished=True)
         if action == "reset_app_data":
             delete_current_reset_job(db_path, job_id)

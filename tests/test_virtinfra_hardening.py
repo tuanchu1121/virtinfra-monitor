@@ -3,7 +3,7 @@ from pathlib import Path
 root=Path(__file__).resolve().parents[1]
 app=(root/'app/app.py').read_text()
 agent=(root/'deploy/agent/agent.py').read_text()
-assert (root/'VERSION').read_text().strip() == '50.5.5-prod-r1-native-copy-sql-compat-hotfix'
+assert (root/'VERSION').read_text().strip() == '50.5.6-prod-r1-postgres-native-maintenance'
 assert 'VirtInfra Monitor' in app
 assert 'WAL reserved/recycled' in app
 assert 'SHM {human' not in app

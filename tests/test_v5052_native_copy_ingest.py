@@ -19,7 +19,7 @@ def _v5052_block() -> str:
 
 
 def test_release_and_native_copy_contract() -> None:
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.5-prod-r1-native-copy-sql-compat-hotfix"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.6-prod-r1-postgres-native-maintenance"
     assert "def copy_rows(" in PG
     assert "cursor.copy(statement)" in PG
     assert "copy.write_row(values)" in PG

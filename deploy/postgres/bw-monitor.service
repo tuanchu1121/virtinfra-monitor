@@ -17,7 +17,7 @@ Environment=PYTHONUNBUFFERED=1
 RuntimeDirectory=bw-monitor
 RuntimeDirectoryMode=0750
 UMask=0077
-ExecStartPre=/opt/bw-monitor/venv/bin/python3 -m py_compile /opt/bw-monitor/app.py /opt/bw-monitor/bw_pg.py
+ExecStartPre=/opt/bw-monitor/venv/bin/python3 -m py_compile /opt/bw-monitor/app.py /opt/bw-monitor/bw_pg.py /opt/bw-monitor/maintenance_native.py
 ExecStartPre=/opt/bw-monitor/venv/bin/python3 -c "import bw_pg; print(bw_pg.healthcheck())"
 ExecStart=/opt/bw-monitor/start-monitor.sh
 Restart=always

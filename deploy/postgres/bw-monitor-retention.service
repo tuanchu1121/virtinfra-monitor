@@ -4,6 +4,7 @@ After=network-online.target docker.service bw-monitor.service
 Wants=network-online.target docker.service
 ConditionPathExists=/opt/bw-monitor/app.py
 ConditionPathExists=/opt/bw-monitor/retention.py
+ConditionPathExists=/opt/bw-monitor/maintenance_native.py
 
 [Service]
 Type=oneshot

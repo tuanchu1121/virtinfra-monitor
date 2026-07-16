@@ -20,8 +20,10 @@ repo_complete() {
     app/app.py \
     app/bw_pg.py \
     app/storage_v2.py \
+    app/maintenance_native.py \
     postgres/docker-compose.yml \
     postgres/sql/004_storage_v2.sql \
+    postgres/sql/006_postgres_native_maintenance.sql \
     requirements.txt \
     VERSION \
     CANONICAL_REPOSITORY \

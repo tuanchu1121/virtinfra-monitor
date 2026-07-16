@@ -1,8 +1,8 @@
 # VirtInfra Monitor - Toàn bộ command triển khai và bảo trì từ A đến Z
 
-> Release: `50.5.5-prod-r1-native-copy-sql-compat-hotfix`
+> Release: `50.5.6-prod-r1-postgres-native-maintenance`
 
-> Release: `50.5.5-prod-r1-native-copy-sql-compat-hotfix`
+> Release: `50.5.6-prod-r1-postgres-native-maintenance`
 >
 > Chạy command Monitor bằng `root`. Với node KVM, chạy Agent bằng `root` để Agent đọc được libvirt, interface, disk và host metrics.
 
@@ -107,7 +107,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Kết quả mong đợi:
 
 ```text
-50.5.5-prod-r1-native-copy-sql-compat-hotfix
+50.5.6-prod-r1-postgres-native-maintenance
 ```
 
 ## 2.2 Update chuẩn, có backup trước

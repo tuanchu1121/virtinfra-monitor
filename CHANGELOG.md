@@ -1,13 +1,17 @@
-## 50.5.5-prod-r1-native-copy-sql-compat-hotfix
+## 50.5.6-prod-r1-postgres-native-maintenance
 
-- Fixed the PostgreSQL compatibility translator so native `CREATE TABLE ... (LIKE source INCLUDING ...)` staging DDL is never rewritten to invalid `ILIKE` syntax.
-- Added a regression test covering native COPY temp-table creation while preserving case-insensitive dashboard search `LIKE` to `ILIKE` translation.
-- Built directly from the 50.5.2 native COPY ingest release.
-- Node Filesystems now reads capacity and I/O from the same retained `node_push_snapshots.storage_payload` bucket selected by the period/custom time.
-- VM Overview and Virtual Disk I/O now use the exact selected retained snapshot and never overlay current rates onto historical pages.
-- Dashboard LOAD pills use fixed tabular width; `SRC` is renamed to `INTERFACE` and moved to the last column.
-- Installer preflight dependencies (`pytest`, `PyYAML`) are declared so clean updates do not stop before deployment.
-- No new history table or extra per-push history write is introduced.
+- Rebuilt Admin Maintenance around PostgreSQL-native operations instead of legacy compatibility no-ops.
+- Removed the misleading `Checkpoint` and `CLEAR LIVE 5M` controls from the main Maintenance page.
+- Added a dedicated `maintenance_native.py` module so VACUUM and destructive resets do not depend on Flask request code.
+- Made normal `VACUUM (ANALYZE)` fully online on a dedicated autocommit connection with `statement_timeout=0`; Gunicorn and Agent ingestion remain available.
+- Made `Delete history + VACUUM` stay online from start to finish.
+- Replaced row-by-row full resets with atomic `TRUNCATE ... RESTART IDENTITY CASCADE`, including Abuse incidents, disk summaries, Consumption and Storage V2 history.
+- Added PostgreSQL advisory locking and a partial unique index so only one queued/running maintenance job can exist across all Gunicorn workers.
+- Made targeted node/VM purge use the same per-node advisory-lock namespace as `/push`, preventing purge-versus-ingest races for the same node.
+- Prevented maintenance and retention imports from running startup inventory cleanup or backfill side effects.
+- Preserved dashboard users and Admin settings according to each reset level, and documented exactly what every action deletes or preserves.
+- Kept the 50.5.5 native `CREATE TABLE ... (LIKE ...)` SQL compatibility fix, the 50.5.4 selected-snapshot correctness changes and the 50.5.2 native COPY ingest path.
+- Added migration `006_postgres_native_maintenance.sql` and regression coverage for queue locking, online VACUUM, complete reset registries and Maintenance UI contracts.
 
 # Changelog
 

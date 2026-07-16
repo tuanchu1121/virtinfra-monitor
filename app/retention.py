@@ -21,6 +21,9 @@ LOCK_FILE = Path(os.environ.get("BW_MONITOR_MAINTENANCE_LOCK", "/run/lock/bw-mon
 
 
 def load_app():
+    # Retention imports app.py only for the mature retention policy. Prevent
+    # import-time inventory cleanup and any other startup write side effects.
+    os.environ["BW_MAINTENANCE_IMPORT"] = "1"
     if not APP_FILE.is_file():
         raise RuntimeError(f"Application file not found: {APP_FILE}")
     sys.path.insert(0, str(APP_FILE.parent))
@@ -71,7 +74,7 @@ def main() -> int:
         result = module.run_retention(dry_run=False)
         print(json.dumps({
             "ok": True,
-            "version": "50.5.5-prod-r1-native-copy-sql-compat-hotfix",
+            "version": "50.5.6-prod-r1-postgres-native-maintenance",
             "started_at": started,
             "finished_at": int(time.time()),
             "result": result,

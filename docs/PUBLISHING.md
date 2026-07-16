@@ -17,13 +17,13 @@ Assume:
 
 ```text
 checkout: /.data/agent
-archive:  /root/virtinfra-monitor-50.5.5-prod-r1-native-copy-sql-compat-hotfix-github-production.zip
+archive:  /root/virtinfra-monitor-50.5.6-prod-r1-postgres-native-maintenance-github-production.zip
 ```
 
 ```bash
 set -euo pipefail
 
-ZIP=/root/virtinfra-monitor-50.5.5-prod-r1-native-copy-sql-compat-hotfix-github-production.zip
+ZIP=/root/virtinfra-monitor-50.5.6-prod-r1-postgres-native-maintenance-github-production.zip
 REPO=/.data/agent
 TMP=/tmp/virtinfra-monitor-v50-publish
 
@@ -64,7 +64,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Expected:
 
 ```text
-50.5.5-prod-r1-native-copy-sql-compat-hotfix
+50.5.6-prod-r1-postgres-native-maintenance
 ```
 
 ## Secret review

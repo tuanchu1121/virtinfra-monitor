@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.5-prod-r1-native-copy-sql-compat-hotfix`
+Release: `50.5.6-prod-r1-postgres-native-maintenance`
 
 ## Final data path
 

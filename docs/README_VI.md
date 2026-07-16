@@ -1,6 +1,6 @@
 # VIRTINFRA MONITOR: TÀI LIỆU VẬN HÀNH
 
-> Release `50.5.5-prod-r1-native-copy-sql-compat-hotfix`
+> Release `50.5.6-prod-r1-postgres-native-maintenance`
 
 Runtime hiện tại dùng PostgreSQL 17 + TimescaleDB làm nguồn dữ liệu duy nhất.
 

@@ -13,15 +13,6 @@ while (($#)); do
 done
 cd "$ROOT"
 
-printf '\n==> Refresh repository checksum manifest before preflight\n'
-find . \
-  -path './.git' -prune -o \
-  -path './dist' -prune -o \
-  -type d -name __pycache__ -prune -o \
-  -type f ! -name SHA256SUMS ! -name '*.pyc' ! -name '*.pyo' -print0 \
-| sort -z | xargs -0 sha256sum > SHA256SUMS
-sha256sum -c SHA256SUMS >/dev/null
-
 args=()
 ((USE_CURRENT)) && args+=(--use-current-python)
 ((SKIP_LIVE)) && args+=(--skip-live)

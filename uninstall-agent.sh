@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-REPO="${BW_GITHUB_REPO:-tuanchu1121/virtinfra-monitor}"
+REPO="${BW_GITHUB_REPO:-tuanchu1121/bw-monitor-production.1}"
 REF="${BW_GITHUB_REF:-main}"
 TOKEN="${GITHUB_TOKEN:-}"
 TMP=""

@@ -14,7 +14,7 @@ Or:
 
 ```bash
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/update.sh \
+https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/update.sh \
 | bash
 ```
 
@@ -25,7 +25,7 @@ The installer detects the existing v50 environment and preserves PostgreSQL volu
 Set in `/etc/default/bw-monitor`:
 
 ```text
-BW_GITHUB_REPO=tuanchu1121/virtinfra-monitor
+BW_GITHUB_REPO=tuanchu1121/bw-monitor-production.1
 BW_GITHUB_REF=main
 ```
 

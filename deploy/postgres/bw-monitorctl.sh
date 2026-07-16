@@ -14,8 +14,6 @@ case "$CMD" in
     curl -fsS --max-time 8 "http://127.0.0.1:${port}/healthz"; echo
     ;;
   doctor) exec bash "$APP/doctor.sh" "$@" ;;
-  storage-v2) exec bash "$APP/storage-v2-status.sh" "$@" ;;
-  rollback-storage-v2) exec bash "$APP/rollback-storage-v2.sh" "$@" ;;
   audit) exec bash "$APP/audit.sh" "$@" ;;
   db-check|database) exec bash "$APP/db-check.sh" "$@" ;;
   backup) exec bash "$APP/backup.sh" "$@" ;;
@@ -63,7 +61,7 @@ case "$CMD" in
     ;;
   version) cat "$APP/DEPLOY_VERSION" ;;
   update)
-    repo="${BW_GITHUB_REPO:-tuanchu1121/virtinfra-monitor}"
+    repo="${BW_GITHUB_REPO:-tuanchu1121/bw-monitor-production.1}"
     ref="${BW_GITHUB_REF:-main}"
     exec bash -c 'curl -fsSL "https://raw.githubusercontent.com/$1/$2/update.sh" | bash' _ "$repo" "$ref" ;;
   domain)
@@ -77,13 +75,13 @@ Public URL: %s
         ;;
       set)
         domain="${1:?Usage: virtinfra-monitorctl domain set DOMAIN EMAIL}"; email="${2:?Usage: virtinfra-monitorctl domain set DOMAIN EMAIL}"
-        repo="${BW_GITHUB_REPO:-tuanchu1121/virtinfra-monitor}"; ref="${BW_GITHUB_REF:-main}"
+        repo="${BW_GITHUB_REPO:-tuanchu1121/bw-monitor-production.1}"; ref="${BW_GITHUB_REF:-main}"
         exec bash -c 'curl -fsSL "https://raw.githubusercontent.com/$1/$2/install.sh" | bash -s -- --update --domain "$3" --email "$4"' _ "$repo" "$ref" "$domain" "$email"
         ;;
       remove)
         ip="${1:-${BW_PUBLIC_IP:-}}"; port="${2:-${BW_PUBLIC_PORT:-8080}}"
         [[ -n "$ip" ]] || { echo 'Public IP is required.' >&2; exit 2; }
-        repo="${BW_GITHUB_REPO:-tuanchu1121/virtinfra-monitor}"; ref="${BW_GITHUB_REF:-main}"
+        repo="${BW_GITHUB_REPO:-tuanchu1121/bw-monitor-production.1}"; ref="${BW_GITHUB_REF:-main}"
         exec bash -c 'curl -fsSL "https://raw.githubusercontent.com/$1/$2/install.sh" | bash -s -- --update --ip-mode --public-ip "$3" --port "$4"' _ "$repo" "$ref" "$ip" "$port"
         ;;
       *) echo 'Usage: virtinfra-monitorctl domain status|set DOMAIN EMAIL|remove [IP] [PORT]' >&2; exit 2 ;;
@@ -95,8 +93,6 @@ virtinfra-monitorctl commands:
   status                 services, watchdog and container
   health                 /livez and PostgreSQL /healthz
   doctor                 fast health check
-  storage-v2 [--json]     V2 tables, chunks, retention/compression jobs
-  rollback-storage-v2     switch chart reads to compatibility history
   audit                  deep read-only audit
   db-check               PostgreSQL/Timescale details
   backup                 pg_dump + protected config backup

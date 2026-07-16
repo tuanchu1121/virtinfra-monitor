@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE="50.5.0-prod-r1-batched-ingest"
+RELEASE="50.3.2-prod-r1-github-desktop-operations-guide"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 APP_SRC="$REPO_ROOT/app"
@@ -15,14 +15,14 @@ CRED_FILE="/root/bw-monitor-credentials.env"
 SERVICE_FILE="/etc/systemd/system/bw-monitor.service"
 NGINX_SITE="/etc/nginx/sites-available/bw-monitor.conf"
 
-GITHUB_REPO="${BW_GITHUB_REPO:-tuanchu1121/virtinfra-monitor}"
+GITHUB_REPO="${BW_GITHUB_REPO:-tuanchu1121/bw-monitor-production.1}"
 GITHUB_REF="${BW_GITHUB_REF:-main}"
 DOMAIN=""; EMAIL=""; PUBLIC_IP=""; PORT="8080"; SSH_PORT=""
 ADMIN_USER="admin"; ADMIN_PASSWORD="${BW_ADMIN_PASSWORD:-}"; MONITOR_TOKEN="${BW_MONITOR_TOKEN:-}"
 TIMEZONE="Asia/Ho_Chi_Minh"; WORKERS=""; THREADS="4"
 PG_PORT="55432"; PG_USER="bw_monitor"; PG_DATABASE="bw_monitor"
 PG_PASSWORD="${BW_PG_PASSWORD:-}"
-TIMESCALE_IMAGE="${BW_TIMESCALE_IMAGE:-timescale/timescaledb:2.27.2-pg17}"
+TIMESCALE_IMAGE="${BW_TIMESCALE_IMAGE:-timescale/timescaledb:2.27.2-pg17-oss}"
 NO_TLS=0; NO_NGINX=0; FIREWALL=0; SKIP_PREFLIGHT=0; UPDATE=0; REDIS_CACHE=0; RUN_RETENTION=0; IP_MODE=0
 DOMAIN_EXPLICIT=0; PUBLIC_IP_EXPLICIT=0; PORT_EXPLICIT=0; WORKERS_EXPLICIT=0; THREADS_EXPLICIT=0
 
@@ -53,11 +53,11 @@ Options:
   --workers N              Gunicorn workers. Auto 2-4 by CPU.
   --threads N              Threads per worker. Default 4.
   --pg-port N              Loopback PostgreSQL port. Default 55432.
-  --timescale-image TAG    Default timescale/timescaledb:2.27.2-pg17.
+  --timescale-image TAG    Default timescale/timescaledb:2.27.2-pg17-oss.
   --redis-cache            Optional Redis page cache only. Never source of truth.
   --firewall               Configure UFW after allowing SSH and web ports.
   --ssh-port N             SSH port to allow before enabling UFW.
-  --run-retention-now      Run compatibility retention once; Timescale V2 policies run in background.
+  --run-retention-now      Run the exact 2d raw / 7d hourly retention once.
   --update                 Preserve PostgreSQL/config/secrets and update code.
   --skip-preflight         Skip local syntax/source checks.
   -h, --help               Show this help.
@@ -179,7 +179,7 @@ if ((REDIS_CACHE)); then systemctl enable --now redis-server >/dev/null 2>&1 || 
 command -v timedatectl >/dev/null 2>&1 && timedatectl set-timezone "$TIMEZONE" || true
 
 log "Prepare directories and Python environment"
-install -d -m 0750 "$APP_DIR" "$APP_DIR/postgres" "$APP_DIR/postgres/sql" "$APP_DIR/tools" "$DATA_DIR" "$BACKUP_ROOT"
+install -d -m 0750 "$APP_DIR" "$APP_DIR/postgres" "$APP_DIR/postgres/sql" "$DATA_DIR" "$BACKUP_ROOT"
 if [[ ! -x "$APP_DIR/venv/bin/python3" ]]; then python3 -m venv "$APP_DIR/venv"; fi
 "$APP_DIR/venv/bin/python3" -m pip install --upgrade pip wheel setuptools
 "$APP_DIR/venv/bin/pip" install --upgrade -r "$REPO_ROOT/requirements.txt"
@@ -239,7 +239,6 @@ install -m 0644 "$PG_SRC/docker-compose.yml" "$APP_DIR/postgres/docker-compose.y
 install -m 0644 "$PG_SRC/sql/001_bootstrap.sql" "$APP_DIR/postgres/sql/001_bootstrap.sql"
 install -m 0644 "$PG_SRC/sql/002_timescale.sql" "$APP_DIR/postgres/sql/002_timescale.sql"
 install -m 0644 "$PG_SRC/sql/003_native_indexes.sql" "$APP_DIR/postgres/sql/003_native_indexes.sql"
-install -m 0644 "$PG_SRC/sql/004_storage_v2.sql" "$APP_DIR/postgres/sql/004_storage_v2.sql"
 
 log "Start PostgreSQL 17 + TimescaleDB"
 "${COMPOSE[@]}" --env-file "$PG_ENV" -f "$APP_DIR/postgres/docker-compose.yml" pull
@@ -258,12 +257,8 @@ fi
 log "Install full application code"
 install -m 0644 "$APP_SRC/app.py" "$APP_DIR/app.py"
 install -m 0644 "$APP_SRC/bw_pg.py" "$APP_DIR/bw_pg.py"
-install -m 0644 "$APP_SRC/storage_v2.py" "$APP_DIR/storage_v2.py"
 install -m 0755 "$APP_SRC/maintenance.py" "$APP_DIR/maintenance.py"
 install -m 0755 "$APP_SRC/retention.py" "$APP_DIR/retention.py"
-install -m 0755 "$REPO_ROOT/tools/storage-v2-status.py" "$APP_DIR/tools/storage-v2-status.py"
-install -m 0755 "$REPO_ROOT/tools/validate-storage-v2.py" "$APP_DIR/tools/validate-storage-v2.py"
-install -m 0755 "$REPO_ROOT/tools/benchmark-storage-v2.py" "$APP_DIR/tools/benchmark-storage-v2.py"
 install -m 0755 "$SCRIPT_DIR/start-monitor.sh" "$APP_DIR/start-monitor.sh"
 install -m 0644 "$REPO_ROOT/VERSION" "$APP_DIR/DEPLOY_VERSION"
 install -m 0644 "$REPO_ROOT/requirements.txt" "$APP_DIR/requirements.txt"
@@ -298,10 +293,6 @@ BW_HOURLY_RETENTION_DAYS='7'
 BW_RETENTION_BATCH_ROWS='25000'
 BW_RETENTION_TZ_OFFSET_SECONDS='25200'
 BW_WRITE_LEGACY_USAGE='0'
-VIRTINFRA_STORAGE_V2='0'
-VIRTINFRA_READ_CHART_V2='0'
-VIRTINFRA_RAW_V2='0'
-VIRTINFRA_PUSH_OBSERVABILITY='1'
 BW_REDIS_ENABLED='$REDIS_CACHE'
 BW_REDIS_URL='redis://127.0.0.1:6379/0'
 BW_PAGE_CACHE_ENABLED='1'
@@ -372,14 +363,7 @@ PY
 
 log "Convert metric/history tables to Timescale hypertables"
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/002_timescale.sql"
-
-log "Verify TimescaleDB Community Edition capabilities"
-TS_LICENSE="$(docker exec bw-timescaledb psql -U "$PG_USER" -d "$PG_DATABASE" -Atqc "SELECT current_setting('timescaledb.license', true)" 2>/dev/null || true)"
-[[ "$TS_LICENSE" == "timescale" ]] || die "Storage V2 requires TimescaleDB Community Edition. Found timescaledb.license=${TS_LICENSE:-unset}. Use timescale/timescaledb:2.27.2-pg17, not a -oss image."
-TS_CAPS="$(docker exec bw-timescaledb psql -U "$PG_USER" -d "$PG_DATABASE" -Atqc "SELECT count(DISTINCT proname) FROM pg_proc WHERE proname IN ('add_retention_policy','add_compression_policy')" 2>/dev/null || true)"
-[[ "$TS_CAPS" == "2" ]] || die "TimescaleDB retention/compression policy functions are unavailable; refusing a partial Storage V2 install."
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/003_native_indexes.sql"
-docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/004_storage_v2.sql"
 
 log "Install services and management tools"
 install -m 0644 "$SCRIPT_DIR/bw-monitor.service" "$SERVICE_FILE"
@@ -389,7 +373,7 @@ install -m 0644 "$SCRIPT_DIR/bw-monitor-retention.timer" /etc/systemd/system/bw-
 install -m 0755 "$SCRIPT_DIR/virtinfra-monitor-health-watch.sh" "$APP_DIR/virtinfra-monitor-health-watch.sh"
 install -m 0644 "$SCRIPT_DIR/virtinfra-monitor-health-watch.service" /etc/systemd/system/virtinfra-monitor-health-watch.service
 install -m 0644 "$SCRIPT_DIR/virtinfra-monitor-health-watch.timer" /etc/systemd/system/virtinfra-monitor-health-watch.timer
-for helper in backup restore doctor db-check audit collect-diagnostics bw-monitorctl storage-v2-status rollback-storage-v2; do
+for helper in backup restore doctor db-check audit collect-diagnostics bw-monitorctl; do
   install -m 0755 "$SCRIPT_DIR/$helper.sh" "$APP_DIR/$helper.sh"
 done
 ln -sfn "$APP_DIR/bw-monitorctl.sh" /usr/local/sbin/bw-monitorctl
@@ -489,9 +473,7 @@ Credentials:    $CRED_FILE
 Database:       PostgreSQL 17 + TimescaleDB (single source of truth)
 PostgreSQL:     127.0.0.1:$PG_PORT (loopback only)
 Agent cadence:  local 15-second samples, one push every 300 seconds
-Chart history:  exact 5-minute VM/node points for 7 days
-Raw detail:     per-interface V2 rows for 48 hours
-Retention:      Timescale background chunk retention; compatibility history unchanged
+Retention:      0-48h real 5-minute pushes; 48h-7d one real/hour; >7d delete
 Management:     virtinfra-monitorctl help
 Compatibility:  bw-monitorctl remains available
 Doctor:         virtinfra-monitorctl doctor

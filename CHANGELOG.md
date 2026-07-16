@@ -1,87 +1,10 @@
-# Changelog
+## 50.3.2-prod-r1-github-desktop-operations-guide
 
-## 50.5.0-prod-r1-batched-ingest
-
-- Replaced common VM presence/location N+1 writes with set-based PostgreSQL operations.
-- Batched `vm_iface_current`, `vm_current_fast`, `node_current_fast`, and authoritative abuse-state UPSERTs through one JSONB recordset statement per table.
-- Persisted balloon RAM fields in the main current UPSERT, removing two extra UPDATEs per VM.
-- Replaced destructive disk-summary rebuilds with differential UPSERT plus stale-row deletion.
-- Disabled Storage V2 dual-write/read/raw defaults while keeping the feature flags and existing V2 data available.
-- Added `tools/ingest-performance-status.sh` for active-query and write-churn diagnostics.
-- Preserved Agent payload, abuse policy semantics, migration confirmation, dashboard routes, Consumption, and legacy history readers.
-
-## 50.5.0-prod-r1-batched-ingest
-
-- Protects the original dashboard `Auto`, `Light`, and `Dark` modes. Admin theme settings no longer overwrite their CSS or default behavior.
-- Replaces the single shared palette with an admin-only custom theme library stored in PostgreSQL `admin_settings` under `custom_theme_library_v2`.
-- Publishes only enabled custom themes to a separate dashboard selector. Each browser keeps its own custom choice while retaining its original core mode preference.
-- Adds create, edit, publish/hide, duplicate, delete, and reset workflows for custom themes. Disabled or deleted selections automatically fall back to the user's core Auto/Dark/Light choice.
-- Adds seven built-in monitoring-style templates: VirtInfra Ocean, Grafana Inspired, Zabbix Inspired, Datadog Inspired, Prometheus Inspired, NOC High Contrast, and Dense Operations.
-- Adds typography, table density, card spacing, border radius, shadow, chart line width, palette, RX/TX, and semantic-state controls per custom theme.
-- Keeps Agent, push APIs, Abuse, Storage V2, Consumption, retention, and existing dashboard data behavior unchanged.
-
-## 50.4.6-prod-r1-theme-manager
-
-- Added an Admin `Theme Manager` page at `/admin/theme` for application-wide palette management.
-- Added five built-in production presets: Neutral Blue, Slate Indigo, Emerald, Graphite and Warm Amber.
-- Added independent Light and Dark palettes for background, panel, soft panel, header, text, muted text, border and accent colors.
-- Added shared RX, TX, Success, Warning and Danger colors used across charts, controls and status components.
-- Preserved the existing per-browser Auto, Dark and Light switch while allowing Admin to choose the default appearance for new browsers.
-- Stored the complete theme configuration in PostgreSQL `admin_settings`; saving applies immediately and invalidates the page cache without restarting the service.
-- Added strict six-digit hexadecimal validation and a one-click reset to the Neutral Blue default.
-- Added a live preview and an Admin overview card showing the active theme.
-- Preserved all routes, metrics, Agent protocol, Abuse logic, Consumption logic, Storage V2 and existing functional behavior.
-
-## 50.4.4-prod-r1-manifest-consumption-ui-fix
-
-- Fixed the root `SHA256SUMS` manifest shipped with 50.4.3, which still contained hashes from an earlier source state and caused installer/update verification to fail.
-- Kept the 50.4.3 Consumption UI refresh: Public and Private IPs under each node with copy buttons, clearer Physical/VM Public/Private sections, and stronger RX/TX/TOTAL color separation.
-- Kept the Consumption authentication fix using the canonical `TOKEN` for `/push/bandwidth-consumption`.
-- Made `tools/build-dist.sh` regenerate and verify the canonical source manifest before packaging.
-- Made release audit refresh the manifest before preflight, and made preflight verify manifest hashes and exact file coverage.
-- Added a manifest contract test so missing, stale or extra manifest entries fail validation before release.
-
-## 50.4.3-prod-r1-consumption-ui-refresh
-
-- Kept the 50.4.2 Consumption authentication hotfix so `/push/bandwidth-consumption` continues using the canonical `TOKEN` and no longer throws `NameError: API_TOKEN`.
-- Refreshed the main `Consumption` page layout to make each node clearer and easier to scan.
-- Added Public IP and Private IP directly under each node name, each with its own copy button.
-- Pulled the latest public/private node IPs directly from `node_bridge_addresses_latest` while preserving existing search, filters and hidden-node behavior.
-- Restyled Physical Public, Physical Private, VM Public and VM Private metric groups with clearer color separation and more prominent RX/TX/TOTAL values.
-- Preserved the existing route, payload, aggregation logic, retention and database schema.
-
-## 50.4.2-prod-r1-consumption-auth-fix
-
-- Fixed `/push/bandwidth-consumption` returning HTTP 500 because the route referenced the undefined legacy name `API_TOKEN`.
-- Reused the canonical `TOKEN` value already used by `/push`, preserving the same `X-Token` authentication contract for both Agent endpoints.
-- Added an always-on AST regression test that fails preflight if the Consumption route references `API_TOKEN`, omits `TOKEN`, or stops reading the `X-Token` header.
-- Added live integration assertions for rejected and accepted Consumption tokens when a disposable PostgreSQL test database is available.
-- Kept the Agent payload, endpoint, bucket format, Consumption calculations, database schema, UI, retention and all existing routes unchanged.
-
-## 50.4.1-prod-r1-standalone-repo
-
-- Made `tuanchu1121/virtinfra-monitor` the canonical and default repository everywhere.
-- Removed every runtime, installer, updater, Agent bootstrap, publishing and documentation reference to the previous repository.
-- Updated `install.sh`, `update.sh`, `install-agent.sh`, `uninstall-agent.sh`, `virtinfra-monitorctl`, PostgreSQL installer and GitHub publishing defaults.
-- Added `CANONICAL_REPOSITORY` as an explicit repository contract.
-- Added a release test that fails if the previous repository name appears anywhere in the source tree.
-- Added a complete Vietnamese beginner guide for creating the new repository, publishing with GitHub Desktop, installing Monitor, installing Agent, updating, verifying and troubleshooting.
-- Preserved all Storage V2, Dashboard, Abuse, Storage I/O, Consumption, API, route and Agent behavior from 50.4.0.
-
-## 50.4.1-prod-r1-standalone-repo
-
-- Preserved all existing Flask routes, HTML/CSS, chart rendering, API responses, Agent protocol, Authentication, Abuse behavior, Storage I/O and Consumption behavior.
-- Added `vm_chart_5m`, an exact 5-minute Timescale hypertable for VM network, CPU, RAM and aggregate disk chart metrics with 7-day retention.
-- Switched the pinned PostgreSQL 17 image from the Apache-only `-oss` tag to TimescaleDB Community Edition and added fail-closed capability checks for retention/compression policy APIs.
-- Added `vm_raw_detail_5m`, a 48-hour Timescale hypertable for N-interface raw detail, while retaining the existing compressed storage snapshot path for N-disk history.
-- Added `node_chart_5m` for exact 5-minute host/node charts with 7-day retention.
-- Reused the existing bounded current/latest tables for Dashboard, Top VM, Node Health, current inventory and current Abuse instead of creating duplicate latest caches.
-- Added transaction-scoped V2 writes, stable retry keys, batched `executemany()` operations and sanitized push timing/row-count logs.
-- Switched existing VM/node chart helpers to the V2 readers by default without changing route, HTML, CSS, chart library, JSON key or timestamp behavior.
-- Kept the previous chart readers available through `VIRTINFRA_READ_CHART_V2=0` for fast code rollback without database restore.
-- Added idempotent Timescale schema/policy installation, storage health checks, `virtinfra-monitorctl storage-v2`, `virtinfra-monitorctl rollback-storage-v2`, validation and read-only benchmark tools.
-- Added a full route/table/read-write audit, compatibility matrix, architecture guide and production deployment guide.
-- Added N-NIC, public/private, null/missing field, stable retry key and V2 row-contract regression tests.
+- Kept the complete `50.3.1` Consumption route fix and runtime behavior unchanged.
+- Added `START_HERE_VI.md` as the production operator entry point.
+- Added a detailed GitHub Desktop publish guide covering root-tree replacement, commit, push, raw-version verification, conflicts and source rollback.
+- Added a complete Vietnamese command handbook for Monitor install/update, Agent manual/Ansible deployment, maintenance, Consumption checks, PostgreSQL, backup/restore, domain/TLS, diagnostics and troubleshooting.
+- Documented safe token handling, bridge-role verification, Agent state behavior and production rollback boundaries.
 
 ## 50.3.1-prod-r1-consumption-route-fix
 
@@ -104,11 +27,12 @@
 - Applied the same slot semantics to Dashboard, Top VM and Storage I/O.
 - Kept existing `@epoch` snapshot links readable for backward compatibility without rewriting new local-time URLs.
 
+# Changelog
 
 ## 50.2.2-prod-r1-original-time-restore
 
 - Add the session CSRF token to the Display Timezone form.
-- Fix the PostgreSQL Top VM historical-period query by replacing the non-PostgreSQL `HAVING total` alias with the full aggregate expression.
+- Fix the PostgreSQL Top VM historical-period query by replacing the SQLite-only `HAVING total` alias with the full aggregate expression.
 - Extend live PostgreSQL regression coverage to Top VM 10m/30m/1h and the timezone POST workflow.
 
 ## 50.2.0-prod-r1-virtinfra-hardening
@@ -119,7 +43,7 @@
 - Canonicalized custom snapshot URLs to absolute Unix timestamps across timezone switches.
 - Fixed hidden Node/VM leakage through Dashboard and Storage search paths.
 - Added PostgreSQL-backed cross-worker page-cache invalidation for Hide/Restore.
-- Corrected database sizing UI: PostgreSQL data is separate from reusable WAL reserve; removed obsolete local-database size wording.
+- Corrected database sizing UI: PostgreSQL data is separate from reusable WAL reserve; removed SQLite SHM wording.
 - Made Current Abuse fit normal desktop widths.
 - Added /livez, /healthz, a local systemd watchdog, Nginx upstream hardening and Gunicorn /dev/shm heartbeats.
 - Serialized same-node ingestion and performance-summary bootstrap with PostgreSQL advisory locks.

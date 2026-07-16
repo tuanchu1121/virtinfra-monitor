@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-REPO="tuanchu1121/virtinfra-monitor"
+REPO="tuanchu1121/bw-monitor-production.1"
 VISIBILITY="--public"
 FORCE=0
 CREATE_RELEASE=0
@@ -12,7 +12,7 @@ usage(){ cat <<'USAGE'
 Usage: publish-github.sh [options]
 
 Options:
-  --repo OWNER/NAME   Target repository. Default: tuanchu1121/virtinfra-monitor
+  --repo OWNER/NAME   Target repository. Default: tuanchu1121/bw-monitor-production.1
   --private           Create a private repository when missing
   --public            Create a public repository when missing (default)
   --release           Build archives and create/update the VERSION-derived tag/release

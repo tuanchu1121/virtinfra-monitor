@@ -1,17 +1,11 @@
 # Đưa VirtInfra Monitor lên GitHub bằng GitHub Desktop
 
-> Release: `50.5.0-prod-r1-batched-ingest`
-
-> Dùng cho release `50.5.0-prod-r1-batched-ingest`.
-
-> Source of truth vận hành: [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md).
->
-> Release này dùng PostgreSQL 17 + TimescaleDB làm nguồn dữ liệu duy nhất. GitHub chỉ chứa source và manifest, không chứa data volume, env production hoặc database dump.
+> Dùng cho release `50.3.2-prod-r1-github-desktop-operations-guide`.
 
 Mục tiêu là đưa **toàn bộ source ở root release** lên đúng root repo:
 
 ```text
-https://github.com/tuanchu1121/virtinfra-monitor
+https://github.com/tuanchu1121/bw-monitor-production.1
 ```
 
 Không tạo thêm một lớp thư mục release ở bên trong repo.
@@ -23,7 +17,7 @@ Không tạo thêm một lớp thư mục release ở bên trong repo.
 Trước khi copy source:
 
 1. Mở GitHub Desktop.
-2. Chọn đúng repository `virtinfra-monitor`.
+2. Chọn đúng repository `bw-monitor-production.1`.
 3. Chọn branch `main`.
 4. Bấm:
 
@@ -78,7 +72,7 @@ update.sh
 Giải nén file ZIP release ra một thư mục riêng, ví dụ:
 
 ```text
-D:\Downloads\virtinfra-monitor-50.5.0-prod-r1-batched-ingest\
+D:\Downloads\virtinfra-monitor-50.3.2-prod-r1-github-desktop-operations-guide\
 ```
 
 Mở thư mục đó. Bên trong phải thấy trực tiếp:
@@ -173,7 +167,7 @@ Nếu thấy token hoặc mật khẩu trong Changes, bỏ file đó khỏi comm
 Ở ô `Summary` nhập:
 
 ```text
-Release 50.4.4 manifest + Consumption UI fix
+Release 50.3.2 GitHub Desktop operations guide
 ```
 
 Description có thể ghi:
@@ -208,20 +202,20 @@ Trên bất kỳ Linux server nào:
 
 ```bash
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
+https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/VERSION
 ```
 
 Phải trả về:
 
 ```text
-50.5.0-prod-r1-batched-ingest
+50.3.2-prod-r1-github-desktop-operations-guide
 ```
 
 Kiểm tra file installer:
 
 ```bash
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/update.sh \
+https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/update.sh \
 | head
 ```
 
@@ -229,7 +223,7 @@ Kiểm tra manifest:
 
 ```bash
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/SHA256SUMS \
+https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/SHA256SUMS \
 | head
 ```
 
@@ -250,7 +244,7 @@ virtinfra-monitorctl version
 Phải ra:
 
 ```text
-50.5.0-prod-r1-batched-ingest
+50.3.2-prod-r1-github-desktop-operations-guide
 ```
 
 Kiểm tra:
@@ -292,7 +286,7 @@ Sai:
 
 ```text
 repo-root/
-└── virtinfra-monitor-50.5.0-prod-r1-batched-ingest/
+└── virtinfra-monitor-50.3.2-prod-r1-github-desktop-operations-guide/
     ├── app/
     ├── deploy/
     └── install.sh

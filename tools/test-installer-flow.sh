@@ -8,20 +8,8 @@ for f in "$ROOT/install.sh" "$ROOT/update.sh" "$I" "$ROOT/deploy/postgres/bw-mon
   bash -n "$f"
 done
 
-grep -q 'RELEASE="50.5.0-prod-r1-batched-ingest"' "$I" || fail "release marker missing"
-CANONICAL='tuanchu1121/virtinfra-monitor'
-[[ "$(cat "$ROOT/CANONICAL_REPOSITORY")" == "$CANONICAL" ]] || fail "canonical repository contract is wrong"
-for repo_file in \
-  "$ROOT/install.sh" \
-  "$ROOT/update.sh" \
-  "$ROOT/install-agent.sh" \
-  "$ROOT/uninstall-agent.sh" \
-  "$ROOT/deploy/postgres/install-postgres-native.sh" \
-  "$ROOT/deploy/postgres/bw-monitorctl.sh" \
-  "$ROOT/publish-github.sh"
-do
-  grep -q "$CANONICAL" "$repo_file" || fail "canonical GitHub repository is missing from $repo_file"
-done
+grep -q 'RELEASE="50.3.2-prod-r1-github-desktop-operations-guide"' "$I" || fail "release marker missing"
+grep -q 'tuanchu1121/bw-monitor-production.1' "$ROOT/install.sh" || fail "default GitHub repository is wrong"
 grep -q 'deploy/postgres/install-postgres-native.sh' "$ROOT/install.sh" || fail "bootstrap does not launch PostgreSQL-native installer"
 grep -q 'repo_complete()' "$ROOT/install.sh" || fail "bootstrap repository validation missing"
 grep -q 'normalize_shell_modes()' "$ROOT/install.sh" || fail "Windows GitHub Desktop mode normalization missing"
@@ -35,18 +23,11 @@ grep -q -- '--domain' "$I" || fail "domain mode missing"
 grep -q -- '--ip-mode' "$I" || fail "domain-to-IP switch missing"
 grep -q 'certbot --nginx' "$I" || fail "Let's Encrypt automation missing"
 grep -q '127.0.0.1:${BW_PG_PORT:-55432}:5432' "$ROOT/postgres/docker-compose.yml" || fail "database is not loopback-only"
-grep -q 'timescale/timescaledb:2.27.2-pg17' "$ROOT/postgres/docker-compose.yml" || fail "pinned Timescale image missing"
-grep -qv '2.27.2-pg17-oss' "$ROOT/postgres/docker-compose.yml" || fail "Apache-only Timescale image cannot provide Storage V2 policies"
-grep -q "timescaledb.license" "$I" || fail "Timescale Community capability preflight missing"
-grep -q "add_retention_policy" "$I" || fail "Timescale retention API preflight missing"
-grep -q "add_compression_policy" "$I" || fail "Timescale compression API preflight missing"
+grep -q 'timescale/timescaledb:2.27.2-pg17-oss' "$ROOT/postgres/docker-compose.yml" || fail "pinned Timescale image missing"
 grep -q "BW_REDIS_ENABLED='\$REDIS_CACHE'" "$I" || fail "optional Redis switch missing"
 grep -q 'REDIS_CACHE=0' "$I" || fail "Redis is not default-off"
 grep -q 'Agent cadence:  local 15-second samples, one push every 300 seconds' "$I" || fail "exact Agent cadence output missing"
-grep -q 'Chart history:  exact 5-minute VM/node points for 7 days' "$I" || fail "exact chart retention output missing"
-grep -q 'Raw detail:     per-interface V2 rows for 48 hours' "$I" || fail "raw-detail retention output missing"
-grep -q '004_storage_v2.sql' "$I" || fail "storage V2 migration is not installed"
-grep -q "VIRTINFRA_READ_CHART_V2='0'" "$I" || fail "chart V2 flag missing"
+grep -q 'Retention:      0-48h real 5-minute pushes; 48h-7d one real/hour; >7d delete' "$I" || fail "exact retention output missing"
 grep -q 'pg_dump' "$ROOT/deploy/postgres/backup.sh" || fail "pg_dump backup missing"
 grep -q 'pg_restore' "$ROOT/deploy/postgres/restore.sh" || fail "pg_restore restore missing"
 grep -q 'timescaledb_pre_restore' "$ROOT/deploy/postgres/restore.sh" || fail "Timescale pre-restore hook missing"

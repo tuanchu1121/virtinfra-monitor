@@ -46,21 +46,6 @@ module = importlib.util.module_from_spec(spec)
 assert spec and spec.loader
 spec.loader.exec_module(module)
 
-# The production installer applies SQL migrations after the application creates
-# its backward-compatible base schema and before Gunicorn starts.
-def apply_sql(path: Path) -> None:
-    sql = "\n".join(
-        line for line in path.read_text(encoding="utf-8").splitlines()
-        if not line.lstrip().startswith("\\")
-    )
-    with psycopg.connect(DSN, autocommit=True) as migration_conn:
-        migration_conn.execute(sql, prepare=False)
-
-for migration in (
-    "001_bootstrap.sql", "002_timescale.sql", "003_native_indexes.sql", "004_storage_v2.sql",
-):
-    apply_sql(ROOT / "postgres/sql" / migration)
-
 vm_uuid = str(uuid.uuid4())
 now = int(time.time())
 payload = {
@@ -176,9 +161,6 @@ bw_payload = {
     "estimated": 0,
     "agent_version": 13,
 }
-bw_unauthorized = client.post("/push/bandwidth-consumption", json=bw_payload, headers={"X-Token": "wrong-token"})
-assert bw_unauthorized.status_code == 401, bw_unauthorized.get_data(as_text=True)
-
 bw_response = client.post("/push/bandwidth-consumption", json=bw_payload, headers={"X-Token": "v50-integration-token"})
 assert bw_response.status_code == 200, bw_response.get_data(as_text=True)
 assert bw_response.get_json().get("ok") is True
@@ -230,25 +212,18 @@ try:
         "vm_perf_stats": "SELECT count(*) FROM vm_perf_stats WHERE node=? AND vm_uuid=?",
         "node_push_snapshots": "SELECT count(*) FROM node_push_snapshots WHERE node=?",
         "node_bandwidth_consumption_2h": "SELECT count(*) FROM node_bandwidth_consumption_2h WHERE node=?",
-        "vm_chart_5m": "SELECT count(*) FROM vm_chart_5m WHERE node=? AND vm_uuid=?",
-        "vm_raw_detail_5m": "SELECT count(*) FROM vm_raw_detail_5m WHERE node=? AND vm_uuid=?",
-        "node_chart_5m": "SELECT count(*) FROM node_chart_5m WHERE node=?",
     }
     for table, sql in checks.items():
         params = ("V50-TEST-NODE", vm_uuid) if "vm_uuid" in sql else ("V50-TEST-NODE",)
         count = int(conn.execute(sql, params).fetchone()[0])
         assert count >= 1, f"{table} was not populated"
-    chart_rows, _start, _end, _step = module.query_vm_chart("V50-TEST-NODE", vm_uuid, "7d")
-    perf_rows, _start, _end, _step = module.query_vm_perf_chart("V50-TEST-NODE", vm_uuid, "7d")
-    assert chart_rows and chart_rows[-1]["bucket"] == module.bucket_for(now), "V2 network chart read failed"
-    assert perf_rows and perf_rows[-1]["cpu_core_percent"] == 115.0, "V2 performance chart semantics changed"
     module.purge_vm_data(conn, "V50-TEST-NODE", vm_uuid)
     conn.commit()
-    for table in ("vm_current_fast", "vm_disk_current", "vm_inventory", "vm_perf_stats", "node_stats", "vm_chart_5m", "vm_raw_detail_5m"):
+    for table in ("vm_current_fast", "vm_disk_current", "vm_inventory", "vm_perf_stats", "node_stats"):
         count = int(conn.execute(f"SELECT count(*) FROM {table} WHERE node=? AND vm_uuid=?", ("V50-TEST-NODE", vm_uuid)).fetchone()[0])
         assert count == 0, f"purge left {table} rows"
 finally:
     conn.close()
     module.dbapi.close_pool()
 
-print("PASS: full v50 app PostgreSQL/Timescale integration, V2 chart/raw writes, pages, duplicate push and exact UUID purge")
+print("PASS: full v50 app PostgreSQL integration, duplicate push, pages, storage and exact UUID purge")

@@ -26,14 +26,9 @@ fail(){ echo "ERROR: $*" >&2; exit 1; }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.0-prod-r1-batched-ingest" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.3.2-prod-r1-github-desktop-operations-guide" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/bw_pg.py && -f deploy/agent/agent.py ]] || fail "full source tree is incomplete"
 [[ ! -d release && ! -d enterprise ]] || fail "legacy duplicate runtime trees must not be shipped"
-
-log "Verify canonical source checksum manifest"
-[[ -f SHA256SUMS ]] || fail "SHA256SUMS is missing"
-sha256sum -c SHA256SUMS >/dev/null || fail "SHA256SUMS contains stale or missing hashes"
-python3 tests/test_manifest_contract.py
 
 log "Reject generated data, caches and obvious secrets"
 find . -path './.git' -prune -o -path './dist' -prune -o -type d -name __pycache__ -prune -exec rm -rf {} +
@@ -83,27 +78,8 @@ PY
 log "Run v50 source contract"
 "$PYTHON" tests/test_v50_contract.py
 
-log "Validate standalone repository contract"
-"$PYTHON" tests/test_repository_contract.py
-
-log "Run storage V2 contract and multi-NIC regression"
-"$PYTHON" tests/test_storage_v2_contract.py
-
-log "Validate source-accurate operations documentation"
-"$PYTHON" tests/test_docs_source_accuracy.py
-
 log "Run compact Bandwidth Consumption Agent regression"
 "$PYTHON" tests/test_bandwidth_consumption_agent.py
-
-log "Validate Consumption endpoint authentication contract"
-"$PYTHON" tests/test_consumption_auth_contract.py
-
-log "Validate Consumption neutral UI contract"
-"$PYTHON" tests/test_consumption_ui_contract.py
-
-log "Validate protected core and simple theme selector contract"
-"$PYTHON" tests/test_theme_manager_contract.py
-"$PYTHON" tests/test_custom_theme_runtime.py
 
 log "Verify one-command installer and operations flow"
 bash ./tools/test-installer-flow.sh

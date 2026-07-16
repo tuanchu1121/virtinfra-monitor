@@ -9,7 +9,7 @@ def need(cond: bool, message: str) -> None:
         raise AssertionError(message)
 
 version = (ROOT / "VERSION").read_text().strip()
-need(version == "50.5.0-prod-r1-batched-ingest", f"unexpected VERSION: {version}")
+need(version == "50.3.2-prod-r1-github-desktop-operations-guide", f"unexpected VERSION: {version}")
 
 app = (ROOT / "app/app.py").read_text()
 pg = (ROOT / "app/bw_pg.py").read_text()
@@ -19,8 +19,6 @@ installer = (ROOT / "deploy/postgres/install-postgres-native.sh").read_text()
 compose = (ROOT / "postgres/docker-compose.yml").read_text()
 timescale = (ROOT / "postgres/sql/002_timescale.sql").read_text()
 indexes = (ROOT / "postgres/sql/003_native_indexes.sql").read_text()
-storage_sql = (ROOT / "postgres/sql/004_storage_v2.sql").read_text()
-storage_py = (ROOT / "app/storage_v2.py").read_text()
 
 # Exact cadence and retention from the supplied production code.
 need("CACHE_BUCKET_SECONDS = 300" in app, "monitor cadence is not 300 seconds")
@@ -39,29 +37,10 @@ need("psycopg_pool" in pg and "ConnectionPool" in pg, "psycopg connection pool m
 need("CREATE EXTENSION IF NOT EXISTS timescaledb" in timescale, "TimescaleDB extension setup missing")
 need("create_hypertable" in timescale and "set_integer_now_func" in timescale, "Timescale hypertable setup missing")
 need("127.0.0.1:${BW_PG_PORT:-55432}:5432" in compose, "PostgreSQL is not loopback-only")
-need("timescale/timescaledb:2.27.2-pg17" in compose, "pinned TimescaleDB Community image missing")
-need("2.27.2-pg17-oss" not in compose, "Apache-only TimescaleDB image cannot satisfy Storage V2 policies")
-need("current_setting('timescaledb.license', TRUE)" in storage_sql, "Storage V2 Community capability guard missing")
-need("add_retention_policy" in installer and "add_compression_policy" in installer, "installer policy capability checks missing")
 need("BW_REDIS_ENABLED='$REDIS_CACHE'" in installer, "optional Redis flag missing")
 need("REDIS_CACHE=0" in installer, "Redis must be disabled by default")
 need("fresh-install PostgreSQL Native" in installer, "fresh-install PostgreSQL-native contract missing")
 need("does not import SQLite data" in installer, "no-SQLite-migration contract missing")
-
-
-# v50.4.2 Consumption authentication hotfix with exact 5-minute chart storage and short raw detail.
-need("vm_chart_5m" in storage_sql and "vm_raw_detail_5m" in storage_sql and "node_chart_5m" in storage_sql, "storage V2 tables missing")
-need("chunk_time_interval => 10800::bigint" in storage_sql, "3-hour VM chart/raw chunk interval missing")
-need("drop_after => 604800::bigint" in storage_sql, "7-day chart retention missing")
-need("drop_after => 172800::bigint" in storage_sql, "48-hour raw retention missing")
-need("add_compression_policy" in storage_sql, "chart compression policy missing")
-need("VIRTINFRA_READ_CHART_V2='0'" in installer, "chart V2 read flag missing from installer")
-need("VIRTINFRA_RAW_V2='0'" in installer, "raw V2 flag missing from installer")
-need("import storage_v2" in app and "storage_v2.write_storage_v2" in app, "storage V2 is not connected to /push")
-need("_v5040_query_vm_chart_legacy" in app and "def _v5040_iface_values" in app, "backward-compatible chart fallback/filter missing")
-need("conn.executemany" in storage_py, "storage V2 batch writer missing")
-need("interfaces_json" in storage_py, "7-day bridge/interface chart compatibility missing")
-need("return min(gaps) if gaps else CACHE_BUCKET_SECONDS" in app, "V2 chart fallback resolution must remain 5 minutes")
 
 # Full old UI, storage and abuse behavior must remain in the package.
 markers = [

@@ -1,25 +1,8 @@
 # BẮT ĐẦU TẠI ĐÂY - VirtInfra Monitor
 
-> Release: `50.5.0-prod-r1-batched-ingest`
-
-> Release: `50.5.0-prod-r1-batched-ingest`
+> Release: `50.3.2-prod-r1-github-desktop-operations-guide`
 >
-> Bản này giữ nguyên toàn bộ chức năng, route, giao diện, Agent, Abuse, Storage I/O và Consumption hiện tại; đồng thời bổ sung Storage V2 với chart đúng từng điểm 5 phút trong 7 ngày, raw interface 48 giờ, Timescale retention và rollback reader nhanh.
-
-## Database contract của bản này
-
-```text
-PostgreSQL 17 + TimescaleDB là nguồn dữ liệu duy nhất
-Container: bw-timescaledb
-Volume: bw_monitor_postgres_data
-Loopback: 127.0.0.1:55432
-Backup: pg_dump custom format
-Restore: pg_restore
-```
-
-Không có command vận hành theo database file cục bộ.
-
-Đọc [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md) trước khi sửa kiến trúc, path hoặc command.
+> Bản này giữ nguyên toàn bộ code và bản sửa `Consumption` của `50.3.1`, đồng thời bổ sung bộ tài liệu triển khai, update, Agent và bảo trì đầy đủ từ A đến Z.
 
 Đây là đường đi chuẩn cho production:
 
@@ -41,26 +24,20 @@ Kiểm tra service, log, DB, Consumption và retention
 
 ## 1. Tài liệu nên mở theo thứ tự
 
-1. [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md)
-   - Kiến trúc, service, timer, path, PostgreSQL/TimescaleDB, Agent và Consumption đúng theo source.
-
-2. [`GITHUB_DESKTOP_VI.md`](GITHUB_DESKTOP_VI.md)
+1. [`GITHUB_DESKTOP_VI.md`](GITHUB_DESKTOP_VI.md)
    - Cách đưa bản ZIP này lên repo bằng GitHub Desktop.
    - Cách copy đúng root repo, không làm mất `.git`.
    - Cách Commit, Push và kiểm tra GitHub đã nhận đúng bản.
 
-3. [`COMMANDS_A_TO_Z_VI.md`](COMMANDS_A_TO_Z_VI.md)
+2. [`COMMANDS_A_TO_Z_VI.md`](COMMANDS_A_TO_Z_VI.md)
    - Cài Monitor mới bằng IP hoặc domain HTTPS.
    - Update/fix Monitor đang chạy.
    - Cài, update, kiểm tra và gỡ Agent thủ công.
    - Deploy/update Agent hàng loạt bằng Ansible.
    - Toàn bộ command bảo trì, backup, restore, DB, retention, log và troubleshooting.
 
-4. [`README.md`](README.md)
+3. [`README.md`](README.md)
    - Kiến trúc và chức năng của sản phẩm.
-
-5. [`docs/STORAGE_V2_DEPLOYMENT.md`](docs/STORAGE_V2_DEPLOYMENT.md)
-   - Kiến trúc chart 5 phút 7 ngày, raw 48 giờ, kiểm tra, validation, benchmark và rollback.
 
 ## 2. Luồng nhanh nhất để triển khai bản này
 
@@ -95,7 +72,7 @@ Trong GitHub Desktop:
 
 ```text
 Summary:
-Release 50.4.4 manifest + Consumption UI fix
+Release 50.3.2 GitHub Desktop operations guide
 
 Commit to main
 → Push origin
@@ -105,13 +82,13 @@ Kiểm tra GitHub đã nhận đúng version:
 
 ```bash
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
+https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/VERSION
 ```
 
 Kết quả phải là:
 
 ```text
-50.5.0-prod-r1-batched-ingest
+50.3.2-prod-r1-github-desktop-operations-guide
 ```
 
 ### Bước B - Update Monitor đang chạy
@@ -129,7 +106,7 @@ virtinfra-monitorctl version
 Kết quả version phải là:
 
 ```text
-50.5.0-prod-r1-batched-ingest
+50.3.2-prod-r1-github-desktop-operations-guide
 ```
 
 Kiểm tra thêm:
@@ -154,7 +131,7 @@ https://DOMAIN-CUA-M/bandwidth-consumption
 
 ### Bước C - Agent
 
-Bản `50.4.4` không thay đổi payload, endpoint, token hay chu kỳ của Agent. Node đang chạy VirtInfra Agent hiện tại không bắt buộc cài lại chỉ để dùng Storage V2.
+Bản `50.3.2` chỉ thêm tài liệu, nên node đã chạy Agent từ `50.3.0/50.3.1` không bắt buộc cài lại.
 
 Node chưa có Agent hoặc cần đồng bộ source Agent mới, dùng:
 
@@ -163,7 +140,7 @@ read -rsp 'Nhap VirtInfra Agent token: ' BW_TOKEN
 echo
 
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/install-agent.sh \
+https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/install-agent.sh \
 | env \
 VIRTINFRA_AGENT_API='https://DOMAIN-CUA-M/push' \
 VIRTINFRA_AGENT_TOKEN="$BW_TOKEN" \

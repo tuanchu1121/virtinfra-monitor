@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.3-prod-r1-snapshot-detail-alignment`
+Release: `50.5.2-prod-r1-native-copy-ingest`
 
 ## Final data path
 

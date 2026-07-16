@@ -3,7 +3,7 @@ from pathlib import Path
 root=Path(__file__).resolve().parents[1]
 app=(root/'app/app.py').read_text()
 agent=(root/'deploy/agent/agent.py').read_text()
-assert (root/'VERSION').read_text().strip() == '50.5.3-prod-r1-snapshot-detail-alignment'
+assert (root/'VERSION').read_text().strip() == '50.5.2-prod-r1-native-copy-ingest'
 assert 'VirtInfra Monitor' in app
 assert 'WAL reserved/recycled' in app
 assert 'SHM {human' not in app

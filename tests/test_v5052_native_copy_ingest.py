@@ -19,7 +19,7 @@ def _v5052_block() -> str:
 
 
 def test_release_and_native_copy_contract() -> None:
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.3-prod-r1-snapshot-detail-alignment"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.2-prod-r1-native-copy-ingest"
     assert "def copy_rows(" in PG
     assert "cursor.copy(statement)" in PG
     assert "copy.write_row(values)" in PG

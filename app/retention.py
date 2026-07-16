@@ -71,7 +71,7 @@ def main() -> int:
         result = module.run_retention(dry_run=False)
         print(json.dumps({
             "ok": True,
-            "version": "50.5.3-prod-r1-snapshot-detail-alignment",
+            "version": "50.5.2-prod-r1-native-copy-ingest",
             "started_at": started,
             "finished_at": int(time.time()),
             "result": result,

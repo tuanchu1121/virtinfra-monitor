@@ -1,15 +1,6 @@
-# 50.5.3-prod-r1-snapshot-detail-alignment
-
-- Node Filesystems capacity and physical I/O now use the same selected retained snapshot.
-- VM Overview and Virtual Disk I/O now follow the selected time frame.
-- Added compact 5-minute per-disk/per-mount I/O history with 2-day raw, 3-7 day hourly thinning.
-- Dashboard LOAD badges use equal fixed widths.
-- Renamed SRC to INTERFACE and moved it to the final dashboard column.
-- Existing samples before this upgrade cannot reconstruct per-disk/per-mount historical I/O.
-
 # Changelog
 
-## 50.5.3-prod-r1-snapshot-detail-alignment
+## 50.5.2-prod-r1-native-copy-ingest
 
 - Replaced JSONB recordset ingestion on the primary `/push` path with Psycopg native `COPY FROM STDIN` stages for VM network, VM performance, presence, current tables, disk current and Abuse state batches.
 - Merged network and VM performance into `vm_latest_metrics` once per VM using PostgreSQL `MERGE`, preserving partial-source fields without sentinel values.

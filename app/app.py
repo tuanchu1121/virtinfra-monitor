@@ -3341,9 +3341,9 @@ def node_table(rows, sort_by="node", order="asc"):
             <td class="num"><b>{human(node_total)}</b></td>
             <td class="num">{disk_r_html}</td>
             <td class="num">{disk_w_html}</td>
+            <td><span class="vm-state {source_cls}">{escape(source)}</span>{iface_note}</td>
             <td class="num">{int(net_drops or 0)}</td>
             <td class="num">{int(net_errors or 0)}</td>
-            <td class="dashboard-interface-cell"><span class="vm-state {source_cls}">{escape(source)}</span>{iface_note}</td>
         </tr>
         """
 
@@ -3368,7 +3368,7 @@ def node_table(rows, sort_by="node", order="asc"):
         "diskw": node_sort_header("DISK W/s", "diskw", period, q, sort_by, order),
         "drops": node_sort_header("DROPS", "drops", period, q, sort_by, order),
         "errors": node_sort_header("ERR", "errors", period, q, sort_by, order),
-        "source": node_sort_header("INTERFACE", "source", period, q, sort_by, order),
+        "source": node_sort_header("SRC", "source", period, q, sort_by, order),
     }
     return f"""
     <div class="card overview-card">
@@ -3387,7 +3387,7 @@ def node_table(rows, sort_by="node", order="asc"):
             <th>{headers['node']}</th><th>{headers['status']}</th><th>{headers['snapshot']}</th>
             <th>{headers['vm']}</th><th>{headers['load']}</th><th>{headers['uptime']}</th><th>{headers['cpu']}</th><th>{headers['ram']}</th>
             <th>{headers['pubpps']}</th><th>{headers['pripps']}</th><th>{headers['public']}</th><th>{headers['private']}</th><th>{headers['total']}</th>
-            <th>{headers['diskr']}</th><th>{headers['diskw']}</th><th>{headers['drops']}</th><th>{headers['errors']}</th><th>{headers['source']}</th>
+            <th>{headers['diskr']}</th><th>{headers['diskw']}</th><th>{headers['source']}</th><th>{headers['drops']}</th><th>{headers['errors']}</th>
         </tr></thead><tbody>{body}</tbody></table>
         <div class="table-hint">STATUS is live: Online with fewer than 2 missed pushes, Missed at exactly 2, Down after that. LOAD color uses Load1 / CPU cores: green below 60%, orange from 60% to below 90%, red at 90% or higher. LOAD 1/5/15 and every other metric come from the displayed SNAPSHOT.</div>
     </div>
@@ -28034,7 +28034,7 @@ def api_v1_performance_v48140():
             try: redis_ok = bool(client.ping())
             except Exception: redis_ok = False
         return jsonify({
-            "version":"50.5.3-prod-r1-snapshot-detail-alignment",
+            "version":"50.5.2-prod-r1-native-copy-ingest",
             "database":{
                 "engine":"PostgreSQL + TimescaleDB",
                 "database":pg.get("database"),
@@ -28339,7 +28339,7 @@ def page(title, content):
 # protocol. Agents submit one compact node aggregate for each completed local
 # 2-hour bucket. VM UUIDs and per-VM history are deliberately not stored.
 
-V5030_RELEASE = "50.5.3-prod-r1-snapshot-detail-alignment"
+V5030_RELEASE = "50.5.2-prod-r1-native-copy-ingest"
 V5030_BW_TABLE = "node_bandwidth_consumption_2h"
 V5030_BW_BUCKET_SECONDS = 2 * 3600
 V5030_BW_RETENTION_SECONDS = 7 * 86400
@@ -31802,296 +31802,3 @@ process_node_vm_presence = _v5052_process_node_vm_presence
 _v5050_bulk_upsert_rows = _v5052_copy_upsert_rows
 _v4810_current_writer = _v5052_current_writer
 ingest_disk_io_current = _v5052_ingest_disk_io_current
-
-
-# ---------------------------------------------------------------------------
-# v50.5.3 selected-snapshot detail synchronization and dashboard alignment
-# ---------------------------------------------------------------------------
-V5053_VERSION = "50.5.3-prod-r1-snapshot-detail-alignment"
-
-V5053_DASHBOARD_CSS = r"""
-<style id="v5053-dashboard-column-alignment">
-body.endpoint-index .overview-card + .card table{table-layout:auto}
-body.endpoint-index .overview-card + .card th:nth-child(5),
-body.endpoint-index .overview-card + .card td:nth-child(5){width:150px;min-width:150px;max-width:150px;text-align:center}
-body.endpoint-index .overview-card + .card td:nth-child(5) .metric-pill{display:inline-flex;align-items:center;justify-content:center;width:132px;min-width:132px;max-width:132px;white-space:nowrap;font-variant-numeric:tabular-nums}
-body.endpoint-index .overview-card + .card th:last-child,
-body.endpoint-index .overview-card + .card td:last-child{width:210px;min-width:210px;max-width:210px}
-body.endpoint-index .dashboard-interface-cell small{display:block;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-</style>
-"""
-
-_page_v5053_base = page
-
-def page(title, content):
-    response = _page_v5053_base(title, content)
-    try:
-        html = response.get_data(as_text=True)
-        html = html.replace("</head>", V5053_DASHBOARD_CSS + "</head>", 1)
-        response.set_data(html)
-    except Exception:
-        app.logger.exception("Could not apply v50.5.3 dashboard alignment CSS")
-    return response
-
-
-def _v5053_ensure_io_history_schema(conn):
-    conn.executescript("""
-    CREATE TABLE IF NOT EXISTS vm_disk_io_history (
-      bucket BIGINT NOT NULL,
-      node TEXT NOT NULL,
-      vm_uuid TEXT NOT NULL,
-      target TEXT NOT NULL,
-      source TEXT NOT NULL DEFAULT '',
-      role TEXT NOT NULL DEFAULT 'unknown',
-      mount TEXT NOT NULL DEFAULT '',
-      storage_device TEXT NOT NULL DEFAULT '',
-      storage_block TEXT NOT NULL DEFAULT '',
-      storage_fstype TEXT NOT NULL DEFAULT '',
-      capacity_bytes BIGINT NOT NULL DEFAULT 0,
-      allocation_bytes BIGINT NOT NULL DEFAULT 0,
-      physical_bytes BIGINT NOT NULL DEFAULT 0,
-      read_bps DOUBLE PRECISION NOT NULL DEFAULT 0,
-      write_bps DOUBLE PRECISION NOT NULL DEFAULT 0,
-      read_iops DOUBLE PRECISION NOT NULL DEFAULT 0,
-      write_iops DOUBLE PRECISION NOT NULL DEFAULT 0,
-      last_seen BIGINT NOT NULL DEFAULT 0,
-      PRIMARY KEY(bucket,node,vm_uuid,target,source)
-    );
-    CREATE INDEX IF NOT EXISTS idx_v5053_vm_disk_history_lookup
-      ON vm_disk_io_history(node,vm_uuid,bucket DESC);
-
-    CREATE TABLE IF NOT EXISTS node_storage_io_history (
-      bucket BIGINT NOT NULL,
-      node TEXT NOT NULL,
-      mount TEXT NOT NULL,
-      read_bps DOUBLE PRECISION NOT NULL DEFAULT 0,
-      write_bps DOUBLE PRECISION NOT NULL DEFAULT 0,
-      read_iops DOUBLE PRECISION NOT NULL DEFAULT 0,
-      write_iops DOUBLE PRECISION NOT NULL DEFAULT 0,
-      util_percent DOUBLE PRECISION NOT NULL DEFAULT 0,
-      last_seen BIGINT NOT NULL DEFAULT 0,
-      PRIMARY KEY(bucket,node,mount)
-    );
-    CREATE INDEX IF NOT EXISTS idx_v5053_node_storage_history_lookup
-      ON node_storage_io_history(node,bucket DESC,mount);
-    """)
-
-
-_v5053_ingest_disk_io_current_base = _v5052_ingest_disk_io_current
-
-def _v5052_ingest_disk_io_current(conn, node, data_time, interval_seconds, vms, node_host):
-    _v5053_ingest_disk_io_current_base(conn, node, data_time, interval_seconds, vms, node_host)
-    _v5053_ensure_io_history_schema(conn)
-    bucket = int(data_time // CACHE_BUCKET_SECONDS) * CACHE_BUCKET_SECONDS
-    vm_rows = []
-    for vm in vms or []:
-        if not isinstance(vm, dict):
-            continue
-        vm_uuid = str(vm.get("vm_uuid") or "").strip()
-        if not vm_uuid:
-            continue
-        for disk in vm.get("disks") or []:
-            if not isinstance(disk, dict):
-                continue
-            target = str(disk.get("target") or "").strip()
-            if not target:
-                continue
-            sec = max(1, safe_int(disk.get("interval_seconds"), interval_seconds))
-            vm_rows.append({
-                "bucket": bucket, "node": node, "vm_uuid": vm_uuid,
-                "target": target, "source": str(disk.get("source") or ""),
-                "role": str(disk.get("role") or "unknown").strip().lower()[:32],
-                "mount": str(disk.get("mount") or ""),
-                "storage_device": str(disk.get("storage_device") or ""),
-                "storage_block": str(disk.get("storage_block") or ""),
-                "storage_fstype": str(disk.get("storage_fstype") or ""),
-                "capacity_bytes": max(0, safe_int(disk.get("capacity_bytes"), 0)),
-                "allocation_bytes": max(0, safe_int(disk.get("allocation_bytes"), 0)),
-                "physical_bytes": max(0, safe_int(disk.get("physical_bytes"), 0)),
-                "read_bps": max(0, safe_int(disk.get("read_delta"), 0)) / float(sec),
-                "write_bps": max(0, safe_int(disk.get("write_delta"), 0)) / float(sec),
-                "read_iops": max(0, safe_int(disk.get("read_reqs_delta"), 0)) / float(sec),
-                "write_iops": max(0, safe_int(disk.get("write_reqs_delta"), 0)) / float(sec),
-                "last_seen": data_time,
-            })
-    if vm_rows:
-        _v5052_copy_upsert_rows(conn, "vm_disk_io_history", ["bucket","node","vm_uuid","target","source"], vm_rows)
-
-    storage_rows = []
-    for storage in (node_host or {}).get("storage_devices") or []:
-        if not isinstance(storage, dict):
-            continue
-        mount = str(storage.get("mount") or "").strip()
-        if not mount:
-            continue
-        storage_rows.append({
-            "bucket": bucket, "node": node, "mount": mount,
-            "read_bps": max(0.0, safe_float(storage.get("read_bps"), 0.0)),
-            "write_bps": max(0.0, safe_float(storage.get("write_bps"), 0.0)),
-            "read_iops": max(0.0, safe_float(storage.get("read_iops"), 0.0)),
-            "write_iops": max(0.0, safe_float(storage.get("write_iops"), 0.0)),
-            "util_percent": max(0.0, safe_float(storage.get("util_percent"), 0.0)),
-            "last_seen": data_time,
-        })
-    if storage_rows:
-        _v5052_copy_upsert_rows(conn, "node_storage_io_history", ["bucket","node","mount"], storage_rows)
-
-
-def _v5053_selected_bucket(conn, node, period):
-    selected, _latest = resolve_snapshot_bucket(conn, clean_period(period), node=node)
-    return safe_int(selected, 0)
-
-
-def _v5053_vm_snapshot_metric(node, vm_uuid, period):
-    conn = db()
-    try:
-        selected = _v5053_selected_bucket(conn, node, period)
-        if not selected:
-            return None
-        net_bucket = resolve_table_snapshot_bucket(conn, "node_stats", node, selected)
-        perf_bucket = resolve_table_snapshot_bucket(conn, "vm_perf_stats", node, selected)
-        net = conn.execute("""
-          SELECT MAX(last_push),MAX(COALESCE(interval_seconds,300)),
-                 SUM(rx_delta)*8.0/MAX(MAX(COALESCE(interval_seconds,300)),1)/1000000.0,
-                 SUM(tx_delta)*8.0/MAX(MAX(COALESCE(interval_seconds,300)),1)/1000000.0,
-                 SUM(rx_packets_delta)*1.0/MAX(MAX(COALESCE(interval_seconds,300)),1),
-                 SUM(tx_packets_delta)*1.0/MAX(MAX(COALESCE(interval_seconds,300)),1),
-                 MAX(COALESCE(rx_mbps_peak,0)),MAX(COALESCE(tx_mbps_peak,0)),
-                 MAX(COALESCE(rx_pps_peak,0)),MAX(COALESCE(tx_pps_peak,0)),
-                 SUM(COALESCE(network_sample_count,0)),SUM(COALESCE(network_sample_expected,0)),
-                 MAX(COALESCE(network_sample_max_gap_seconds,0)),SUM(COALESCE(seconds_over_pps,0)),
-                 SUM(COALESCE(seconds_over_mbps,0)),
-                 MAX(CASE UPPER(COALESCE(network_sample_quality,'LEGACY')) WHEN 'POOR' THEN 3 WHEN 'DEGRADED' THEN 2 WHEN 'GOOD' THEN 1 ELSE 0 END),
-                 SUM(rx_drop_delta+tx_drop_delta),SUM(rx_error_delta+tx_error_delta)
-          FROM node_stats WHERE node=? AND vm_uuid=? AND bucket=?
-        """, (node,vm_uuid,net_bucket)).fetchone() if net_bucket else None
-        perf = conn.execute("""
-          SELECT MAX(cpu_percent),MAX(vcpu_current),MAX(ram_current_kib),MAX(ram_maximum_kib),MAX(ram_rss_kib),MAX(ram_available_kib),
-                 MAX(disk_read_delta*1.0/GREATEST(interval_seconds,1)),MAX(disk_write_delta*1.0/GREATEST(interval_seconds,1))
-          FROM vm_perf_stats WHERE node=? AND vm_uuid=? AND bucket=?
-        """, (node,vm_uuid,perf_bucket)).fetchone() if perf_bucket else None
-        if not net and not perf:
-            return None
-        n = net or [0]*18; p = perf or [0]*8
-        return (
-          safe_int(n[0],selected),safe_int(n[1],CACHE_BUCKET_SECONDS),'','',
-          safe_float(n[2],0),safe_float(n[3],0),safe_float(n[4],0),safe_float(n[5],0),
-          safe_float(n[6],0),safe_float(n[7],0),safe_float(n[8],0),safe_float(n[9],0),
-          0,0,safe_int(n[10],0),safe_int(n[11],0),safe_float(n[12],0),safe_int(n[13],0),safe_int(n[14],0),network_quality_from_rank(safe_int(n[15],0)),
-          safe_int(n[16],0),safe_int(n[17],0),safe_float(p[0],0),safe_int(p[1],0),safe_int(p[2],0),safe_int(p[3],0),safe_int(p[4],0),safe_int(p[5],0),safe_float(p[6],0),safe_float(p[7],0)
-        )
-    finally:
-        conn.close()
-
-
-def get_vm_latest_metric(node, vm_uuid):
-    period = clean_period(request.args.get("period", "1h"))
-    row = _v5053_vm_snapshot_metric(node, vm_uuid, period)
-    return row if row else _get_vm_latest_metric_v483(node, vm_uuid)
-
-
-def get_vm_directional_current(node, vm_uuid):
-    period = clean_period(request.args.get("period", "1h"))
-    conn = db()
-    try:
-        selected = _v5053_selected_bucket(conn, node, period)
-        bucket = resolve_table_snapshot_bucket(conn, "node_stats", node, selected) if selected else 0
-        if not bucket:
-            return {}
-        row = conn.execute("""
-          SELECT MAX(COALESCE(seconds_over_rx_pps,0)),MAX(COALESCE(seconds_over_tx_pps,0))
-          FROM node_stats WHERE node=? AND vm_uuid=? AND bucket=?
-        """, (node,vm_uuid,bucket)).fetchone()
-        return {"seconds_over_rx_pps": safe_int((row or [0,0])[0],0), "seconds_over_tx_pps": safe_int((row or [0,0])[1],0)}
-    finally:
-        conn.close()
-
-
-_v5053_vm_disks_current_base = _v48133_vm_disks
-
-def _v48133_vm_disks(node, vm_uuid):
-    period = clean_period(request.args.get("period", "1h"))
-    conn = db()
-    try:
-        _v5053_ensure_io_history_schema(conn)
-        selected = _v5053_selected_bucket(conn, node, period)
-        row = conn.execute("""
-          SELECT bucket FROM vm_disk_io_history
-          WHERE node=? AND vm_uuid=? AND bucket BETWEEN ? AND ?
-          ORDER BY ABS(bucket-?) ASC,bucket DESC LIMIT 1
-        """, (node,vm_uuid,selected-CACHE_BUCKET_SECONDS,selected+CACHE_BUCKET_SECONDS,selected)).fetchone() if selected else None
-        if not row:
-            return []
-        bucket = safe_int(row[0],0)
-        return conn.execute("""
-          SELECT target,source,mount,storage_device,storage_block,storage_fstype,
-                 capacity_bytes,allocation_bytes,physical_bytes,
-                 read_bps,write_bps,read_iops,write_iops,last_seen
-          FROM vm_disk_io_history
-          WHERE node=? AND vm_uuid=? AND bucket=? AND role='customer'
-          ORDER BY CASE target WHEN 'vda' THEN 0 WHEN 'vdb' THEN 1 ELSE 2 END,target COLLATE NOCASE,source COLLATE NOCASE
-        """, (node,vm_uuid,bucket)).fetchall()
-    finally:
-        conn.close()
-
-
-_v5053_filesystems_base = get_node_filesystems_snapshot
-
-def get_node_filesystems_snapshot(node, period):
-    retained = list(_v5053_filesystems_base(node, period) or [])
-    conn = db()
-    try:
-        _v5053_ensure_io_history_schema(conn)
-        selected = _v5053_selected_bucket(conn, node, period)
-        row = conn.execute("""
-          SELECT bucket FROM node_storage_io_history
-          WHERE node=? AND bucket BETWEEN ? AND ?
-          ORDER BY ABS(bucket-?) ASC,bucket DESC LIMIT 1
-        """, (node,selected-CACHE_BUCKET_SECONDS,selected+CACHE_BUCKET_SECONDS,selected)).fetchone() if selected else None
-        io = {}
-        if row:
-            bucket = safe_int(row[0],0)
-            for r in conn.execute("""
-              SELECT mount,read_bps,write_bps,read_iops,write_iops,util_percent,last_seen
-              FROM node_storage_io_history WHERE node=? AND bucket=?
-            """, (node,bucket)).fetchall():
-                io[str(r[0] or '')] = r[1:]
-        result=[]
-        for raw in retained:
-            v=list(raw)
-            while len(v)<14: v.append(0)
-            snap=io.get(str(v[0] or ''))
-            if snap:
-                v[8],v[9],v[10],v[11],v[12],v[13]=snap
-            else:
-                v[8]=v[9]=v[10]=v[11]=v[12]=v[13]=0
-            result.append(tuple(v[:14]))
-        return result
-    finally:
-        conn.close()
-
-
-_v5053_run_retention_base = run_retention
-
-def run_retention(dry_run=False):
-    result = dict(_v5053_run_retention_base(dry_run=dry_run) or {})
-    conn = db()
-    try:
-        _v5053_ensure_io_history_schema(conn)
-        now = now_ts()
-        raw_cutoff = ((now - 2*86400)//3600)*3600
-        hourly_cutoff = ((now - 7*86400)//3600)*3600
-        deleted = result.setdefault("deleted", {})
-        for table in ("vm_disk_io_history","node_storage_io_history"):
-            if dry_run:
-                count = safe_int(conn.execute(f"""SELECT COUNT(*) FROM {table} WHERE bucket<? OR (bucket<? AND MOD(bucket,3600)<>0)""", (hourly_cutoff,raw_cutoff)).fetchone()[0],0)
-            else:
-                cur = conn.execute(f"""DELETE FROM {table} WHERE bucket<? OR (bucket<? AND MOD(bucket,3600)<>0)""", (hourly_cutoff,raw_cutoff))
-                count = max(0,safe_int(cur.rowcount,0))
-            deleted[table]=count
-        if not dry_run:
-            conn.commit()
-    finally:
-        conn.close()
-    result["total_deleted"] = sum(safe_int(v,0) for v in result.get("deleted",{}).values())
-    return result

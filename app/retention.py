@@ -74,7 +74,7 @@ def main() -> int:
         result = module.run_retention(dry_run=False)
         print(json.dumps({
             "ok": True,
-            "version": "50.5.6-prod-r1-postgres-native-maintenance",
+            "version": "50.5.7-prod-r1-safe-queue-canonical-vm",
             "started_at": started,
             "finished_at": int(time.time()),
             "result": result,

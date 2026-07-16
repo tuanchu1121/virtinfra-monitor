@@ -53,3 +53,40 @@ Chạy lại installer với API, token và bridge roles đúng. Không dùng `-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/uninstall-agent.sh | bash -s -- --keep-state
 ```
+
+## Sửa Node identity hoặc state UUID mà không cài lại Agent
+
+Đổi tên node mà Agent gửi lên Monitor:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/fix-agent-uuid.sh \
+| bash -s -- --node NEW-NODE-NAME
+```
+
+Xóa riêng state cũ của một VM UUID để Agent đọc lại UUID thật từ libvirt ở chu kỳ kế tiếp:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/fix-agent-uuid.sh \
+| bash -s -- --purge-vm OLD-VM-UUID
+```
+
+Có thể thực hiện cả hai trong một lần:
+
+```bash
+bash ./fix-agent-uuid.sh --node NEW-NODE-NAME --purge-vm OLD-VM-UUID
+```
+
+Script sao lưu `/etc/virtinfra-agent.env`, `state.json` và `runtime.json`, chỉ xóa counter/payload liên quan UUID được chọn rồi restart `virtinfra-agent.service`. Script không sửa UUID trong libvirt và không cài lại Agent.
+
+## Chấp nhận token Agent cũ trên Monitor
+
+Thêm token cũ vào `/etc/default/bw-monitor`:
+
+```bash
+sudoedit /etc/default/bw-monitor
+# BW_MONITOR_LEGACY_TOKENS='old-token-1,old-token-2'
+
+systemctl restart bw-monitor.service
+```
+
+`/push` và `/push/bandwidth-consumption` cùng chấp nhận token chính và token legacy.

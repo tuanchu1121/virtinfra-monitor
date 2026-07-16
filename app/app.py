@@ -4,6 +4,7 @@ import secrets
 import bw_pg as dbapi
 import storage_v2
 import maintenance_native
+import maintenance_queue
 import time
 import math
 import shutil
@@ -775,7 +776,11 @@ def db():
         status TEXT NOT NULL DEFAULT 'queued',
         requested_by TEXT,
         message TEXT,
-        unit_name TEXT
+        unit_name TEXT,
+        heartbeat_at INTEGER,
+        progress INTEGER NOT NULL DEFAULT 0,
+        attempt INTEGER NOT NULL DEFAULT 0,
+        cancel_requested INTEGER NOT NULL DEFAULT 0
     )
     """)
 
@@ -7291,7 +7296,7 @@ def node_missed_detail_page(node):
 
 @app.route("/top/nodes")
 def top_node_page():
-    period = clean_period(request.args.get("period", "1h"))
+    period = clean_period(request.args.get("period", "5m"))
     q = (request.args.get("q") or "").strip()
     sort_by = clean_top_node_sort(request.args.get("sort", "cpu"))
     sort_order = clean_sort_order(request.args.get("order", "desc"))
@@ -8304,7 +8309,7 @@ def vm_page():
     vm_uuid = (request.args.get("vm_uuid") or "").strip()
     bridge = (request.args.get("bridge") or "").strip()
     iface = (request.args.get("iface") or "").strip()
-    period = clean_period(request.args.get("period", "1h"))
+    period = clean_period(request.args.get("period", "5m"))
     raw_sort = clean_chart_table_sort(request.args.get("raw_sort", "time"))
     raw_order = clean_sort_order(request.args.get("raw_order", "desc"))
     if not node or not vm_uuid:
@@ -8389,8 +8394,7 @@ def vm_page():
         current_node = current_location.get("node")
         latest_href = url_for(
             "vm_page", node=current_node, vm_uuid=vm_uuid,
-            bridge=current_location.get("last_bridge") or "",
-            iface=current_location.get("last_iface") or "", period=period,
+            bridge="", iface="", period="5m",
         )
         migration_notice = f"""<div class="card warn-card"><h3>VM migrated</h3><p>This VM is currently reported on <b class="mono">{escape(current_node)}</b>. This page shows historical data for <b class="mono">{escape(node)}</b>.</p><p>Moved at <b>{fmt_full(current_location.get('moved_at'))}</b> · Previous node <b class="mono">{escape(current_location.get('previous_node') or '-')}</b> · Move count <b>{int(current_location.get('move_count') or 0)}</b></p><a href="{escape(latest_href, quote=True)}">Open current VM location</a></div>"""
 
@@ -10475,7 +10479,7 @@ def run_retention(dry_run=False):
 @app.route("/push", methods=["POST"])
 def push():
     push_started = time.perf_counter()
-    if request.headers.get("X-Token") != TOKEN:
+    if not valid_agent_token(request.headers.get("X-Token", "")):
         log_node_event("bad_token", node="", status_code=401, detail="invalid X-Token")
         return {"error": "unauthorized"}, 401
 
@@ -10489,6 +10493,17 @@ def push():
     if not node:
         log_node_event("bad_payload", node="", status_code=400, detail="missing required field: node")
         return {"error": "bad_payload", "detail": "node is required"}, 400
+
+    # A destructive operational reset advances a preserved acceptance epoch.
+    # Acknowledge older Agent-local retry payloads without writing them back.
+    if V5057_OPERATIONAL_PUSH_ACCEPT_AFTER and data_time < V5057_OPERATIONAL_PUSH_ACCEPT_AFTER:
+        return {
+            "ok": True,
+            "ignored": True,
+            "reason": "before reset epoch",
+            "accept_after": V5057_OPERATIONAL_PUSH_ACCEPT_AFTER,
+        }, 200
+
     interval_seconds = max(1, min(3600, safe_int(data.get("interval"), CACHE_BUCKET_SECONDS)))
     bucket = bucket_for(data_time)
 
@@ -13884,15 +13899,15 @@ def _v5054_vm_snapshot_overview(node, vm_uuid, period, bridge="", iface=""):
                 COALESCE(SUM(tx_packets_delta), 0),
                 COALESCE(SUM(rx_drop_delta + tx_drop_delta), 0),
                 COALESCE(SUM(rx_error_delta + tx_error_delta), 0),
-                MAX(COALESCE(rx_mbps_peak, 0)),
-                MAX(COALESCE(tx_mbps_peak, 0)),
-                MAX(COALESCE(rx_pps_peak, 0)),
-                MAX(COALESCE(tx_pps_peak, 0)),
-                COALESCE(SUM(network_sample_count), 0),
-                COALESCE(SUM(network_sample_expected), 0),
+                COALESCE(SUM(rx_mbps_peak), 0),
+                COALESCE(SUM(tx_mbps_peak), 0),
+                COALESCE(SUM(rx_pps_peak), 0),
+                COALESCE(SUM(tx_pps_peak), 0),
+                MAX(COALESCE(network_sample_count, 0)),
+                MAX(COALESCE(network_sample_expected, 0)),
                 MAX(COALESCE(network_sample_max_gap_seconds, 0)),
-                COALESCE(SUM(seconds_over_pps), 0),
-                COALESCE(SUM(seconds_over_mbps), 0),
+                MAX(COALESCE(seconds_over_pps, 0)),
+                MAX(COALESCE(seconds_over_mbps, 0)),
                 MAX(CASE UPPER(COALESCE(network_sample_quality, 'LEGACY'))
                     WHEN 'POOR' THEN 3
                     WHEN 'DEGRADED' THEN 2
@@ -17324,7 +17339,7 @@ def _v48103_current_abuse_page(q,sort_by,order,limit):
         return f'<a class="sort-link" href="{escape(href,quote=True)}">{escape(label)}{arrow}</a>'
     body=""
     for rank,r in enumerate(rows,1):
-        labels=_abuse_flag_labels(r[4],cfg); reasons="".join(metric_pill(escape(x),"crit") for x in labels); href=url_for("vm_page",node=r[0],vm_uuid=r[1],period="1h"); ip=compact_ipv4(r[21])
+        labels=_abuse_flag_labels(r[4],cfg); reasons="".join(metric_pill(escape(x),"crit") for x in labels); href=url_for("vm_page",node=r[0],vm_uuid=r[1],period="5m"); ip=compact_ipv4(r[21])
         network=_v4810_metric_pair("RX AVG",f"{safe_float(r[22],0):.2f} Mbps","TX AVG",f"{safe_float(r[23],0):.2f} Mbps",_v48102_minutes_progress(r[28],cfg["network_mbps_required_cycles"]),_v48102_minutes_progress(r[29],cfg["network_mbps_required_cycles"]))
         pps_sync="synced" if safe_int(r[30],0) else "waiting"; peak=_v4810_metric_pair("RX PEAK",f"{fmt_pps_value(r[8])} PPS","TX PEAK",f"{fmt_pps_value(r[9])} PPS",f"{safe_int(r[10],0)}s high · {pps_sync}",f"{safe_int(r[11],0)}s high · {pps_sync}")
         cpu_progress=_v48102_minutes_progress(r[26],cfg["cpu_required_cycles"])+" sustained"
@@ -19765,7 +19780,7 @@ def database_maintenance_card(message="", error=""):
     finally:
         conn.close()
 
-    active_count = status_counts.get("queued", 0) + status_counts.get("running", 0)
+    active_count = status_counts.get("queued", 0) + status_counts.get("starting", 0) + status_counts.get("running", 0)
     notice = (
         f'<div class="error-box">{escape(error)}</div>'
         if error
@@ -19778,9 +19793,9 @@ def database_maintenance_card(message="", error=""):
         status, requested_by, job_message, unit_name,
     ) in jobs:
         status = str(status or "queued").lower()
-        label = {"queued": "WAITING", "running": "RUNNING", "ok": "DONE", "error": "FAILED"}.get(status, status.upper())
-        icon = {"queued": "◷", "running": "◉", "ok": "✓", "error": "!"}.get(status, "•")
-        cls = {"queued": "yellow", "running": "yellow", "ok": "active", "error": "red"}.get(status, "yellow")
+        label = {"queued": "WAITING", "starting": "STARTING", "running": "RUNNING", "ok": "DONE", "error": "FAILED", "cancelled": "CANCELLED"}.get(status, status.upper())
+        icon = {"queued": "◷", "starting": "◌", "running": "◉", "ok": "✓", "error": "!", "cancelled": "×"}.get(status, "•")
+        cls = {"queued": "yellow", "starting": "yellow", "running": "yellow", "ok": "active", "error": "red", "cancelled": "red"}.get(status, "yellow")
         target = _maintenance_target_summary(action, parameters)
         friendly = _maintenance_friendly_message(action, status, job_message)
         raw_detail = escape((job_message or "-")[:3500])
@@ -19824,12 +19839,14 @@ def database_maintenance_card(message="", error=""):
     <div class="card" id="maintenance-queue">
       <div class="table-title-row"><h3>PostgreSQL Maintenance</h3><div class="count-badges"><span>Execution <b>single worker</b></span><span>Active <b>{active_count}</b></span></div></div>
       {notice}
-      <div class="admin-note"><b>One job at a time.</b> PostgreSQL advisory locking plus a database unique guard prevent duplicate active jobs across Gunicorn workers. Routine retention, history deletion and VACUUM stay online. Only full destructive resets briefly stop Agent ingestion.</div>
+      <div class="admin-note"><b>FIFO queue with one worker.</b> Multiple routine jobs may wait safely. The dispatcher atomically starts only one worker, records heartbeat, recovers dead units, and automatically runs the next job. Nuclear reset never waits in the queue.</div>
       <div class="queue-summary">
         <div><small>Waiting</small><b>{status_counts.get('queued', 0)}</b></div>
+        <div><small>Starting</small><b>{status_counts.get('starting', 0)}</b></div>
         <div><small>Running</small><b>{status_counts.get('running', 0)}</b></div>
         <div><small>Completed</small><b>{status_counts.get('ok', 0)}</b></div>
         <div><small>Failed</small><b>{status_counts.get('error', 0)}</b></div>
+        <div><small>Cancelled</small><b>{status_counts.get('cancelled', 0)}</b></div>
         <div><small>PostgreSQL data</small><b>{human(stats['db_size'])}</b></div>
       </div>
       <div class="bulk-bar"><a class="btn" href="{escape(refresh_href, quote=True)}">Refresh queue</a><span class="table-hint">WAL reserved/recycled {human(stats['wal_size'])}. Normal VACUUM reuses dead space but does not promise a smaller database file.</span></div>
@@ -28581,7 +28598,7 @@ def api_v1_performance_v48140():
             try: redis_ok = bool(client.ping())
             except Exception: redis_ok = False
         return jsonify({
-            "version":"50.5.6-prod-r1-postgres-native-maintenance",
+            "version":"50.5.7-prod-r1-safe-queue-canonical-vm",
             "database":{
                 "engine":"PostgreSQL + TimescaleDB",
                 "database":pg.get("database"),
@@ -28886,7 +28903,7 @@ def page(title, content):
 # protocol. Agents submit one compact node aggregate for each completed local
 # 2-hour bucket. VM UUIDs and per-VM history are deliberately not stored.
 
-V5030_RELEASE = "50.5.6-prod-r1-postgres-native-maintenance"
+V5030_RELEASE = "50.5.7-prod-r1-safe-queue-canonical-vm"
 V5030_BW_TABLE = "node_bandwidth_consumption_2h"
 V5030_BW_BUCKET_SECONDS = 2 * 3600
 V5030_BW_RETENTION_SECONDS = 7 * 86400
@@ -29039,7 +29056,7 @@ def _v5030_set_bandwidth_accept_after(ts=None):
 
 @app.route("/push/bandwidth-consumption", methods=["POST"])
 def push_bandwidth_consumption():
-    if request.headers.get("X-Token", "") != TOKEN:
+    if not valid_agent_token(request.headers.get("X-Token", "")):
         return jsonify({"ok": False, "error": "unauthorized"}), 401
 
     payload = request.get_json(silent=True)
@@ -29577,7 +29594,7 @@ def _v490_admin_overview(stats):
             <form method="post" action="%s"><input type="hidden" name="csrf_token" value="%s"><input type="hidden" name="action" value="cleanup"><button type="submit">Run cleanup now</button></form>
             <form method="post" action="%s" onsubmit="return confirm('Delete all Consumption history?');"><input type="hidden" name="csrf_token" value="%s"><input type="hidden" name="action" value="clear"><input name="confirm_text" placeholder="CLEAR BANDWIDTH HISTORY"><button class="btn-danger" type="submit">Clear history</button></form>
           </div>
-          <div class="table-hint">Reset ALL app data + queue also clears this table and advances a reset epoch, so old Agent-local retry buckets cannot restore deleted history.</div>
+          <div class="table-hint">Nuclear operational reset clears this table and advances a reset epoch, so old Agent-local retry buckets cannot restore deleted history.</div>
         </div>
         """ % (
             url_for("bandwidth_consumption_page"), f"{item['rows']:,}", human(item["size"]), item["reporting"], item["visible_nodes"], item["missing"],
@@ -32349,3 +32366,730 @@ process_node_vm_presence = _v5052_process_node_vm_presence
 _v5050_bulk_upsert_rows = _v5052_copy_upsert_rows
 _v4810_current_writer = _v5052_current_writer
 ingest_disk_io_current = _v5052_ingest_disk_io_current
+
+# ---------------------------------------------------------------------------
+# 50.5.7 Agent-token compatibility
+# ---------------------------------------------------------------------------
+def _v5057_agent_tokens():
+    values = [str(TOKEN or "").strip()]
+    legacy = str(os.environ.get("BW_MONITOR_LEGACY_TOKENS", "") or "")
+    values.extend(part.strip() for part in re.split(r"[\s,]+", legacy))
+    return tuple(dict.fromkeys(value for value in values if value))
+
+
+V5057_AGENT_TOKENS = _v5057_agent_tokens()
+V5057_OPERATIONAL_PUSH_ACCEPT_AFTER = max(
+    0,
+    safe_int(get_admin_setting("operational_push_accept_after", "0"), 0),
+)
+
+
+def valid_agent_token(value):
+    supplied = str(value or "")
+    return any(hmac.compare_digest(supplied, expected) for expected in V5057_AGENT_TOKENS)
+
+
+# ---------------------------------------------------------------------------
+# 50.5.7 safe FIFO maintenance + canonical VM detail correctness
+# ---------------------------------------------------------------------------
+V5057_VERSION = "50.5.7-prod-r1-safe-queue-canonical-vm"
+
+
+def enqueue_maintenance_job(action, parameters, actor):
+    payload = dict(parameters or {})
+    payload.setdefault("requested_by", actor or "admin")
+    exclusive = str(action or "").strip().lower() == "reset_app_data"
+    return maintenance_queue.enqueue_job(
+        action,
+        payload,
+        actor or "admin",
+        exclusive=exclusive,
+    )
+
+
+def _v5057_queue_has_pending_jobs():
+    conn = db()
+    try:
+        row = conn.execute(
+            "SELECT id,action,status FROM maintenance_jobs "
+            "WHERE status IN ('queued','starting','running') ORDER BY id LIMIT 1"
+        ).fetchone()
+        return row
+    finally:
+        conn.close()
+
+
+def _v5057_verify_current_admin_password(password):
+    row = current_dashboard_user()
+    if not row or str(row[3] or "") != "admin" or not safe_int(row[4], 0):
+        return False
+    return bool(password) and check_password_hash(str(row[2] or ""), str(password))
+
+
+@app.route("/admin/maintenance/cancel", methods=["POST"])
+def admin_cancel_maintenance_v5057():
+    deny = require_admin()
+    if deny:
+        return deny
+    job_id = safe_int(request.form.get("job_id"), 0)
+    actor = dashboard_username() or get_admin_username()
+    if job_id <= 0:
+        return redirect(url_for("admin_page", dberr="Invalid maintenance job id") + "#maintenance-queue")
+    changed = maintenance_queue.cancel_queued_job(job_id, actor)
+    message = f"Cancelled waiting maintenance job #{job_id}." if changed else f"Job #{job_id} is no longer waiting and was not cancelled."
+    log_account_event(
+        "maintenance_job_cancelled" if changed else "maintenance_job_cancel_skipped",
+        username=actor, realm="admin", role="admin", detail=message,
+    )
+    maintenance_queue.wake_dispatcher()
+    return redirect(url_for("admin_page", dbmsg=message) + "#maintenance-queue")
+
+
+_v5057_admin_database_maintenance_base = app.view_functions.get("admin_database_maintenance")
+
+
+def admin_database_maintenance_v5057():
+    action = str(request.form.get("action") or "").strip().lower()
+    if action not in {"reset_app_data_preview", "reset_app_data"}:
+        return _v5057_admin_database_maintenance_base()
+
+    deny = require_admin()
+    if deny:
+        return deny
+    actor = dashboard_username() or get_admin_username()
+    try:
+        if action == "reset_app_data_preview":
+            if not _v5057_verify_current_admin_password(request.form.get("admin_password") or ""):
+                raise ValueError("Admin password verification failed")
+            pending = _v5057_queue_has_pending_jobs()
+            if pending:
+                raise RuntimeError(
+                    f"Queue must be empty before nuclear preview: job #{pending[0]} "
+                    f"({pending[1]}) is {pending[2]}"
+                )
+            preview = maintenance_native.preview_reset_app_data()
+            nonce = secrets.token_urlsafe(24)
+            code = f"{secrets.randbelow(900000) + 100000:06d}"
+            preview_now = now_ts()
+            session["v5057_nuclear_preview"] = {
+                "nonce": nonce,
+                "code": code,
+                "not_before": preview_now + 15,
+                "expires_at": preview_now + 300,
+                "created_at": preview_now,
+                "table_count": safe_int(preview.get("table_count"), 0),
+                "estimated_rows": safe_int(preview.get("estimated_rows"), 0),
+                "estimated_bytes": safe_int(preview.get("estimated_bytes"), 0),
+                "database_bytes": safe_int(preview.get("database_bytes"), 0),
+            }
+            log_account_event(
+                "nuclear_reset_preview",
+                username=actor, realm="admin", role="admin",
+                detail=(
+                    f"tables={preview.get('table_count', 0)};"
+                    f"estimated_rows={preview.get('estimated_rows', 0)};"
+                    f"estimated_bytes={preview.get('estimated_bytes', 0)}"
+                ),
+            )
+            return redirect(url_for("admin_page", dbmsg="Nuclear preview created. Review it and confirm within 5 minutes.") + "#maintenance-queue")
+
+        preview = session.get("v5057_nuclear_preview") or {}
+        if not isinstance(preview, dict):
+            preview = {}
+        request_now = now_ts()
+        if safe_int(preview.get("expires_at"), 0) < request_now:
+            session.pop("v5057_nuclear_preview", None)
+            raise ValueError("Nuclear preview expired. Create a new preview")
+        not_before = safe_int(preview.get("not_before"), 0)
+        if not_before and request_now < not_before:
+            raise ValueError(
+                f"Nuclear safety delay is still active for {not_before - request_now} second(s)"
+            )
+        nonce = str(request.form.get("preview_nonce") or "")
+        if not nonce or not secrets.compare_digest(nonce, str(preview.get("nonce") or "")):
+            raise ValueError("Nuclear preview token mismatch")
+        if not _v5057_verify_current_admin_password(request.form.get("admin_password") or ""):
+            raise ValueError("Admin password verification failed")
+        required = f"RESET VIRTINFRA {preview.get('code', '')}"
+        if str(request.form.get("confirm_text") or "").strip() != required:
+            raise ValueError(f"Confirmation text must be {required}")
+        pending = _v5057_queue_has_pending_jobs()
+        if pending:
+            raise RuntimeError(
+                f"Nuclear reset cannot wait in FIFO: job #{pending[0]} "
+                f"({pending[1]}) is {pending[2]}"
+            )
+        parameters = {
+            "requested_by": actor,
+            "preview_created_at": safe_int(preview.get("created_at"), 0),
+            "preview_table_count": safe_int(preview.get("table_count"), 0),
+            "preview_estimated_rows": safe_int(preview.get("estimated_rows"), 0),
+            "mandatory_verified_backup": True,
+            "preserve_queue_audit": True,
+        }
+        job_id, unit_name = maintenance_queue.enqueue_job(
+            "reset_app_data", parameters, actor, exclusive=True
+        )
+        session.pop("v5057_nuclear_preview", None)
+        message = (
+            f"Nuclear reset job #{job_id} accepted for immediate execution. "
+            "It will abort before TRUNCATE unless a verified backup succeeds."
+        )
+        log_account_event(
+            "nuclear_reset_queued", username=actor, realm="admin", role="admin",
+            detail=f"job={job_id};unit={unit_name}",
+        )
+        return redirect(url_for("admin_page", dbmsg=message) + "#maintenance-queue")
+    except Exception as exc:
+        error = f"Nuclear reset was not started: {exc}"
+        log_account_event(
+            "nuclear_reset_rejected", username=actor, realm="admin", role="admin",
+            detail=error[:500],
+        )
+        return redirect(url_for("admin_page", dberr=error) + "#maintenance-queue")
+
+
+app.view_functions["admin_database_maintenance"] = admin_database_maintenance_v5057
+
+
+_v5057_database_maintenance_card_base = database_maintenance_card
+
+
+def database_maintenance_card(message="", error=""):
+    html = _v5057_database_maintenance_card_base(message, error)
+    preview = session.get("v5057_nuclear_preview") or {}
+    valid_preview = isinstance(preview, dict) and safe_int(preview.get("expires_at"), 0) >= now_ts()
+    csrf = escape(csrf_token(), quote=True)
+    endpoint = escape(url_for("admin_database_maintenance"), quote=True)
+    if valid_preview:
+        code = str(preview.get("code") or "")
+        nuclear = f'''
+      <div class="card maint-nuclear">
+        <h3>Nuclear reset preview ready</h3>
+        <div class="admin-note"><b>No data has been deleted.</b> Final confirmation is accepted after {fmt_full(preview.get('not_before'))} and expires at {fmt_full(preview.get('expires_at'))}. The job cannot wait behind another task and must create a verified PostgreSQL backup before any TRUNCATE.</div>
+        <div class="maint-policy">
+          <div><b>{safe_int(preview.get('table_count'),0)} tables</b><small>Explicit allow-list only</small></div>
+          <div><b>{safe_int(preview.get('estimated_rows'),0):,} rows</b><small>PostgreSQL estimate</small></div>
+          <div><b>{human(safe_int(preview.get('estimated_bytes'),0))}</b><small>Estimated relation size</small></div>
+        </div>
+        <div class="maint-actions">
+          <form method="post" action="{endpoint}" onsubmit="return confirm('Final confirmation: create a verified backup and permanently reset operational app data?')">
+            <input type="hidden" name="csrf_token" value="{csrf}">
+            <input type="hidden" name="action" value="reset_app_data">
+            <input type="hidden" name="preview_nonce" value="{escape(str(preview.get('nonce') or ''), quote=True)}">
+            <label>Admin password<input type="password" name="admin_password" autocomplete="current-password" required></label>
+            <label>Type <b>RESET VIRTINFRA {escape(code)}</b><input name="confirm_text" placeholder="RESET VIRTINFRA {escape(code)}" required></label>
+            <button class="btn-danger" type="submit">Backup, verify, then reset</button>
+          </form>
+        </div>
+      </div>'''
+    else:
+        nuclear = f'''
+      <div class="card maint-nuclear">
+        <h3>Nuclear operational reset</h3>
+        <div class="admin-note"><b>Two-step safety workflow.</b> First re-enter the Admin password to create a read-only preview. Final execution requires a new one-time phrase, an empty queue and a verified backup. Dashboard users, Admin settings, queue history, nuclear audit and schema metadata are preserved.</div>
+        <div class="maint-actions">
+          <form method="post" action="{endpoint}">
+            <input type="hidden" name="csrf_token" value="{csrf}">
+            <input type="hidden" name="action" value="reset_app_data_preview">
+            <label>Admin password<input type="password" name="admin_password" autocomplete="current-password" required></label>
+            <button class="btn-danger" type="submit">Create reset preview</button>
+          </form>
+        </div>
+      </div>'''
+
+    start_marker = '<div class="card maint-nuclear">\n        <h3>Reset ALL app data + queue</h3>'
+    end_marker = '<div class="card maint-danger">\n        <h3>API logs</h3>'
+    start = html.find(start_marker)
+    end = html.find(end_marker, start + 1) if start >= 0 else -1
+    if start >= 0 and end > start:
+        html = html[:start] + nuclear + "\n\n      " + html[end:]
+
+    # Add a Cancel button only for waiting jobs. The dispatcher/worker state is
+    # immutable once execution starts.
+    def add_cancel(match):
+        job_id = match.group(1)
+        block = match.group(0)
+        if "queue-queued" not in block:
+            return block
+        form = (
+            f'<form method="post" action="{escape(url_for("admin_cancel_maintenance_v5057"), quote=True)}" '
+            f'onsubmit="return confirm(\'Cancel waiting job #{job_id}?\')" style="margin-top:6px">'
+            f'<input type="hidden" name="csrf_token" value="{csrf}">'
+            f'<input type="hidden" name="job_id" value="{job_id}">'
+            f'<button class="btn-danger" type="submit">Cancel waiting job</button></form>'
+        )
+        return block.replace("</td>\n        </tr>", form + "</td>\n        </tr>", 1)
+
+    try:
+        import re as _re_v5057
+        html = _re_v5057.sub(
+            r'<tr class="queue-row queue-[^"]+">.*?<td class="num"><b>#(\d+)</b></td>.*?</tr>',
+            add_cancel,
+            html,
+            flags=_re_v5057.S,
+        )
+    except Exception:
+        pass
+    return html
+
+
+# --- Canonical current VM resolver ----------------------------------------
+def resolve_direct_vm_search(q):
+    q = str(q or "").strip()
+    if not q:
+        return None
+    like = like_pattern(q)
+    conn = db()
+    try:
+        rows = conn.execute("""
+          SELECT node,vm_uuid,last_seen,source_rank,exact_uuid
+          FROM (
+            SELECT node,vm_uuid,last_seen,0 source_rank,
+                   CASE WHEN LOWER(vm_uuid)=LOWER(?) THEN 1 ELSE 0 END exact_uuid
+              FROM vm_current_fast
+             WHERE vm_uuid LIKE ?
+            UNION ALL
+            SELECT node,vm_uuid,last_seen,1 source_rank,
+                   CASE WHEN LOWER(vm_uuid)=LOWER(?) THEN 1 ELSE 0 END exact_uuid
+              FROM vm_latest_metrics
+             WHERE vm_uuid LIKE ? OR COALESCE(iface,'')=? COLLATE NOCASE
+            UNION ALL
+            SELECT node,vm_uuid,last_seen,2 source_rank,
+                   CASE WHEN LOWER(vm_uuid)=LOWER(?) THEN 1 ELSE 0 END exact_uuid
+              FROM vm_location_latest
+             WHERE vm_uuid LIKE ? OR COALESCE(last_iface,'')=? COLLATE NOCASE
+            UNION ALL
+            SELECT node,vm_uuid,last_seen,3 source_rank,
+                   CASE WHEN LOWER(vm_uuid)=LOWER(?) THEN 1 ELSE 0 END exact_uuid
+              FROM vm_inventory
+             WHERE deleted_at IS NULL AND COALESCE(status,'active')!='hidden'
+               AND (vm_uuid LIKE ? OR COALESCE(last_iface,'')=? COLLATE NOCASE)
+          ) candidates
+          ORDER BY exact_uuid DESC,last_seen DESC,source_rank ASC
+          LIMIT 300
+        """, (q,like,q,like,q,q,like,q,q,like,q)).fetchall()
+    finally:
+        conn.close()
+    if not rows:
+        return None
+    exact_rows = [r for r in rows if safe_int(r[4],0)==1]
+    pool = exact_rows or rows
+    unique = {}
+    for node,vm_uuid,last_seen,source_rank,exact_uuid in pool:
+        key=(str(node or ""),str(vm_uuid or ""))
+        if not all(key):
+            continue
+        candidate={"node":key[0],"vm_uuid":key[1],"last_seen":safe_int(last_seen,0),"source_rank":safe_int(source_rank,99)}
+        current=unique.get(key)
+        if current is None or (candidate["last_seen"],-candidate["source_rank"]) > (current["last_seen"],-current["source_rank"]):
+            unique[key]=candidate
+    values=sorted(unique.values(),key=lambda item:(-item["last_seen"],item["source_rank"],item["node"]))
+    if exact_rows or len(values)==1:
+        result=dict(values[0])
+        # Search opens the whole VM. It must not silently inherit one stale NIC.
+        result.update({"iface":"","bridge":""})
+        return result
+    return None
+
+
+def get_vm_current_location(vm_uuid):
+    conn = db()
+    try:
+        row = conn.execute("""
+          SELECT node,last_seen FROM (
+            SELECT node,last_seen,0 rank FROM vm_current_fast WHERE vm_uuid=?
+            UNION ALL SELECT node,last_seen,1 rank FROM vm_latest_metrics WHERE vm_uuid=?
+            UNION ALL SELECT node,last_seen,2 rank FROM vm_location_latest WHERE vm_uuid=?
+          ) x ORDER BY last_seen DESC,rank ASC LIMIT 1
+        """, (vm_uuid,vm_uuid,vm_uuid)).fetchone()
+        if not row:
+            return None
+        loc = conn.execute("""
+          SELECT previous_node,moved_at,move_count,last_iface,last_bridge,alert_flags
+          FROM vm_location_latest WHERE vm_uuid=?
+        """, (vm_uuid,)).fetchone()
+        loc = loc or (None,None,0,"","","")
+        return {
+            "vm_uuid":vm_uuid,"node":row[0],"last_seen":row[1],
+            "previous_node":loc[0],"moved_at":loc[1],"move_count":loc[2],
+            "last_iface":loc[3],"last_bridge":loc[4],"alert_flags":loc[5],
+        }
+    finally:
+        conn.close()
+
+
+_v5057_vm_snapshot_history_base = _v5054_vm_snapshot_overview
+
+
+def _v5057_live_vm_snapshot(node, vm_uuid, bridge="", iface=""):
+    conn = db()
+    try:
+        current = conn.execute("""
+          SELECT last_seen,interval_seconds,iface_count,
+                 rx_bytes,tx_bytes,rx_mbps,tx_mbps,rx_peak_mbps,tx_peak_mbps,
+                 rx_pps,tx_pps,rx_peak_pps,tx_peak_pps,
+                 sample_count,sample_expected,sample_max_gap,sample_quality,
+                 seconds_over_rx_pps,seconds_over_tx_pps,drops,errors,
+                 cpu_full_percent,cpu_core_percent,vcpu_current,
+                 ram_current_kib,ram_rss_kib,ram_available_kib,
+                 disk_read_bps,disk_write_bps
+            FROM vm_current_fast WHERE node=? AND vm_uuid=?
+        """, (node,vm_uuid)).fetchone()
+        if not current:
+            return None
+        if bridge or iface:
+            where=["node=?","vm_uuid=?"]
+            params=[node,vm_uuid]
+            if bridge:
+                where.append("bridge=?"); params.append(bridge)
+            if iface:
+                where.append("iface=?"); params.append(iface)
+            net=conn.execute(f"""
+              SELECT COUNT(*),MAX(last_seen),MAX(interval_seconds),
+                     SUM(rx_bytes),SUM(tx_bytes),SUM(rx_packets),SUM(tx_packets),
+                     SUM(rx_mbps),SUM(tx_mbps),SUM(rx_peak_mbps),SUM(tx_peak_mbps),
+                     SUM(rx_pps),SUM(tx_pps),SUM(rx_peak_pps),SUM(tx_peak_pps),
+                     SUM(sample_count),SUM(sample_expected),MAX(sample_max_gap),
+                     MAX(CASE UPPER(sample_quality) WHEN 'POOR' THEN 3 WHEN 'DEGRADED' THEN 2 WHEN 'GOOD' THEN 1 ELSE 0 END),
+                     SUM(seconds_over_rx_pps),SUM(seconds_over_tx_pps),SUM(drops),SUM(errors),
+                     MAX(iface),MAX(bridge)
+                FROM vm_iface_current WHERE {' AND '.join(where)}
+            """,params).fetchone()
+            if safe_int(net[0],0)<=0:
+                return None
+            quality=network_quality_from_rank(safe_int(net[18],0))
+            last_seen=safe_int(net[1],current[0]); interval=max(1,safe_int(net[2],current[1]))
+            rx_bytes=safe_int(net[3],0); tx_bytes=safe_int(net[4],0)
+            rx_packets=safe_int(net[5],0); tx_packets=safe_int(net[6],0)
+            values={
+                "rx_mbps":safe_float(net[7],0),"tx_mbps":safe_float(net[8],0),
+                "rx_mbps_peak":safe_float(net[9],0),"tx_mbps_peak":safe_float(net[10],0),
+                "rx_pps":safe_float(net[11],0),"tx_pps":safe_float(net[12],0),
+                "rx_pps_peak":safe_float(net[13],0),"tx_pps_peak":safe_float(net[14],0),
+                "sample_count":safe_int(net[15],0),"sample_expected":safe_int(net[16],0),
+                "sample_max_gap":safe_float(net[17],0),"sample_quality":quality,
+                "seconds_over_pps":max(safe_int(net[19],0),safe_int(net[20],0)),
+                "drops":safe_int(net[21],0),"errors":safe_int(net[22],0),
+                "iface":str(net[23] or iface or ""),"bridge":str(net[24] or bridge or ""),
+            }
+        else:
+            last_seen=safe_int(current[0],0); interval=max(1,safe_int(current[1],CACHE_BUCKET_SECONDS))
+            rx_bytes=safe_int(current[3],0); tx_bytes=safe_int(current[4],0)
+            rx_packets=int(round(safe_float(current[9],0)*interval)); tx_packets=int(round(safe_float(current[10],0)*interval))
+            values={
+                "rx_mbps":safe_float(current[5],0),"tx_mbps":safe_float(current[6],0),
+                "rx_mbps_peak":safe_float(current[7],0),"tx_mbps_peak":safe_float(current[8],0),
+                "rx_pps":safe_float(current[9],0),"tx_pps":safe_float(current[10],0),
+                "rx_pps_peak":safe_float(current[11],0),"tx_pps_peak":safe_float(current[12],0),
+                "sample_count":safe_int(current[13],0),"sample_expected":safe_int(current[14],0),
+                "sample_max_gap":safe_float(current[15],0),"sample_quality":str(current[16] or "LEGACY"),
+                "seconds_over_pps":max(safe_int(current[17],0),safe_int(current[18],0)),
+                "drops":safe_int(current[19],0),"errors":safe_int(current[20],0),
+                "iface":"","bridge":"",
+            }
+        result={
+            "selected_bucket":last_seen,"latest_bucket":last_seen,"last_push":last_seen,
+            "interval_seconds":interval,"rx_bytes":rx_bytes,"tx_bytes":tx_bytes,
+            "rx_packets":rx_packets,"tx_packets":tx_packets,
+            "rx_packet_size_avg":rx_bytes/float(rx_packets) if rx_packets else 0.0,
+            "tx_packet_size_avg":tx_bytes/float(tx_packets) if tx_packets else 0.0,
+            "cpu_percent":safe_float(current[21],0),"cpu_full_percent":safe_float(current[21],0),
+            "cpu_core_percent":safe_float(current[22],0),"vcpu_current":safe_int(current[23],0),
+            "ram_current_kib":safe_int(current[24],0),"ram_maximum_kib":safe_int(current[24],0),
+            "ram_rss_kib":safe_int(current[25],0),"ram_available_kib":safe_int(current[26],0),
+            "disk_read_bps":safe_float(current[27],0),"disk_write_bps":safe_float(current[28],0),
+            "sample_max_gap":values["sample_max_gap"],"sample_count":values["sample_count"],
+            "sample_expected":values["sample_expected"],"sample_quality":values["sample_quality"],
+            "seconds_over_pps":values["seconds_over_pps"],"seconds_over_mbps":0,
+            "drops":values["drops"],"errors":values["errors"],
+            "iface":values["iface"],"bridge":values["bridge"],
+            **{k:v for k,v in values.items() if k in {"rx_mbps","tx_mbps","rx_mbps_peak","tx_mbps_peak","rx_pps","tx_pps","rx_pps_peak","tx_pps_peak"}},
+        }
+        result["total_bytes"]=rx_bytes+tx_bytes; result["packets"]=rx_packets+tx_packets
+        return result
+    finally:
+        conn.close()
+
+
+def _v5054_vm_snapshot_overview(node, vm_uuid, period, bridge="", iface=""):
+    period=clean_period(period)
+    if _request_target_ts() is None and period=="5m":
+        live=_v5057_live_vm_snapshot(node,vm_uuid,bridge=bridge,iface=iface)
+        if live:
+            return live
+    result=_v5057_vm_snapshot_history_base(node,vm_uuid,period,bridge=bridge,iface=iface)
+    if result:
+        # History cpu_percent has stored normalized/full utilization since the
+        # v50 native ingest. Keep explicit semantics for renderers.
+        full=max(0.0,min(100.0,safe_float(result.get("cpu_percent"),0)))
+        vcpu=max(0,safe_int(result.get("vcpu_current"),0))
+        result["cpu_full_percent"]=full
+        result["cpu_core_percent"]=full*vcpu
+    return result
+
+
+def _v48129_vm_detail_cpu_stat(full_percent, vcpu):
+    full=max(0.0,min(100.0,safe_float(full_percent,0.0)))
+    vcpu_count=max(0,safe_int(vcpu,0))
+    core=full*vcpu_count
+    level=_v48129_level(full)
+    return f'''<div class="stat vm-detail-cpu-stat resource-{level}"><span class="vm-detail-stat-label">CPU</span><b>{full:.1f}% full</b><span class="resource-meter vm-detail-cpu-meter"><i style="width:{min(100.0,full):.1f}%"></i></span><small>{core:.1f}% core · {vcpu_count} vCPU</small></div>'''
+
+
+_v5057_vm_disks_history_base = _v48133_vm_disks
+
+
+def _v48133_vm_disks(node, vm_uuid):
+    period=clean_period(request.args.get("period","5m"))
+    if _request_target_ts() is None and period=="5m":
+        conn=db()
+        try:
+            rows=conn.execute("""
+              SELECT target,source,mount,storage_device,storage_block,storage_fstype,
+                     capacity_bytes,allocation_bytes,physical_bytes,
+                     read_bps,write_bps,read_iops,write_iops,last_seen
+                FROM vm_disk_current
+               WHERE node=? AND vm_uuid=? AND role='customer'
+               ORDER BY CASE target WHEN 'vda' THEN 0 WHEN 'vdb' THEN 1 ELSE 2 END,
+                        target COLLATE NOCASE,source COLLATE NOCASE
+            """,(node,vm_uuid)).fetchall()
+            if rows:
+                return rows
+        finally:
+            conn.close()
+    return _v5057_vm_disks_history_base(node,vm_uuid)
+
+
+def _v48135_vm_disk_total_overview(rows):
+    if not rows:
+        return ""
+    assigned=sum(max(0,safe_int(row[6],0)) for row in rows)
+    allocated=sum(max(0,safe_int(row[7],0)) for row in rows)
+    physical=sum(max(0,safe_int(row[8],0)) for row in rows)
+    pct=allocated*100.0/assigned if assigned>0 else 0.0
+    level=_v48133_disk_level(pct)
+    return f'''<div class="stat vm-disk-total-overview disk-level-{level}"><div class="vm-disk-stat-label">VM DISK ASSIGNED</div><b>{_disk_io_bytes(assigned)}</b><small>Host allocated {_disk_io_bytes(allocated)} · {pct:.1f}% · {len(rows)} disk{'s' if len(rows)!=1 else ''}</small><span class="vm-disk-overview-meter"><i style="width:{min(100.0,max(0.0,pct)):.1f}%"></i></span><small class="vm-disk-storage-line">Physical {_disk_io_bytes(physical)}</small></div>'''
+
+
+def _v48133_vm_disk_io_card(rows):
+    if not rows:
+        return ""
+    panels=[]; latest=0
+    for target,source,mount,device,block,fstype,assigned,allocated,physical,rb,wb,ri,wi,seen in rows:
+        assigned=max(0,safe_int(assigned,0)); allocated=max(0,safe_int(allocated,0)); physical=max(0,safe_int(physical,0))
+        pct=allocated*100.0/assigned if assigned>0 else 0.0; level=_v48133_disk_level(pct); latest=max(latest,safe_int(seen,0)); dev=device or (("/dev/"+block) if block else "-")
+        panels.append(f'''<article class="vm-disk-panel disk-level-{level}"><div class="vm-disk-panel-head"><div><span>VIRTUAL DISK</span><h4>{escape(target or '-')}</h4></div><div class="vm-disk-storage-badge"><b>{escape(mount or '-')}</b><small>{escape(dev)}</small></div></div><div class="vm-disk-panel-capacity"><div><span>ASSIGNED DISK SIZE</span><b>{_disk_io_bytes(assigned)}</b><small>Host allocated {_disk_io_bytes(allocated)} · {pct:.1f}%</small></div><span class="vm-disk-overview-meter"><i style="width:{min(100.0,max(0.0,pct)):.1f}%"></i></span></div><div class="vm-disk-panel-metrics"><div><span>READ</span><b>{_disk_io_rate(rb)}</b></div><div><span>WRITE</span><b>{_disk_io_rate(wb)}</b></div><div><span>READ IOPS</span><b>{_disk_io_iops(ri)}</b></div><div><span>WRITE IOPS</span><b>{_disk_io_iops(wi)}</b></div></div><div class="vm-disk-panel-meta"><div><span>SOURCE</span><code title="{escape(source or '-',quote=True)}">{escape(source or '-')}</code></div><div><span>FILESYSTEM</span><b>{escape(fstype or '-')}</b></div><div><span>PHYSICAL</span><b>{_disk_io_bytes(physical)}</b></div><div><span>LAST SAMPLE</span><b>{fmt_push(seen)}</b></div></div></article>''')
+    return f'''<div class="card vm-disk-detail-card vm-disk-panels-only" id="virtual-disk-io"><div class="table-title-row"><div><h3>Virtual Disk I/O</h3><div class="table-hint">Assigned disk size is the guest-visible capacity. Host allocated is shown separately. Live 5m reads vm_disk_current; historical periods read the exact retained storage snapshot.</div></div><div class="count-badges"><span>Disks <b>{len(rows)}</b></span><span>Seen <b>{fmt_push(latest)}</b></span></div></div><div class="vm-disk-detail-grid">{''.join(panels)}</div></div>'''
+
+
+# Historical VM RAM must use the same selected snapshot as CPU/network/disk.
+# Live 5m uses the current cache; all other periods use the exact retained
+# vm_perf_stats bucket selected for the page.
+def _v48103_latest_ram(node, vm_uuid):
+    period = clean_period(request.args.get("period", "5m"))
+    target = _request_target_ts()
+    conn = db()
+    try:
+        if target is None and period == "5m":
+            return conn.execute("""
+                SELECT ram_current_kib,ram_rss_kib,ram_available_kib,
+                       ram_unused_kib,ram_usable_kib,last_seen
+                  FROM vm_current_fast
+                 WHERE node=? AND vm_uuid=?
+            """, (node, vm_uuid)).fetchone()
+        selected_bucket, _latest_bucket = resolve_snapshot_bucket(conn, period, node=node)
+        if safe_int(selected_bucket, 0) <= 0:
+            return None
+        return conn.execute("""
+            SELECT ram_current_kib,ram_rss_kib,ram_available_kib,
+                   ram_unused_kib,ram_usable_kib,time
+              FROM vm_perf_stats
+             WHERE node=? AND vm_uuid=? AND bucket=?
+             ORDER BY time DESC
+             LIMIT 1
+        """, (node, vm_uuid, selected_bucket)).fetchone()
+    finally:
+        conn.close()
+
+
+# 50.5.7 live VM route guard. A stale bookmark or old-node link must not show
+# current cards from an obsolete node. Historical/custom-time views retain the
+# requested node so migration investigations remain possible.
+_v5057_vm_page_route_base = app.view_functions.get("vm_page")
+
+def vm_page_v5057():
+    node = (request.args.get("node") or "").strip()
+    vm_uuid = (request.args.get("vm_uuid") or "").strip()
+    period = clean_period(request.args.get("period", "5m"))
+    if node and vm_uuid and period == "5m" and _request_target_ts() is None:
+        current = get_vm_current_location(vm_uuid)
+        current_node = str((current or {}).get("node") or "").strip()
+        if current_node and current_node != node:
+            return redirect(url_for(
+                "vm_page", node=current_node, vm_uuid=vm_uuid,
+                bridge="", iface="", period="5m",
+            ))
+    return _v5057_vm_page_route_base()
+
+app.view_functions["vm_page"] = vm_page_v5057
+
+# 50.5.7 canonical live Node detail. The 5m page now reads the same bounded
+# current rows as Dashboard/Top VM. Historical/custom-time views keep the exact
+# retained snapshot path.
+_v5057_get_node_overview_history = get_node_overview
+_v5057_get_node_metric_overview_history = get_node_metric_overview
+_v5057_get_node_host_period_history = get_node_host_period
+_v5057_get_node_filesystems_snapshot_history = get_node_filesystems_snapshot
+
+
+def _v5057_node_live_request(period):
+    return _request_target_ts() is None and clean_period(period) == "5m"
+
+
+def get_node_overview(node, period, q="", vm_status="active"):
+    if not _v5057_node_live_request(period):
+        return _v5057_get_node_overview_history(
+            node, period, q=q, vm_status=vm_status
+        )
+    params = [
+        PUBLIC_BRIDGE, PUBLIC_BRIDGE, PUBLIC_BRIDGE,
+        PRIVATE_BRIDGE, PRIVATE_BRIDGE, PRIVATE_BRIDGE,
+        node, now_ts() - FAST_CURRENT_STALE_SECONDS,
+    ]
+    search_sql = ""
+    if q:
+        pattern = like_pattern(q)
+        search_sql = " AND (i.vm_uuid LIKE ? OR i.iface LIKE ? OR i.node LIKE ?)"
+        params.extend([pattern, pattern, pattern])
+    conn = db()
+    try:
+        row = conn.execute(f"""
+            SELECT
+                COUNT(DISTINCT i.vm_uuid),
+                COUNT(DISTINCT i.bridge || ':' || i.iface),
+                COALESCE(SUM(CASE WHEN i.bridge=? THEN i.rx_bytes ELSE 0 END),0),
+                COALESCE(SUM(CASE WHEN i.bridge=? THEN i.tx_bytes ELSE 0 END),0),
+                COALESCE(SUM(CASE WHEN i.bridge=? THEN i.rx_bytes+i.tx_bytes ELSE 0 END),0),
+                COALESCE(SUM(CASE WHEN i.bridge=? THEN i.rx_bytes ELSE 0 END),0),
+                COALESCE(SUM(CASE WHEN i.bridge=? THEN i.tx_bytes ELSE 0 END),0),
+                COALESCE(SUM(CASE WHEN i.bridge=? THEN i.rx_bytes+i.tx_bytes ELSE 0 END),0),
+                COALESCE(SUM(i.rx_bytes),0),
+                COALESCE(SUM(i.tx_bytes),0),
+                COALESCE(SUM(i.rx_bytes+i.tx_bytes),0),
+                COALESCE(SUM(i.rx_packets+i.tx_packets),0),
+                COALESCE(SUM(i.drops),0),
+                COALESCE(SUM(i.errors),0),
+                COALESCE(MAX(i.last_seen),0),
+                COALESCE(MAX(i.interval_seconds),?)
+            FROM vm_iface_current i
+            LEFT JOIN vm_inventory vi
+              ON vi.node=i.node AND vi.vm_uuid=i.vm_uuid
+            WHERE i.node=? AND i.last_seen>=?
+              AND COALESCE(vi.status,'active')!='hidden'
+              {search_sql}
+        """, params[:6] + [CACHE_BUCKET_SECONDS] + params[6:]).fetchone()
+        return row or (
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, CACHE_BUCKET_SECONDS,
+        )
+    finally:
+        conn.close()
+
+
+def get_node_metric_overview(node, period, q="", vm_status="active"):
+    if not _v5057_node_live_request(period):
+        return _v5057_get_node_metric_overview_history(
+            node, period, q=q, vm_status=vm_status
+        )
+    params = [node, now_ts() - FAST_CURRENT_STALE_SECONDS]
+    search_sql = ""
+    if q:
+        pattern = like_pattern(q)
+        search_sql = " AND (c.vm_uuid LIKE ? OR c.node LIKE ?)"
+        params.extend([pattern, pattern])
+    conn = db()
+    try:
+        row = conn.execute(f"""
+            SELECT
+                COUNT(DISTINCT c.vm_uuid),
+                COALESCE(SUM(c.total_pps),0),
+                COALESCE(SUM(c.drops),0),
+                COALESCE(SUM(c.errors),0),
+                COALESCE(SUM(c.cpu_core_percent),0),
+                COALESCE(MAX(c.cpu_core_percent),0),
+                COALESCE(SUM(CASE
+                    WHEN c.ram_available_kib>0
+                     AND (c.ram_usable_kib>0 OR c.ram_unused_kib>0)
+                     AND c.ram_usable_kib<=c.ram_available_kib*1.05
+                    THEN GREATEST(c.ram_available_kib-c.ram_usable_kib,0)
+                    ELSE 0 END),0),
+                COALESCE(SUM(CASE
+                    WHEN c.ram_available_kib>0
+                     AND (c.ram_usable_kib>0 OR c.ram_unused_kib>0)
+                     AND c.ram_usable_kib<=c.ram_available_kib*1.05
+                    THEN c.ram_available_kib ELSE 0 END),0),
+                COALESCE(SUM(c.ram_rss_kib),0),
+                COALESCE(SUM(c.ram_current_kib),0),
+                COALESCE(SUM(CASE
+                    WHEN c.ram_available_kib>0
+                     AND (c.ram_usable_kib>0 OR c.ram_unused_kib>0)
+                     AND c.ram_usable_kib<=c.ram_available_kib*1.05
+                    THEN 1 ELSE 0 END),0),
+                COALESCE(SUM(c.disk_read_bps),0),
+                COALESCE(SUM(c.disk_write_bps),0),
+                COALESCE(MAX(c.last_seen),0)
+            FROM vm_current_fast c
+            LEFT JOIN vm_inventory vi
+              ON vi.node=c.node AND vi.vm_uuid=c.vm_uuid
+            WHERE c.node=? AND c.last_seen>=?
+              AND COALESCE(vi.status,'active')!='hidden'
+              {search_sql}
+        """, params).fetchone()
+        return row or (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+    finally:
+        conn.close()
+
+
+def get_node_host_period(node, period):
+    if not _v5057_node_live_request(period):
+        return _v5057_get_node_host_period_history(node, period)
+    conn = db()
+    try:
+        row = conn.execute("""
+            SELECT last_seen,interval_seconds,load1,load5,load15,
+                   cpu_count,cpu_percent,mem_total,mem_available,mem_used,
+                   swap_total,swap_used,disk_read_bps,disk_write_bps,
+                   disk_read_delta,disk_write_delta,uptime_seconds,
+                   alert_level,alert_flags,1
+              FROM node_host_latest
+             WHERE node=?
+        """, (node,)).fetchone()
+        return row
+    finally:
+        conn.close()
+
+
+def get_node_filesystems_snapshot(node, period):
+    if not _v5057_node_live_request(period):
+        return _v5057_get_node_filesystems_snapshot_history(node, period)
+    conn = db()
+    try:
+        rows = conn.execute("""
+            SELECT mount,device,fstype,size,used,avail,use_percent,last_seen,
+                   read_bps,write_bps,read_iops,write_iops,util_percent,last_seen
+              FROM node_storage_current
+             WHERE node=?
+             ORDER BY use_percent DESC,mount COLLATE NOCASE
+        """, (node,)).fetchall()
+        if not rows:
+            rows = conn.execute("""
+                SELECT mount,device,fstype,size,used,avail,use_percent,last_seen,
+                       0,0,0,0,0,last_seen
+                  FROM node_filesystem_latest
+                 WHERE node=?
+                 ORDER BY use_percent DESC,mount COLLATE NOCASE
+            """, (node,)).fetchall()
+        return _v48135_real_filesystem_rows(rows)
+    finally:
+        conn.close()

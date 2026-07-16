@@ -1,0 +1,19 @@
+[Unit]
+Description=VirtInfra Monitor maintenance FIFO dispatcher
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+ConditionPathExists=/opt/bw-monitor/maintenance_dispatch.py
+ConditionPathExists=/opt/bw-monitor/maintenance_queue.py
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/bw-monitor
+EnvironmentFile=/etc/default/bw-monitor
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/bw-monitor/venv/bin/python3 /opt/bw-monitor/maintenance_dispatch.py
+TimeoutStartSec=120
+Nice=10
+StandardOutput=journal
+StandardError=journal

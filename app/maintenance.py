@@ -21,13 +21,19 @@ import json
 import os
 import shutil
 import signal
+import threading
+import hashlib
+import hmac
 from pathlib import Path
 import bw_pg as dbapi
 import maintenance_native
+import maintenance_queue
 import subprocess
 import sys
 import time
 import traceback
+import urllib.error
+import urllib.request
 from typing import Any
 
 SCRIPT_PATH = Path(__file__).resolve()
@@ -132,23 +138,65 @@ def read_job(db_path: str, job_id: int) -> tuple[str, dict[str, Any], str]:
         conn.close()
 
 
-def update_job(db_path: str, job_id: int, status: str, message: str, *, started: bool = False, finished: bool = False) -> None:
+def update_job(
+    db_path: str,
+    job_id: int,
+    status: str,
+    message: str,
+    *,
+    started: bool = False,
+    finished: bool = False,
+    heartbeat: bool = False,
+    progress: int | None = None,
+    expected_status: str | None = None,
+) -> bool:
     fields = ["status=?", "message=?"]
     values: list[Any] = [status, message[:4000]]
+    now = now_ts()
     if started:
         fields.append("started_at=COALESCE(started_at, ?)")
-        values.append(now_ts())
+        values.append(now)
     if finished:
         fields.append("finished_at=?")
-        values.append(now_ts())
+        values.append(now)
+    if heartbeat or status in {"starting", "running"}:
+        fields.append("heartbeat_at=?")
+        values.append(now)
+    if progress is not None:
+        fields.append("progress=?")
+        values.append(max(0, min(100, int(progress))))
+    sql = f"UPDATE maintenance_jobs SET {', '.join(fields)} WHERE id=?"
     values.append(job_id)
+    if expected_status:
+        sql += " AND status=?"
+        values.append(expected_status)
 
     conn = job_conn(db_path)
     try:
-        conn.execute(f"UPDATE maintenance_jobs SET {', '.join(fields)} WHERE id=?", values)
+        cur = conn.execute(sql, values)
         conn.commit()
+        return int(cur.rowcount or 0) == 1
     finally:
         conn.close()
+
+
+def heartbeat_job(db_path: str, job_id: int, stop_event: threading.Event) -> None:
+    while not stop_event.wait(30):
+        try:
+            conn = job_conn(db_path)
+            try:
+                conn.execute(
+                    "UPDATE maintenance_jobs SET heartbeat_at=? "
+                    "WHERE id=? AND status='running'",
+                    (now_ts(), job_id),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        except BaseException:
+            # The watchdog also checks the systemd unit. A temporary heartbeat
+            # write failure must not abort a healthy VACUUM or reset.
+            pass
 
 
 def run_command(args: list[str], timeout: int = 300, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -189,6 +237,34 @@ def detect_app_service() -> str:
 def service_is_active(service: str) -> bool:
     proc = run_command(["systemctl", "is-active", "--quiet", service], timeout=30, check=False)
     return proc.returncode == 0
+
+
+def verify_monitor_health(attempts: int = 30) -> dict[str, Any]:
+    port = max(1, min(65535, int(os.environ.get("BW_PUBLIC_PORT", "8080"))))
+    urls = [f"http://127.0.0.1:{port}/livez", f"http://127.0.0.1:{port}/healthz"]
+    errors: list[str] = []
+    for attempt in range(1, max(1, attempts) + 1):
+        current: list[str] = []
+        ok = True
+        for url in urls:
+            try:
+                with urllib.request.urlopen(url, timeout=5) as response:
+                    code = int(getattr(response, "status", 0) or 0)
+                    body = response.read(4096).decode("utf-8", errors="replace")
+                if code < 200 or code >= 300:
+                    ok = False
+                    current.append(f"{url}: HTTP {code}")
+                elif not body.strip():
+                    ok = False
+                    current.append(f"{url}: empty response")
+            except (OSError, urllib.error.URLError, TimeoutError) as exc:
+                ok = False
+                current.append(f"{url}: {exc}")
+        if ok:
+            return {"ok": True, "attempt": attempt, "urls": urls}
+        errors = current
+        time.sleep(min(1.0, 0.2 + attempt * 0.05))
+    raise RuntimeError("Monitor health check failed: " + "; ".join(errors[:4]))
 
 
 def _write_offline_marker(service: str) -> None:
@@ -467,9 +543,99 @@ def _start_service_reliably(service: str, attempts: int = 3) -> None:
 
 
 
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _verify_backup_manifest(backup_dir: Path, sums_file: Path) -> dict[str, str]:
+    verified: dict[str, str] = {}
+    for raw in sums_file.read_text(encoding="utf-8", errors="strict").splitlines():
+        raw = raw.strip()
+        if not raw:
+            continue
+        parts = raw.split(None, 1)
+        if len(parts) != 2 or len(parts[0]) != 64:
+            raise RuntimeError(f"Invalid SHA256SUMS line: {raw[:120]}")
+        expected = parts[0].lower()
+        relative = parts[1].lstrip("* ")
+        target = (backup_dir / relative).resolve()
+        try:
+            target.relative_to(backup_dir.resolve())
+        except ValueError as exc:
+            raise RuntimeError(f"Unsafe backup manifest path: {relative}") from exc
+        if not target.is_file():
+            raise RuntimeError(f"Backup manifest file is missing: {target}")
+        actual = _sha256_file(target)
+        if not hmac.compare_digest(actual, expected):
+            raise RuntimeError(f"Backup checksum mismatch: {relative}")
+        verified[relative] = actual
+    if "database.dump" not in verified or "database.list" not in verified:
+        raise RuntimeError("Backup manifest does not cover database.dump and database.list")
+    return verified
+
+
+def create_verified_pre_nuclear_backup() -> dict[str, Any]:
+    backup_script = Path(os.environ.get("BW_MONITOR_BACKUP_SCRIPT", "/opt/bw-monitor/backup.sh"))
+    if not backup_script.is_file():
+        raise RuntimeError(f"Backup script is missing: {backup_script}")
+    root = Path(os.environ.get("BW_BACKUP_ROOT", "/var/backups/bw-monitor"))
+    root.mkdir(parents=True, exist_ok=True)
+    free = shutil.disk_usage(root).free
+    minimum = max(512 * 1024 * 1024, int(os.environ.get("BW_NUCLEAR_MIN_FREE_BYTES", str(1024 * 1024 * 1024))))
+    if free < minimum:
+        raise RuntimeError(f"Not enough free space for verified pre-reset backup: {free} < {minimum}")
+    proc = run_command([str(backup_script)], timeout=12 * 3600, check=True)
+    lines = [line.strip() for line in (proc.stdout or "").splitlines() if line.strip()]
+    if not lines:
+        raise RuntimeError("Backup script did not return a backup directory")
+    backup_dir = Path(lines[-1])
+    dump_file = backup_dir / "database.dump"
+    list_file = backup_dir / "database.list"
+    sums_file = backup_dir / "SHA256SUMS"
+    if not dump_file.is_file() or dump_file.stat().st_size <= 0:
+        raise RuntimeError(f"Verified backup dump is missing or empty: {dump_file}")
+    if not list_file.is_file() or list_file.stat().st_size <= 0 or not sums_file.is_file():
+        raise RuntimeError(f"Backup verification files are incomplete in {backup_dir}")
+    verified = _verify_backup_manifest(backup_dir, sums_file)
+    if len(list_file.read_text(encoding="utf-8", errors="replace").splitlines()) < 2:
+        raise RuntimeError(f"pg_restore catalog is unexpectedly empty: {list_file}")
+    return {
+        "path": str(backup_dir),
+        "dump": str(dump_file),
+        "dump_bytes": dump_file.stat().st_size,
+        "sha256": verified["database.dump"],
+        "manifest_files_verified": len(verified),
+        "free_bytes_before": free,
+    }
+
+
+def write_nuclear_audit(db_path: str, job_id: int, actor: str, backup: dict[str, Any], result: dict[str, Any]) -> None:
+    release = "unknown"
+    try:
+        release = Path("/opt/bw-monitor/DEPLOY_VERSION").read_text(encoding="utf-8").strip() or "unknown"
+    except OSError:
+        pass
+    conn = job_conn(db_path)
+    try:
+        conn.execute(
+            """INSERT INTO maintenance_nuclear_audit(
+                   job_id,requested_by,created_at,backup_path,backup_sha256,release_version,result_json
+               ) VALUES(?,?,?,?,?,?,?)""",
+            (job_id, actor or "admin", now_ts(), str(backup.get("path") or ""),
+             str(backup.get("sha256") or ""), release, compact_json(result)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def execute_action(module, action: str, params: dict[str, Any], *, db_path: str) -> dict[str, Any]:
     # Compatibility for jobs queued immediately before an in-place upgrade.
-    # New 50.5.6 submissions cannot create these actions.
+    # New 50.5.7 submissions cannot create these actions.
     if action == "checkpoint":
         return {
             "action": action,
@@ -482,7 +648,7 @@ def execute_action(module, action: str, params: dict[str, Any], *, db_path: str)
             "action": action,
             "legacy": True,
             "skipped": True,
-            "note": "CLEAR LIVE 5M was removed in 50.5.6; no current cache was deleted.",
+            "note": "CLEAR LIVE 5M was removed before 50.5.7; no current cache was deleted.",
         }
 
     if action == "retention":
@@ -554,6 +720,16 @@ def execute_action(module, action: str, params: dict[str, Any], *, db_path: str)
         result["vacuum_skipped"] = "TRUNCATE already releases the API relations"
         return result
 
+    # Nuclear backup is created while the Monitor is still online. Only the
+    # short allow-listed TRUNCATE phase intentionally stops ingestion.
+    current_job_id = int(params.get("_job_id", 0) or 0)
+    if action == "reset_app_data":
+        if current_job_id <= 0:
+            raise RuntimeError("reset_app_data is missing the current maintenance job id")
+        update_job(db_path, current_job_id, "running", "Creating and verifying mandatory pre-nuclear backup", heartbeat=True, progress=10)
+        result["backup"] = create_verified_pre_nuclear_backup()
+        update_job(db_path, current_job_id, "running", "Backup verified. Preparing short operational reset", heartbeat=True, progress=50)
+
     # Destructive monitoring/application resets intentionally stop ingestion,
     # take one global maintenance lock, TRUNCATE the complete allow-list in one
     # short transaction, and reliably start the service again.
@@ -565,11 +741,9 @@ def execute_action(module, action: str, params: dict[str, Any], *, db_path: str)
         if action == "clear_monitoring_data":
             result["clear"] = maintenance_native.clear_monitoring_data()
         elif action == "reset_app_data":
-            current_job_id = int(params.get("_job_id", 0) or 0)
-            if current_job_id <= 0:
-                raise RuntimeError("reset_app_data is missing the current maintenance job id")
-            result["queue"] = cancel_and_clear_other_maintenance_jobs(db_path, current_job_id)
+            update_job(db_path, current_job_id, "running", "Verified backup complete. Resetting operational application data", heartbeat=True, progress=70)
             result["reset"] = maintenance_native.reset_app_data()
+            result["queue_preserved"] = True
         else:  # pragma: no cover - guarded above
             raise RuntimeError(f"Unsupported destructive action: {action}")
     except BaseException as exc:
@@ -579,19 +753,43 @@ def execute_action(module, action: str, params: dict[str, Any], *, db_path: str)
             try:
                 _start_service_reliably(app_service)
                 result["service_restarted"] = True
+                result["health_check"] = verify_monitor_health()
             except BaseException as restart_exc:
                 result["service_restarted"] = False
                 result["restart_error"] = str(restart_exc)
                 if action_error is None:
                     action_error = restart_exc
 
-    if action_error is not None:
-        raise action_error
-
     # TRUNCATE already releases relation storage. An automatic post-reset
     # VACUUM adds downtime and work without benefit, so compact is ignored.
     result["compact_requested"] = bool(params.get("compact", False))
     result["compact_skipped"] = True
+
+    # The audit table is outside the reset allow-list. Once the mandatory
+    # backup has succeeded, record the outcome even when TRUNCATE, restart or
+    # the post-restart health check fails. This prevents a destructive reset
+    # from erasing its own trail.
+    if action == "reset_app_data" and result.get("backup"):
+        result["completed"] = action_error is None
+        if action_error is not None:
+            result["error"] = f"{type(action_error).__name__}: {action_error}"
+        try:
+            write_nuclear_audit(
+                db_path,
+                current_job_id,
+                str(params.get("requested_by") or params.get("actor") or "admin"),
+                dict(result.get("backup") or {}),
+                result,
+            )
+            result["nuclear_audit_written"] = True
+        except BaseException as audit_exc:
+            result["nuclear_audit_written"] = False
+            result["nuclear_audit_error"] = f"{type(audit_exc).__name__}: {audit_exc}"
+            if action_error is None:
+                action_error = audit_exc
+
+    if action_error is not None:
+        raise action_error
     return result
 
 class MaintenanceInterrupted(RuntimeError):
@@ -626,7 +824,7 @@ def acquire_lock():
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="VirtInfra Monitor single-worker maintenance runner")
+    parser = argparse.ArgumentParser(description="VirtInfra Monitor FIFO maintenance runner")
     parser.add_argument("job_id", type=int, help="maintenance_jobs.id")
     args = parser.parse_args()
 
@@ -635,13 +833,17 @@ def main() -> int:
     app_file = None
     db_path = os.environ.get("BW_MONITOR_DB", "/var/lib/bw-monitor/postgresql")
     lock_handle = None
+    heartbeat_stop = threading.Event()
+    heartbeat_thread = None
     job_id = args.job_id
+    action = ""
+    params: dict[str, Any] = {}
     try:
         lock_handle = acquire_lock()
         action, params, current_status = read_job(db_path, job_id)
         params = dict(params)
         params["_job_id"] = job_id
-        if current_status not in {"queued", "running"}:
+        if current_status not in {"starting", "queued"}:
             raise RuntimeError(f"Maintenance job #{job_id} is already {current_status}")
 
         application_actions = {
@@ -655,34 +857,41 @@ def main() -> int:
         else:
             backend = "maintenance_native.py"
 
-        update_job(
-            db_path,
-            job_id,
-            "running",
+        claimed = update_job(
+            db_path, job_id, "running",
             f"Running {action} with {backend} under the exclusive worker lock",
-            started=True,
+            started=True, heartbeat=True, progress=1, expected_status=current_status,
         )
+        if not claimed:
+            raise RuntimeError(f"Maintenance job #{job_id} could not be claimed atomically")
+        heartbeat_thread = threading.Thread(
+            target=heartbeat_job, args=(db_path, job_id, heartbeat_stop), daemon=True
+        )
+        heartbeat_thread.start()
+
         result = execute_action(module, action, params, db_path=db_path)
-        update_job(db_path, job_id, "ok", compact_json(result), finished=True)
-        if action == "reset_app_data":
-            delete_current_reset_job(db_path, job_id)
+        update_job(db_path, job_id, "ok", compact_json(result), finished=True, progress=100)
         print(compact_json(result), flush=True)
         return 0
     except BaseException as exc:
         message = f"{type(exc).__name__}: {exc}"
         if db_path:
             try:
-                update_job(db_path, job_id, "error", message, finished=True)
+                update_job(db_path, job_id, "error", message, finished=True, progress=100)
             except BaseException:
                 pass
         traceback.print_exc()
         return 1
     finally:
+        heartbeat_stop.set()
+        if heartbeat_thread is not None:
+            heartbeat_thread.join(timeout=2)
         if lock_handle is not None:
             try:
                 fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
             finally:
                 lock_handle.close()
+        maintenance_queue.wake_dispatcher()
 
 
 if __name__ == "__main__":

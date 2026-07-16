@@ -8,7 +8,7 @@ for f in "$ROOT/install.sh" "$ROOT/update.sh" "$I" "$ROOT/deploy/postgres/bw-mon
   bash -n "$f"
 done
 
-grep -q 'RELEASE="50.5.6-prod-r1-postgres-native-maintenance"' "$I" || fail "release marker missing"
+grep -q 'RELEASE="50.5.7-prod-r1-safe-queue-canonical-vm"' "$I" || fail "release marker missing"
 CANONICAL='tuanchu1121/virtinfra-monitor'
 [[ "$(cat "$ROOT/CANONICAL_REPOSITORY")" == "$CANONICAL" ]] || fail "canonical repository contract is wrong"
 for repo_file in \
@@ -46,6 +46,11 @@ grep -q 'Agent cadence:  local 15-second samples, one push every 300 seconds' "$
 grep -q 'Chart history:  exact 5-minute VM/node points for 7 days' "$I" || fail "exact chart retention output missing"
 grep -q 'Raw detail:     per-interface V2 rows for 48 hours' "$I" || fail "raw-detail retention output missing"
 grep -q '004_storage_v2.sql' "$I" || fail "storage V2 migration is not installed"
+grep -q '007_safe_maintenance_queue.sql' "$I" || fail "safe maintenance queue migration is not installed"
+grep -q 'maintenance_queue.py' "$I" || fail "maintenance queue module is not installed"
+grep -q 'maintenance_dispatch.py' "$I" || fail "maintenance dispatcher is not installed"
+grep -q 'bw-monitor-maintenance-watchdog.timer' "$I" || fail "maintenance watchdog timer is not installed"
+[[ -f "$ROOT/fix-agent-uuid.sh" && -f "$ROOT/deploy/agent/fix-agent-uuid.sh" ]] || fail "Agent UUID repair command is missing"
 grep -q "VIRTINFRA_READ_CHART_V2='0'" "$I" || fail "chart V2 flag missing"
 grep -q 'pg_dump' "$ROOT/deploy/postgres/backup.sh" || fail "pg_dump backup missing"
 grep -q 'pg_restore' "$ROOT/deploy/postgres/restore.sh" || fail "pg_restore restore missing"

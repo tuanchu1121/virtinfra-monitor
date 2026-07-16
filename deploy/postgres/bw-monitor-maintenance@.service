@@ -4,6 +4,7 @@ After=network-online.target docker.service bw-monitor.service
 Wants=network-online.target docker.service
 ConditionPathExists=/opt/bw-monitor/maintenance.py
 ConditionPathExists=/opt/bw-monitor/maintenance_native.py
+ConditionPathExists=/opt/bw-monitor/maintenance_queue.py
 
 [Service]
 Type=oneshot
@@ -15,7 +16,7 @@ Environment=PYTHONUNBUFFERED=1
 Environment=BW_MONITOR_APP_FILE=/opt/bw-monitor/app.py
 Environment=BW_MONITOR_APP_SERVICE=bw-monitor.service
 ExecStart=/opt/bw-monitor/venv/bin/python3 /opt/bw-monitor/maintenance.py %i
-ExecStopPost=/bin/bash -lc 'marker=/run/bw-monitor-maintenance-web-offline; if [ -s "$marker" ]; then state=$(systemctl is-system-running 2>/dev/null || true); svc=$(head -n1 "$marker" | tr -cd "A-Za-z0-9@_.:-"); case "$state" in stopping|offline) ;; *) [ -n "$svc" ] && systemctl reset-failed "$svc" >/dev/null 2>&1 || true; [ -n "$svc" ] && systemctl start "$svc" >/dev/null 2>&1 || true ;; esac; rm -f "$marker"; fi'
+ExecStopPost=/bin/bash -lc 'marker=/run/bw-monitor-maintenance-web-offline; if [ -s "$marker" ]; then state=$(systemctl is-system-running 2>/dev/null || true); svc=$(head -n1 "$marker" | tr -cd "A-Za-z0-9@_.:-"); case "$state" in stopping|offline) ;; *) [ -n "$svc" ] && systemctl reset-failed "$svc" >/dev/null 2>&1 || true; [ -n "$svc" ] && systemctl start "$svc" >/dev/null 2>&1 || true ;; esac; rm -f "$marker"; fi; systemctl --no-block start bw-monitor-maintenance-dispatch.service >/dev/null 2>&1 || true'
 TimeoutStartSec=12h
 TimeoutStopSec=60
 KillSignal=SIGTERM

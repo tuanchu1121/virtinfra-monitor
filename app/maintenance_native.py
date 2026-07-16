@@ -64,9 +64,9 @@ MONITORING_TABLES: tuple[str, ...] = (
     "retention_runs",
 )
 
-# A nuclear operational reset preserves only dashboard users, Admin settings,
-# schema metadata and the currently executing maintenance job until the worker
-# reports success.  maintenance_jobs is cleared separately by the worker.
+# A nuclear operational reset preserves dashboard users, Admin settings,
+# schema metadata, the durable maintenance queue and permanent nuclear audit.
+# Destructive tables are an explicit allow-list and never include those records.
 RESET_APP_TABLES: tuple[str, ...] = tuple(dict.fromkeys(MONITORING_TABLES + (
     "abuse_policy_versions",
     "account_logs",
@@ -212,8 +212,41 @@ def truncate_tables(
     }
 
 
+def set_reset_acceptance_epochs(epoch: int | None = None) -> dict[str, int]:
+    epoch = max(0, int(epoch or time.time()))
+    values = {
+        "operational_push_accept_after": epoch,
+        "bandwidth_consumption_accept_after": epoch,
+    }
+    conn = dedicated_connection(
+        application_name="virtinfra-maintenance:reset-epochs",
+        statement_timeout_ms=30_000,
+        lock_timeout_ms=15_000,
+    )
+    try:
+        with conn.cursor() as cur:
+            for key, value in values.items():
+                cur.execute(
+                    """
+                    INSERT INTO public.admin_settings(key,value,updated_at)
+                    VALUES (%s,%s,%s)
+                    ON CONFLICT(key) DO UPDATE SET
+                        value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+                    """,
+                    (key, str(value), epoch),
+                )
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return values
+
+
 def clear_monitoring_data() -> dict[str, Any]:
     result = truncate_tables(MONITORING_TABLES, action="clear_monitoring_data")
+    result["acceptance_epochs"] = set_reset_acceptance_epochs()
     result["preserved"] = [
         "dashboard_users",
         "admin_settings",
@@ -229,10 +262,12 @@ def clear_monitoring_data() -> dict[str, Any]:
 
 def reset_app_data() -> dict[str, Any]:
     result = truncate_tables(RESET_APP_TABLES, action="reset_app_data")
+    result["acceptance_epochs"] = set_reset_acceptance_epochs()
     result["preserved"] = [
         "dashboard_users",
         "admin_settings",
-        "maintenance_jobs (current worker only until success)",
+        "maintenance_jobs",
+        "maintenance_nuclear_audit",
         "bw_meta",
     ]
     return result
@@ -318,3 +353,43 @@ def database_status() -> dict[str, Any]:
         "table_count": int(table_count or 0),
         "checked_at": int(time.time()),
     }
+
+
+def preview_tables(tables: Iterable[str]) -> dict[str, Any]:
+    """Return a read-only estimate for a destructive maintenance preview."""
+    requested = tuple(dict.fromkeys(str(name) for name in tables if str(name)))
+    conn = dedicated_connection(
+        application_name="virtinfra-maintenance:preview",
+        statement_timeout_ms=30_000,
+        lock_timeout_ms=5_000,
+    )
+    try:
+        with conn.cursor() as cur:
+            existing = _existing_public_tables(cur)
+            selected = tuple(name for name in requested if name in existing)
+            stats = _table_stats(cur, selected)
+            cur.execute("SELECT pg_database_size(current_database())")
+            database_bytes = int(cur.fetchone()[0] or 0)
+        conn.commit()
+    finally:
+        conn.close()
+    return {
+        "tables": stats,
+        "table_count": len(selected),
+        "estimated_rows": sum(item["estimated_rows"] for item in stats.values()),
+        "estimated_bytes": sum(item["bytes_before"] for item in stats.values()),
+        "database_bytes": database_bytes,
+        "missing": [name for name in requested if name not in selected],
+    }
+
+
+def preview_reset_app_data() -> dict[str, Any]:
+    result = preview_tables(RESET_APP_TABLES)
+    result["preserved"] = [
+        "dashboard_users",
+        "admin_settings",
+        "maintenance_jobs",
+        "maintenance_nuclear_audit",
+        "bw_meta",
+    ]
+    return result

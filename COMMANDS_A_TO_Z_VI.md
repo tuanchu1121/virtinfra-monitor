@@ -1,8 +1,8 @@
 # VirtInfra Monitor - Toàn bộ command triển khai và bảo trì từ A đến Z
 
-> Release: `50.5.6-prod-r1-postgres-native-maintenance`
+> Release: `50.5.7-prod-r1-safe-queue-canonical-vm`
 
-> Release: `50.5.6-prod-r1-postgres-native-maintenance`
+> Release: `50.5.7-prod-r1-safe-queue-canonical-vm`
 >
 > Chạy command Monitor bằng `root`. Với node KVM, chạy Agent bằng `root` để Agent đọc được libvirt, interface, disk và host metrics.
 
@@ -107,7 +107,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Kết quả mong đợi:
 
 ```text
-50.5.6-prod-r1-postgres-native-maintenance
+50.5.7-prod-r1-safe-queue-canonical-vm
 ```
 
 ## 2.2 Update chuẩn, có backup trước
@@ -1207,7 +1207,7 @@ Consumption
 → Clear history
 ```
 
-`Reset ALL app data + queue` cũng xóa dữ liệu Consumption và đặt acceptance epoch để retry cũ từ Agent không làm dữ liệu sống lại.
+`Nuclear operational reset` cũng xóa dữ liệu Consumption và đặt cả `operational_push_accept_after` lẫn `bandwidth_consumption_accept_after`, nên payload retry cũ của Agent được xác nhận nhưng không thể làm dữ liệu đã xóa sống lại.
 
 ---
 

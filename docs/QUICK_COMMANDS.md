@@ -34,3 +34,18 @@ bash ansible/deploy-agent.sh \
 --forks 20 \
 --serial 10
 ```
+
+Maintenance queue:
+
+```bash
+systemctl status bw-monitor-maintenance-watchdog.timer --no-pager
+systemctl start bw-monitor-maintenance-dispatch.service
+journalctl -u bw-monitor-maintenance-dispatch.service -n 200 --no-pager
+```
+
+Agent identity/state repair:
+
+```bash
+bash ./fix-agent-uuid.sh --node NEW-NODE-NAME
+bash ./fix-agent-uuid.sh --purge-vm OLD-VM-UUID
+```

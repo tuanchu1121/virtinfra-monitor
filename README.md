@@ -1,9 +1,9 @@
 # VirtInfra Monitor v50 PostgreSQL Native
 
-**Release:** `50.5.6-prod-r1-postgres-native-maintenance`
+**Release:** `50.5.7-prod-r1-safe-queue-canonical-vm`
 Production monitoring for KVM/libvirt nodes and virtual machines. PostgreSQL 17 + TimescaleDB is the only runtime data plane. This repository keeps the complete v48/v49 dashboard, Abuse Engine, storage views, Admin tools, REST API and Agent protocol, while replacing the runtime data store with one PostgreSQL 17 + TimescaleDB database.
 
-> Release: `50.5.6-prod-r1-postgres-native-maintenance`
+> Release: `50.5.7-prod-r1-safe-queue-canonical-vm`
 
 > **Operations source of truth:** [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md)
 >
@@ -64,16 +64,29 @@ The Agent behavior is unchanged:
 - Dark/light UI and existing route compatibility
 - Agent deployment through one-command installer or Ansible
 - Consumption after Storage I/O: separate Physical Public, Physical Private, aggregate VM Public and aggregate VM Private RX/TX, node search/filter/sort, coverage and 7-day retention
+- Live Node/VM detail reads the same bounded current rows as Dashboard and Top VM; stale live UUID links redirect to the freshest Node while historical links remain investigable
 
 
 ## PostgreSQL-native Maintenance
 
-- one active maintenance job across all Gunicorn workers;
+- FIFO queue for routine jobs with one atomic `starting/running` worker;
+- 30-second heartbeat, one-minute watchdog, stale-unit recovery, queued-job cancellation and automatic next-job dispatch;
 - routine retention, history deletion and `VACUUM (ANALYZE)` stay online;
 - full monitoring/app resets briefly stop ingestion and use atomic `TRUNCATE`, not millions of row-level DELETEs;
+- nuclear reset requires Admin re-authentication, a read-only preview, a server-enforced 15-second review delay, an expiring phrase, an empty queue and a verified PostgreSQL backup;
+- nuclear success/failure audit and Maintenance history are preserved after reset; old Agent retry payloads are blocked by preserved reset epochs;
 - targeted purge shares the same per-node advisory lock as `/push`;
-- `CLEAR LIVE 5M` and the misleading Checkpoint control are removed from the main Maintenance page;
+- `CLEAR LIVE 5M` and the misleading Checkpoint control remain retired;
 - exact action semantics and preserved data are documented in [`docs/MANAGEMENT.md`](docs/MANAGEMENT.md).
+
+Old Agent tokens can be accepted during migration without reinstalling nodes:
+
+```bash
+# /etc/default/bw-monitor
+BW_MONITOR_LEGACY_TOKENS='old-token-1,old-token-2'
+```
+
+Both Agent endpoints validate the primary `BW_MONITOR_TOKEN` plus this optional legacy set.
 
 ## Storage V2 operations
 

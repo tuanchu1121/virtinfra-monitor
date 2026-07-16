@@ -1,3 +1,18 @@
+## 50.5.7-prod-r1-safe-queue-canonical-vm
+
+- Replaced the one-row Maintenance gate with a PostgreSQL FIFO queue. Multiple routine jobs can wait; one dispatcher atomically claims one `starting/running` worker with `FOR UPDATE SKIP LOCKED`.
+- Added 30-second worker heartbeats, a one-minute systemd watchdog, stale-unit recovery, queued-job cancellation and automatic dispatch of the next job.
+- Automatically cancels retired `clear_live_cache` and `checkpoint` rows so old jobs cannot block Maintenance or retention after upgrade.
+- Rebuilt the nuclear operational reset as a two-step flow: Admin password, read-only preview, server-enforced 15-second safety delay, expiring one-time phrase, empty-queue enforcement, verified PostgreSQL backup, short allow-listed TRUNCATE phase, `/livez` plus `/healthz` checks and permanent success/failure audit after backup.
+- Nuclear reset now preserves `maintenance_jobs` and `maintenance_nuclear_audit`; it never erases its own execution trail and it cannot wait behind another job.
+- Fixed Dashboard UUID resolution so the freshest current Node wins over stale `vm_location_latest` records and a direct UUID search no longer inherits one old bridge/interface.
+- Fixed VM detail CPU where normalized Full CPU was divided by vCPU a second time, such as 100% on a 7-vCPU VM being displayed as 14.3%.
+- Live 5-minute VM and Node detail now read CPU, RAM, network, host and storage from the same bounded current tables as Dashboard/Top VM. Historical RAM uses the same exact retained bucket as CPU/network/disk.
+- Aligned multi-NIC historical peak/sample semantics with current Top VM, and made guest-assigned disk capacity the primary value while host allocation remains a separate field.
+- Added canonical plus legacy Agent token validation through `BW_MONITOR_LEGACY_TOKENS` for both `/push` and `/push/bandwidth-consumption`, plus reset acceptance epochs that acknowledge but ignore old local retry payloads, so old Agents can continue without reinstalling or resurrecting cleared data.
+- Added `fix-agent-uuid.sh` to change the Agent node identity or purge stale state for one VM UUID without reinstalling the Agent.
+- Added migration `007_safe_maintenance_queue.sql`, dispatcher/watchdog systemd units and regression coverage for queue, nuclear safety, UUID resolver, CPU, RAM, disk, multi-NIC and Agent repair behavior.
+
 ## 50.5.6-prod-r1-postgres-native-maintenance
 
 - Rebuilt Admin Maintenance around PostgreSQL-native operations instead of legacy compatibility no-ops.

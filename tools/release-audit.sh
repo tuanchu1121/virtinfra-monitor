@@ -40,8 +40,11 @@ bash ./tools/test-windows-github-desktop.sh
 
 printf '\n==> Verify no duplicate/stale runtime trees\n'
 [[ ! -e release && ! -e enterprise && ! -e deploy/monitor && ! -e deploy/enterprise ]]
-[[ -f app/app.py && -f app/bw_pg.py && -f app/maintenance.py && -f app/maintenance_native.py && -f app/retention.py ]]
-[[ -f deploy/agent/agent.py && -f deploy/agent/install-agent.sh ]]
+[[ -f app/app.py && -f app/bw_pg.py && -f app/maintenance.py \
+   && -f app/maintenance_native.py && -f app/maintenance_queue.py \
+   && -f app/maintenance_dispatch.py && -f app/retention.py ]]
+[[ -f deploy/agent/agent.py && -f deploy/agent/install-agent.sh && -f deploy/agent/fix-agent-uuid.sh ]]
+[[ -f postgres/sql/007_safe_maintenance_queue.sql ]]
 
 printf '\n==> Generate repository checksum manifest\n'
 find . \

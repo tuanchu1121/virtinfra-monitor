@@ -1,6 +1,6 @@
 # Storage V2 source audit
 
-Release: `50.5.6-prod-r1-postgres-native-maintenance`
+Release: `50.5.7-prod-r1-safe-queue-canonical-vm`
 
 This audit was generated from the complete `app/app.py`, Agent, installer, PostgreSQL helper, maintenance and deployment source before the Storage V2 read path was enabled. The existing route names, response shapes, templates, CSS, authentication, CSRF, timezone, Agent payload, Abuse policy and Consumption calculations remain unchanged.
 

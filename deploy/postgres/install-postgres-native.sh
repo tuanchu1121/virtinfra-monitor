@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE="50.5.6-prod-r1-postgres-native-maintenance"
+RELEASE="50.5.7-prod-r1-safe-queue-canonical-vm"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 APP_SRC="$REPO_ROOT/app"
@@ -18,7 +18,7 @@ NGINX_SITE="/etc/nginx/sites-available/bw-monitor.conf"
 GITHUB_REPO="${BW_GITHUB_REPO:-tuanchu1121/virtinfra-monitor}"
 GITHUB_REF="${BW_GITHUB_REF:-main}"
 DOMAIN=""; EMAIL=""; PUBLIC_IP=""; PORT="8080"; SSH_PORT=""
-ADMIN_USER="admin"; ADMIN_PASSWORD="${BW_ADMIN_PASSWORD:-}"; MONITOR_TOKEN="${BW_MONITOR_TOKEN:-}"
+ADMIN_USER="admin"; ADMIN_PASSWORD="${BW_ADMIN_PASSWORD:-}"; MONITOR_TOKEN="${BW_MONITOR_TOKEN:-}"; LEGACY_MONITOR_TOKENS="${BW_MONITOR_LEGACY_TOKENS:-}"
 TIMEZONE="Asia/Ho_Chi_Minh"; WORKERS=""; THREADS="4"
 PG_PORT="55432"; PG_USER="bw_monitor"; PG_DATABASE="bw_monitor"
 PG_PASSWORD="${BW_PG_PASSWORD:-}"
@@ -118,6 +118,7 @@ if [[ -r "$ENV_FILE" && -r "$PG_ENV" ]]; then
   ((THREADS_EXPLICIT)) || THREADS="${BW_GUNICORN_THREADS:-$THREADS}"
   ADMIN_USER="${BW_ADMIN_USERNAME:-$ADMIN_USER}"
   MONITOR_TOKEN="${BW_MONITOR_TOKEN:-$MONITOR_TOKEN}"
+  LEGACY_MONITOR_TOKENS="${BW_MONITOR_LEGACY_TOKENS:-$LEGACY_MONITOR_TOKENS}"
   PG_PORT="${BW_PG_PORT:-$PG_PORT}"
   PG_USER="${BW_PG_USER:-$PG_USER}"
   PG_DATABASE="${BW_PG_DATABASE:-$PG_DATABASE}"
@@ -242,6 +243,7 @@ install -m 0644 "$PG_SRC/sql/003_native_indexes.sql" "$APP_DIR/postgres/sql/003_
 install -m 0644 "$PG_SRC/sql/004_storage_v2.sql" "$APP_DIR/postgres/sql/004_storage_v2.sql"
 install -m 0644 "$PG_SRC/sql/005_ingest_write_profile.sql" "$APP_DIR/postgres/sql/005_ingest_write_profile.sql"
 install -m 0644 "$PG_SRC/sql/006_postgres_native_maintenance.sql" "$APP_DIR/postgres/sql/006_postgres_native_maintenance.sql"
+install -m 0644 "$PG_SRC/sql/007_safe_maintenance_queue.sql" "$APP_DIR/postgres/sql/007_safe_maintenance_queue.sql"
 
 log "Start PostgreSQL 17 + TimescaleDB"
 "${COMPOSE[@]}" --env-file "$PG_ENV" -f "$APP_DIR/postgres/docker-compose.yml" pull
@@ -262,6 +264,8 @@ install -m 0644 "$APP_SRC/app.py" "$APP_DIR/app.py"
 install -m 0644 "$APP_SRC/bw_pg.py" "$APP_DIR/bw_pg.py"
 install -m 0644 "$APP_SRC/storage_v2.py" "$APP_DIR/storage_v2.py"
 install -m 0644 "$APP_SRC/maintenance_native.py" "$APP_DIR/maintenance_native.py"
+install -m 0644 "$APP_SRC/maintenance_queue.py" "$APP_DIR/maintenance_queue.py"
+install -m 0755 "$APP_SRC/maintenance_dispatch.py" "$APP_DIR/maintenance_dispatch.py"
 install -m 0755 "$APP_SRC/maintenance.py" "$APP_DIR/maintenance.py"
 install -m 0755 "$APP_SRC/retention.py" "$APP_DIR/retention.py"
 install -m 0755 "$REPO_ROOT/tools/storage-v2-status.py" "$APP_DIR/tools/storage-v2-status.py"
@@ -285,6 +289,7 @@ BW_DATABASE_URL='$DATABASE_URL'
 BW_POSTGRES_DSN='$DATABASE_URL'
 BW_MONITOR_DB='$DATA_DIR/postgresql'
 BW_MONITOR_TOKEN='$MONITOR_TOKEN'
+BW_MONITOR_LEGACY_TOKENS='$LEGACY_MONITOR_TOKENS'
 BW_ADMIN_USERNAME='$ADMIN_USER'
 BW_ADMIN_PASSWORD_HASH='$ADMIN_HASH'
 BW_ADMIN_SECRET_KEY='$APP_SECRET'
@@ -387,10 +392,13 @@ log "Apply low-write ingest index profile"
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/005_ingest_write_profile.sql"
 log "Apply PostgreSQL-native maintenance guards"
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/006_postgres_native_maintenance.sql"
+docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/007_safe_maintenance_queue.sql"
 
 log "Install services and management tools"
 install -m 0644 "$SCRIPT_DIR/bw-monitor.service" "$SERVICE_FILE"
 install -m 0644 "$SCRIPT_DIR/bw-monitor-maintenance@.service" /etc/systemd/system/bw-monitor-maintenance@.service
+install -m 0644 "$SCRIPT_DIR/bw-monitor-maintenance-dispatch.service" /etc/systemd/system/bw-monitor-maintenance-dispatch.service
+install -m 0644 "$SCRIPT_DIR/bw-monitor-maintenance-watchdog.timer" /etc/systemd/system/bw-monitor-maintenance-watchdog.timer
 install -m 0644 "$SCRIPT_DIR/bw-monitor-retention.service" /etc/systemd/system/bw-monitor-retention.service
 install -m 0644 "$SCRIPT_DIR/bw-monitor-retention.timer" /etc/systemd/system/bw-monitor-retention.timer
 install -m 0755 "$SCRIPT_DIR/virtinfra-monitor-health-watch.sh" "$APP_DIR/virtinfra-monitor-health-watch.sh"
@@ -429,6 +437,8 @@ WantedBy=timers.target
 UNIT
 
 systemctl daemon-reload
+systemctl enable --now bw-monitor-maintenance-watchdog.timer
+systemctl --no-block start bw-monitor-maintenance-dispatch.service || true
 systemctl enable bw-monitor.service bw-monitor-retention.timer bw-monitor-backup.timer virtinfra-monitor-health-watch.timer
 systemctl restart bw-monitor-retention.timer bw-monitor-backup.timer virtinfra-monitor-health-watch.timer
 

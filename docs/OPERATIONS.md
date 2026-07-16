@@ -31,3 +31,13 @@ virtinfra-monitorctl diagnostics
 ```
 
 Review the archive before sharing it. The collector redacts environment secret values and does not include a database dump.
+
+Maintenance queue health:
+
+```bash
+systemctl is-active bw-monitor-maintenance-watchdog.timer
+systemctl start bw-monitor-maintenance-dispatch.service
+journalctl -u bw-monitor-maintenance-dispatch.service -n 200 --no-pager
+```
+
+Before a nuclear operational reset, confirm a normal backup succeeds. The reset itself creates and verifies a new backup again before deleting data.

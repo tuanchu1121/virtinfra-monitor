@@ -45,8 +45,8 @@ loaded_names = {
 }
 if "API_TOKEN" in loaded_names:
     fail("Consumption route still references undefined legacy API_TOKEN")
-if "TOKEN" not in loaded_names:
-    fail("Consumption route no longer authenticates against canonical TOKEN")
+if "valid_agent_token" not in loaded_names:
+    fail("Consumption route no longer uses shared Agent token validation")
 
 header_reads = []
 for node in ast.walk(route):
@@ -81,7 +81,22 @@ main_loaded = {
     for node in ast.walk(main_matches[0])
     if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
 }
-if "TOKEN" not in main_loaded:
-    fail("main /push route no longer uses canonical TOKEN")
+if "valid_agent_token" not in main_loaded:
+    fail("main /push route no longer uses shared Agent token validation")
 
-print("PASS: /push and /push/bandwidth-consumption share canonical X-Token authentication")
+validators = [
+    node for node in TREE.body
+    if isinstance(node, ast.FunctionDef) and node.name == "_v5057_agent_tokens"
+]
+if len(validators) != 1:
+    fail("shared Agent token set builder is missing")
+validator_loaded = {
+    node.id for node in ast.walk(validators[0])
+    if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+}
+if "TOKEN" not in validator_loaded:
+    fail("shared Agent token validation no longer includes canonical TOKEN")
+if "BW_MONITOR_LEGACY_TOKENS" not in SOURCE:
+    fail("legacy Agent token compatibility environment is missing")
+
+print("PASS: /push and Consumption share canonical plus legacy X-Token authentication")

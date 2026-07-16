@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# Keep validation deterministic and avoid unrelated globally installed pytest
+# plugins holding the process open after the suite has already completed.
+export PYTEST_DISABLE_PLUGIN_AUTOLOAD="${PYTEST_DISABLE_PLUGIN_AUTOLOAD:-1}"
 PYTHON="${BW_PREFLIGHT_PYTHON:-}"
 USE_CURRENT=0
 SKIP_LIVE=0
@@ -26,8 +29,12 @@ fail(){ echo "ERROR: $*" >&2; exit 1; }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.6-prod-r1-postgres-native-maintenance" ]] || fail "VERSION mismatch"
-[[ -f app/app.py && -f app/bw_pg.py && -f app/maintenance_native.py && -f deploy/agent/agent.py ]] || fail "full source tree is incomplete"
+[[ "$(cat VERSION)" == "50.5.7-prod-r1-safe-queue-canonical-vm" ]] || fail "VERSION mismatch"
+[[ -f app/app.py && -f app/bw_pg.py && -f app/maintenance_native.py \
+   && -f app/maintenance_queue.py && -f app/maintenance_dispatch.py \
+   && -f postgres/sql/007_safe_maintenance_queue.sql \
+   && -f deploy/agent/agent.py && -f deploy/agent/fix-agent-uuid.sh ]] \
+|| fail "full source tree is incomplete"
 [[ ! -d release && ! -d enterprise ]] || fail "legacy duplicate runtime trees must not be shipped"
 
 log "Verify canonical source checksum manifest"
@@ -92,8 +99,11 @@ log "Validate v50.5.4 selected-snapshot detail correctness"
 log "Validate v50.5.5 PostgreSQL LIKE compatibility hotfix"
 "$PYTHON" -m pytest -q tests/test_v5055_sql_compat_hotfix.py
 
-log "Validate v50.5.6 PostgreSQL-native maintenance"
+log "Validate v50.5.6 PostgreSQL-native maintenance compatibility"
 "$PYTHON" -m pytest -q tests/test_v5056_postgres_native_maintenance.py
+
+log "Validate v50.5.7 safe FIFO queue and canonical VM detail"
+"$PYTHON" -m pytest -q tests/test_v5057_safe_queue_canonical_vm.py
 
 log "Validate standalone repository contract"
 "$PYTHON" tests/test_repository_contract.py

@@ -1,8 +1,8 @@
 # Đưa VirtInfra Monitor lên GitHub bằng GitHub Desktop
 
-> Release: `50.5.6-prod-r1-postgres-native-maintenance`
+> Release: `50.5.7-prod-r1-safe-queue-canonical-vm`
 
-> Dùng cho release `50.5.6-prod-r1-postgres-native-maintenance`.
+> Dùng cho release `50.5.7-prod-r1-safe-queue-canonical-vm`.
 
 > Source of truth vận hành: [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md).
 >
@@ -78,7 +78,7 @@ update.sh
 Giải nén file ZIP release ra một thư mục riêng, ví dụ:
 
 ```text
-D:\Downloads\virtinfra-monitor-50.5.6-prod-r1-postgres-native-maintenance\
+D:\Downloads\virtinfra-monitor-50.5.7-prod-r1-safe-queue-canonical-vm\
 ```
 
 Mở thư mục đó. Bên trong phải thấy trực tiếp:
@@ -214,7 +214,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Phải trả về:
 
 ```text
-50.5.6-prod-r1-postgres-native-maintenance
+50.5.7-prod-r1-safe-queue-canonical-vm
 ```
 
 Kiểm tra file installer:
@@ -250,7 +250,7 @@ virtinfra-monitorctl version
 Phải ra:
 
 ```text
-50.5.6-prod-r1-postgres-native-maintenance
+50.5.7-prod-r1-safe-queue-canonical-vm
 ```
 
 Kiểm tra:
@@ -292,7 +292,7 @@ Sai:
 
 ```text
 repo-root/
-└── virtinfra-monitor-50.5.6-prod-r1-postgres-native-maintenance/
+└── virtinfra-monitor-50.5.7-prod-r1-safe-queue-canonical-vm/
     ├── app/
     ├── deploy/
     └── install.sh

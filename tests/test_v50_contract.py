@@ -9,7 +9,7 @@ def need(cond: bool, message: str) -> None:
         raise AssertionError(message)
 
 version = (ROOT / "VERSION").read_text().strip()
-need(version == "50.4.9-prod-r1-professional-theme-suite", f"unexpected VERSION: {version}")
+need(version == "50.5.0-prod-r1-batched-ingest", f"unexpected VERSION: {version}")
 
 app = (ROOT / "app/app.py").read_text()
 pg = (ROOT / "app/bw_pg.py").read_text()
@@ -55,8 +55,8 @@ need("chunk_time_interval => 10800::bigint" in storage_sql, "3-hour VM chart/raw
 need("drop_after => 604800::bigint" in storage_sql, "7-day chart retention missing")
 need("drop_after => 172800::bigint" in storage_sql, "48-hour raw retention missing")
 need("add_compression_policy" in storage_sql, "chart compression policy missing")
-need("VIRTINFRA_READ_CHART_V2='1'" in installer, "chart V2 read flag missing from installer")
-need("VIRTINFRA_RAW_V2='1'" in installer, "raw V2 flag missing from installer")
+need("VIRTINFRA_READ_CHART_V2='0'" in installer, "chart V2 read flag missing from installer")
+need("VIRTINFRA_RAW_V2='0'" in installer, "raw V2 flag missing from installer")
 need("import storage_v2" in app and "storage_v2.write_storage_v2" in app, "storage V2 is not connected to /push")
 need("_v5040_query_vm_chart_legacy" in app and "def _v5040_iface_values" in app, "backward-compatible chart fallback/filter missing")
 need("conn.executemany" in storage_py, "storage V2 batch writer missing")

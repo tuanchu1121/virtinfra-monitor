@@ -6,10 +6,13 @@ retry-safe UPSERT keys, multi-NIC aggregation and source-value normalization.
 """
 from __future__ import annotations
 from pathlib import Path
+import os
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
+os.environ["VIRTINFRA_STORAGE_V2"] = "1"
+os.environ["VIRTINFRA_RAW_V2"] = "1"
 import storage_v2 as s  # noqa: E402
 
 

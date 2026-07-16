@@ -22,9 +22,9 @@ import time
 from dataclasses import dataclass, asdict
 from typing import Any, Iterable
 
-STORAGE_V2_ENABLED = os.environ.get("VIRTINFRA_STORAGE_V2", "1") == "1"
-CHART_V2_READ_ENABLED = os.environ.get("VIRTINFRA_READ_CHART_V2", "1") == "1"
-RAW_V2_ENABLED = os.environ.get("VIRTINFRA_RAW_V2", "1") == "1"
+STORAGE_V2_ENABLED = os.environ.get("VIRTINFRA_STORAGE_V2", "0") == "1"
+CHART_V2_READ_ENABLED = os.environ.get("VIRTINFRA_READ_CHART_V2", "0") == "1"
+RAW_V2_ENABLED = os.environ.get("VIRTINFRA_RAW_V2", "0") == "1"
 OBSERVABILITY_ENABLED = os.environ.get("VIRTINFRA_PUSH_OBSERVABILITY", "1") == "1"
 
 VM_CHART_TABLE = "vm_chart_5m"

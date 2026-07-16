@@ -8,7 +8,7 @@ for f in "$ROOT/install.sh" "$ROOT/update.sh" "$I" "$ROOT/deploy/postgres/bw-mon
   bash -n "$f"
 done
 
-grep -q 'RELEASE="50.4.9-prod-r1-professional-theme-suite"' "$I" || fail "release marker missing"
+grep -q 'RELEASE="50.5.0-prod-r1-batched-ingest"' "$I" || fail "release marker missing"
 CANONICAL='tuanchu1121/virtinfra-monitor'
 [[ "$(cat "$ROOT/CANONICAL_REPOSITORY")" == "$CANONICAL" ]] || fail "canonical repository contract is wrong"
 for repo_file in \
@@ -46,7 +46,7 @@ grep -q 'Agent cadence:  local 15-second samples, one push every 300 seconds' "$
 grep -q 'Chart history:  exact 5-minute VM/node points for 7 days' "$I" || fail "exact chart retention output missing"
 grep -q 'Raw detail:     per-interface V2 rows for 48 hours' "$I" || fail "raw-detail retention output missing"
 grep -q '004_storage_v2.sql' "$I" || fail "storage V2 migration is not installed"
-grep -q "VIRTINFRA_READ_CHART_V2='1'" "$I" || fail "chart V2 flag missing"
+grep -q "VIRTINFRA_READ_CHART_V2='0'" "$I" || fail "chart V2 flag missing"
 grep -q 'pg_dump' "$ROOT/deploy/postgres/backup.sh" || fail "pg_dump backup missing"
 grep -q 'pg_restore' "$ROOT/deploy/postgres/restore.sh" || fail "pg_restore restore missing"
 grep -q 'timescaledb_pre_restore' "$ROOT/deploy/postgres/restore.sh" || fail "Timescale pre-restore hook missing"

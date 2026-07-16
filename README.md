@@ -1,8 +1,9 @@
 # VirtInfra Monitor v50 PostgreSQL Native
 
+**Release:** `50.5.0-prod-r1-batched-ingest`
 Production monitoring for KVM/libvirt nodes and virtual machines. PostgreSQL 17 + TimescaleDB is the only runtime data plane. This repository keeps the complete v48/v49 dashboard, Abuse Engine, storage views, Admin tools, REST API and Agent protocol, while replacing the runtime data store with one PostgreSQL 17 + TimescaleDB database.
 
-> Release: `50.4.9-prod-r1-professional-theme-suite`
+> Release: `50.5.0-prod-r1-batched-ingest`
 
 > **Operations source of truth:** [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md)
 >
@@ -70,9 +71,9 @@ The Agent behavior is unchanged:
 The fresh-install default is:
 
 ```text
-VIRTINFRA_STORAGE_V2=1
-VIRTINFRA_READ_CHART_V2=1
-VIRTINFRA_RAW_V2=1
+VIRTINFRA_STORAGE_V2=0
+VIRTINFRA_READ_CHART_V2=0
+VIRTINFRA_RAW_V2=0
 VIRTINFRA_PUSH_OBSERVABILITY=1
 ```
 
@@ -323,10 +324,8 @@ Release audit and archives:
 
 The public product name is **VirtInfra Monitor** and the node collector is **VirtInfra Agent**. New Agent deployments use `virtinfra-agent.service`, `/etc/virtinfra-agent.env`, `/usr/local/lib/virtinfra-agent`, and `/var/lib/virtinfra-agent`. The monitor keeps legacy internal `/opt/bw-monitor`, `BW_*`, and `bw-monitor.service` identifiers as compatibility anchors so an upgrade does not move the PostgreSQL data volume, invalidate existing automation, or break the one-command installer. Canonical operator commands are `virtinfra-monitorctl` and `virtinfra-agent-doctor`; the legacy `bw-monitorctl`, `bw-monitor.service`, `BW_*` and old Agent identifiers remain available only as upgrade/integration compatibility anchors.
 
-## Professional theme selector
+## Custom Theme Library
 
-The original dashboard `Auto`, `Light`, and `Dark` modes remain protected and unchanged. Administrators open `Admin -> Themes`, tick which complete VirtInfra presets are visible, and optionally configure one simple Custom theme. Users only select from the enabled choices in their own browser.
-
-Built-in presets are `VirtInfra Core`, `Midnight Signal`, `Arctic Console`, `Graphite Edge`, and `NOC Vision`. Each preset is a coordinated system rather than a color swap: typography, numeric alignment, cards, tables, borders, chart lines, RX/TX colors, spacing and metric sizing are tuned together. Responsive rules scale the interface for HD, 2K and 4K viewports while preserving the original core themes.
+The original dashboard `Auto`, `Light`, and `Dark` modes are protected and keep their existing CSS. Administrators can open `Admin -> Themes` to create, edit, publish, hide, duplicate, or delete separate custom themes. Published themes appear in a user selector beside the protected core controls, and every browser keeps its own choice. Built-in templates include VirtInfra Ocean, Grafana Inspired, Zabbix Inspired, Datadog Inspired, Prometheus Inspired, NOC High Contrast, and Dense Operations.
 
 See [docs/THEME_MANAGER.md](docs/THEME_MANAGER.md).

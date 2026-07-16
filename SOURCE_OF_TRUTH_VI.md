@@ -1,6 +1,8 @@
 # SOURCE OF TRUTH VẬN HÀNH
 
-> Release: `50.4.9-prod-r1-professional-theme-suite`
+> Release: `50.5.0-prod-r1-batched-ingest`
+
+> Release: `50.5.0-prod-r1-batched-ingest`
 >
 > Tài liệu này được đối chiếu trực tiếp với `install.sh`, `deploy/postgres/*`, `deploy/agent/*`, `postgres/docker-compose.yml`, `app/app.py` và các test contract hiện tại.
 

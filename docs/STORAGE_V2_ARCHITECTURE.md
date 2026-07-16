@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.4.9-prod-r1-professional-theme-suite`
+Release: `50.5.0-prod-r1-batched-ingest`
 
 ## Final data path
 
@@ -119,9 +119,9 @@ No large V2 history `DELETE`, automatic `VACUUM FULL`, hourly aggregation or dai
 
 | Variable | Default | Meaning |
 |---|---:|---|
-| `VIRTINFRA_STORAGE_V2` | `1` | Enable V2 writes |
-| `VIRTINFRA_READ_CHART_V2` | `1` | Read existing VM/node chart UI from V2 |
-| `VIRTINFRA_RAW_V2` | `1` | Write 48-hour per-interface raw detail |
+| `VIRTINFRA_STORAGE_V2` | `0` | Optional V2 writes, disabled in production single-write mode |
+| `VIRTINFRA_READ_CHART_V2` | `0` | Optional V2 chart reader, disabled by default |
+| `VIRTINFRA_RAW_V2` | `0` | Optional raw interface history, disabled by default |
 | `VIRTINFRA_PUSH_OBSERVABILITY` | `1` | Emit sanitized push timing/row-count logs |
 
 ## Observability log

@@ -1,6 +1,8 @@
 # VirtInfra Monitor - Toàn bộ command triển khai và bảo trì từ A đến Z
 
-> Release: `50.4.9-prod-r1-professional-theme-suite`
+> Release: `50.5.0-prod-r1-batched-ingest`
+
+> Release: `50.5.0-prod-r1-batched-ingest`
 >
 > Chạy command Monitor bằng `root`. Với node KVM, chạy Agent bằng `root` để Agent đọc được libvirt, interface, disk và host metrics.
 
@@ -105,7 +107,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Kết quả mong đợi:
 
 ```text
-50.4.9-prod-r1-professional-theme-suite
+50.5.0-prod-r1-batched-ingest
 ```
 
 ## 2.2 Update chuẩn, có backup trước

@@ -1,6 +1,8 @@
 # BẮT ĐẦU TẠI ĐÂY - VirtInfra Monitor
 
-> Release: `50.4.9-prod-r1-professional-theme-suite`
+> Release: `50.5.0-prod-r1-batched-ingest`
+
+> Release: `50.5.0-prod-r1-batched-ingest`
 >
 > Bản này giữ nguyên toàn bộ chức năng, route, giao diện, Agent, Abuse, Storage I/O và Consumption hiện tại; đồng thời bổ sung Storage V2 với chart đúng từng điểm 5 phút trong 7 ngày, raw interface 48 giờ, Timescale retention và rollback reader nhanh.
 
@@ -109,7 +111,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Kết quả phải là:
 
 ```text
-50.4.9-prod-r1-professional-theme-suite
+50.5.0-prod-r1-batched-ingest
 ```
 
 ### Bước B - Update Monitor đang chạy
@@ -127,7 +129,7 @@ virtinfra-monitorctl version
 Kết quả version phải là:
 
 ```text
-50.4.9-prod-r1-professional-theme-suite
+50.5.0-prod-r1-batched-ingest
 ```
 
 Kiểm tra thêm:

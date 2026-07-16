@@ -1,13 +1,16 @@
-## 50.4.9-prod-r1-professional-theme-suite
+# Changelog
 
-- Replaced third-party-style preset names with five original VirtInfra themes: VirtInfra Core, Midnight Signal, Arctic Console, Graphite Edge and NOC Vision.
-- Preserved the simple management model: Admin only ticks fixed presets and may configure one Custom theme; Auto, Dark and Light remain protected.
-- Upgraded every preset from a palette swap to a coordinated visual system covering typography, numeric alignment, panel hierarchy, tables, cards, status states, RX/TX and chart line weight.
-- Added responsive HD, 2K and 4K scaling for font size, metric size, card padding, table density, page width and Consumption group layout.
-- Improved metric sharpness with tabular lining numerals, geometric text rendering, balanced card minimum heights and consistent spacing.
-- Added migration from the v50.4.8 simple selector settings and browser selection.
+## 50.5.0-prod-r1-batched-ingest
 
-## 50.4.7-prod-r1-custom-theme-library
+- Replaced common VM presence/location N+1 writes with set-based PostgreSQL operations.
+- Batched `vm_iface_current`, `vm_current_fast`, `node_current_fast`, and authoritative abuse-state UPSERTs through one JSONB recordset statement per table.
+- Persisted balloon RAM fields in the main current UPSERT, removing two extra UPDATEs per VM.
+- Replaced destructive disk-summary rebuilds with differential UPSERT plus stale-row deletion.
+- Disabled Storage V2 dual-write/read/raw defaults while keeping the feature flags and existing V2 data available.
+- Added `tools/ingest-performance-status.sh` for active-query and write-churn diagnostics.
+- Preserved Agent payload, abuse policy semantics, migration confirmation, dashboard routes, Consumption, and legacy history readers.
+
+## 50.5.0-prod-r1-batched-ingest
 
 - Protects the original dashboard `Auto`, `Light`, and `Dark` modes. Admin theme settings no longer overwrite their CSS or default behavior.
 - Replaces the single shared palette with an admin-only custom theme library stored in PostgreSQL `admin_settings` under `custom_theme_library_v2`.
@@ -101,7 +104,6 @@
 - Applied the same slot semantics to Dashboard, Top VM and Storage I/O.
 - Kept existing `@epoch` snapshot links readable for backward compatibility without rewriting new local-time URLs.
 
-# Changelog
 
 ## 50.2.2-prod-r1-original-time-restore
 

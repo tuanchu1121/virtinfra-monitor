@@ -1,6 +1,6 @@
 # Storage V2 compatibility matrix
 
-Release: `50.4.9-prod-r1-professional-theme-suite`
+Release: `50.5.0-prod-r1-batched-ingest`
 
 Status values: **UNCHANGED**, **V2 READ**, **V2 WRITE**, **ADDITIVE**, **FALLBACK AVAILABLE**.
 

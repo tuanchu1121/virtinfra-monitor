@@ -1,0 +1,9 @@
+[Unit]
+Description=Check VirtInfra Monitor local web health every 30 seconds
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=30s
+AccuracySec=5s
+Persistent=true
+[Install]
+WantedBy=timers.target

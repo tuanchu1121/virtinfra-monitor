@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       timescaledb:
-        image: timescale/timescaledb:2.27.2-pg17-oss
+        image: timescale/timescaledb:2.27.2-pg17
         env:
           POSTGRES_DB: bw_monitor_test
           POSTGRES_USER: bw_monitor

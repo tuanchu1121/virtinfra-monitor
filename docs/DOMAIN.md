@@ -14,7 +14,7 @@ Internet → Nginx :443 → Gunicorn 127.0.0.1:8080 → PostgreSQL loopback
 
 ```bash
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/install.sh \
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/install.sh \
 | bash -s -- \
 --domain monitor.example.com \
 --email ops@example.com

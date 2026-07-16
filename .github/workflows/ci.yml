@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       timescaledb:
-        image: timescale/timescaledb:2.27.2-pg17-oss
+        image: timescale/timescaledb:2.27.2-pg17
         env:
           POSTGRES_DB: bw_monitor_test
           POSTGRES_USER: bw_monitor
@@ -59,8 +59,13 @@ jobs:
           psql -h 127.0.0.1 -p 55432 -U bw_monitor -d bw_monitor_test \
             -v ON_ERROR_STOP=1 -f postgres/sql/003_native_indexes.sql
           psql -h 127.0.0.1 -p 55432 -U bw_monitor -d bw_monitor_test \
-            -Atc "SELECT count(*) FROM timescaledb_information.hypertables" \
-            | grep -Eq '^[1-9][0-9]*$'
+            -v ON_ERROR_STOP=1 -f postgres/sql/004_storage_v2.sql
+          test "$(psql -h 127.0.0.1 -p 55432 -U bw_monitor -d bw_monitor_test \
+            -Atc "SELECT current_setting('timescaledb.license', true)")" = "timescale"
+          test "$(psql -h 127.0.0.1 -p 55432 -U bw_monitor -d bw_monitor_test \
+            -Atc "SELECT count(*) FROM timescaledb_information.hypertables WHERE hypertable_name IN ('vm_chart_5m','vm_raw_detail_5m','node_chart_5m')")" = "3"
+          test "$(psql -h 127.0.0.1 -p 55432 -U bw_monitor -d bw_monitor_test \
+            -Atc "SELECT count(*) FROM timescaledb_information.jobs WHERE hypertable_name IN ('vm_chart_5m','vm_raw_detail_5m','node_chart_5m') AND proc_name IN ('policy_retention','policy_compression')")" = "5"
 
       - name: Release audit
         env:

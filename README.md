@@ -1,9 +1,12 @@
 # VirtInfra Monitor v50 PostgreSQL Native
 
-Production monitoring for KVM/libvirt nodes and virtual machines. This repository keeps the complete v48/v49 dashboard, Abuse Engine, storage views, Admin tools, REST API and Agent protocol, while replacing the runtime data store with one PostgreSQL 17 + TimescaleDB database.
+**Release:** `50.5.1-prod-r1-full-batch-ingest`
+Production monitoring for KVM/libvirt nodes and virtual machines. PostgreSQL 17 + TimescaleDB is the only runtime data plane. This repository keeps the complete v48/v49 dashboard, Abuse Engine, storage views, Admin tools, REST API and Agent protocol, while replacing the runtime data store with one PostgreSQL 17 + TimescaleDB database.
 
-> Release: `50.3.2-prod-r1-github-desktop-operations-guide`
+> Release: `50.5.1-prod-r1-full-batch-ingest`
 
+> **Operations source of truth:** [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md)
+>
 > **Canonical-source bootstrap:** the installer verifies `SHA256SUMS` and stages only files in the release manifest. Old v48/v49 folders accidentally left in a GitHub Desktop repository are ignored during installation.
 
 > Windows GitHub Desktop is supported. The bootstrap validates required files, invokes source scripts through `bash`, and normalizes Linux shell modes after download.
@@ -38,11 +41,14 @@ The Agent behavior is unchanged:
 
 - local sampling: every **15 seconds**;
 - durable Monitor push: every **300 seconds / 5 minutes**;
-- duplicate retry protection: `node + push_time`;
-- latest 48 hours: retain every real 5-minute push;
-- 48 hours to 7 days: retain one real synchronized push per hour;
-- older than 7 days: delete bounded history/log/event data;
-- current inventory, users, settings, API keys and active state are not removed by history retention.
+- Consumption push: once per completed local **2-hour** bucket;
+- duplicate retry protection: stable node/push and V2 bucket keys;
+- `vm_chart_5m`: one exact point per VM per real 5-minute push, retained for **7 days** without hourly downsampling;
+- `node_chart_5m`: exact 5-minute node/host chart points, retained for **7 days**;
+- `vm_raw_detail_5m`: N-interface raw detail retained for **48 hours**;
+- existing compressed Storage I/O snapshots continue to preserve N-disk history and the current Storage UI behavior;
+- current inventory, latest metrics, users, settings, API keys and active Abuse state are not removed by chart/raw retention;
+- previous compatibility history tables remain available in this release as a safe reader fallback and are not the V2 chart source by default.
 
 ## Features preserved
 
@@ -58,6 +64,45 @@ The Agent behavior is unchanged:
 - Dark/light UI and existing route compatibility
 - Agent deployment through one-command installer or Ansible
 - Consumption after Storage I/O: separate Physical Public, Physical Private, aggregate VM Public and aggregate VM Private RX/TX, node search/filter/sort, coverage and 7-day retention
+
+
+## Storage V2 operations
+
+The fresh-install default is:
+
+```text
+VIRTINFRA_STORAGE_V2=0
+VIRTINFRA_READ_CHART_V2=0
+VIRTINFRA_RAW_V2=0
+VIRTINFRA_PUSH_OBSERVABILITY=1
+```
+
+Inspect schema, hypertables, policies and job status:
+
+```bash
+virtinfra-monitorctl storage-v2
+```
+
+Run the complete health and database checks:
+
+```bash
+virtinfra-monitorctl doctor
+virtinfra-monitorctl health
+virtinfra-monitorctl db-check
+```
+
+Fast chart-reader rollback keeps all V2 data and restores the previous readers:
+
+```bash
+virtinfra-monitorctl rollback-storage-v2
+```
+
+Detailed design and deployment notes:
+
+- [`docs/STORAGE_V2_AUDIT.md`](docs/STORAGE_V2_AUDIT.md)
+- [`docs/STORAGE_V2_COMPATIBILITY_MATRIX.md`](docs/STORAGE_V2_COMPATIBILITY_MATRIX.md)
+- [`docs/STORAGE_V2_ARCHITECTURE.md`](docs/STORAGE_V2_ARCHITECTURE.md)
+- [`docs/STORAGE_V2_DEPLOYMENT.md`](docs/STORAGE_V2_DEPLOYMENT.md)
 
 ## Consumption
 
@@ -84,7 +129,7 @@ apt-get update
 apt-get install -y curl ca-certificates tar
 
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/install.sh \
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/install.sh \
 | bash -s -- \
 --public-ip 203.0.113.10 \
 --port 8080
@@ -119,7 +164,7 @@ Before installation:
 
 ```bash
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/install.sh \
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/install.sh \
 | bash -s -- \
 --domain monitor.example.com \
 --email ops@example.com
@@ -178,7 +223,7 @@ virtinfra-monitorctl domain remove 203.0.113.10 8080
 
 ```bash
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/update.sh \
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/update.sh \
 | bash
 ```
 
@@ -278,3 +323,9 @@ Release audit and archives:
 ## Product identity and upgrade compatibility
 
 The public product name is **VirtInfra Monitor** and the node collector is **VirtInfra Agent**. New Agent deployments use `virtinfra-agent.service`, `/etc/virtinfra-agent.env`, `/usr/local/lib/virtinfra-agent`, and `/var/lib/virtinfra-agent`. The monitor keeps legacy internal `/opt/bw-monitor`, `BW_*`, and `bw-monitor.service` identifiers as compatibility anchors so an upgrade does not move the PostgreSQL data volume, invalidate existing automation, or break the one-command installer. Canonical operator commands are `virtinfra-monitorctl` and `virtinfra-agent-doctor`; the legacy `bw-monitorctl`, `bw-monitor.service`, `BW_*` and old Agent identifiers remain available only as upgrade/integration compatibility anchors.
+
+## Custom Theme Library
+
+The original dashboard `Auto`, `Light`, and `Dark` modes are protected and keep their existing CSS. Administrators can open `Admin -> Themes` to create, edit, publish, hide, duplicate, or delete separate custom themes. Published themes appear in a user selector beside the protected core controls, and every browser keeps its own choice. Built-in templates include VirtInfra Ocean, Grafana Inspired, Zabbix Inspired, Datadog Inspired, Prometheus Inspired, NOC High Contrast, and Dense Operations.
+
+See [docs/THEME_MANAGER.md](docs/THEME_MANAGER.md).

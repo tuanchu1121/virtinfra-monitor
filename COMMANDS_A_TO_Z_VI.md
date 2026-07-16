@@ -1,10 +1,28 @@
 # VirtInfra Monitor - Toàn bộ command triển khai và bảo trì từ A đến Z
 
-> Release: `50.3.2-prod-r1-github-desktop-operations-guide`
+> Release: `50.5.1-prod-r1-full-batch-ingest`
+
+> Release: `50.5.1-prod-r1-full-batch-ingest`
 >
 > Chạy command Monitor bằng `root`. Với node KVM, chạy Agent bằng `root` để Agent đọc được libvirt, interface, disk và host metrics.
 
 ---
+
+# DATABASE CONTRACT CỦA SOURCE HIỆN TẠI
+
+```text
+PostgreSQL 17 + TimescaleDB
+Container: bw-timescaledb
+Database: bw_monitor
+Volume: bw_monitor_postgres_data
+Host bind: 127.0.0.1:55432
+Backup: pg_dump custom format
+Restore: pg_restore
+```
+
+Không có database file cục bộ để backup, compact hoặc restore. Toàn bộ command database trong guide này đi qua PostgreSQL/TimescaleDB.
+
+Xem kiến trúc đầy đủ tại [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md).
 
 # MỤC LỤC
 
@@ -83,13 +101,13 @@ Nếu node dùng tên khác, thay đúng tên thật.
 
 ```bash
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/VERSION
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 ```
 
 Kết quả mong đợi:
 
 ```text
-50.3.2-prod-r1-github-desktop-operations-guide
+50.5.1-prod-r1-full-batch-ingest
 ```
 
 ## 2.2 Update chuẩn, có backup trước
@@ -113,11 +131,11 @@ virtinfra-monitorctl urls
 ## 2.3 Update trực tiếp từ GitHub khi command update không kéo bản mới
 
 ```bash
-export BW_GITHUB_REPO='tuanchu1121/bw-monitor-production.1'
+export BW_GITHUB_REPO='tuanchu1121/virtinfra-monitor'
 export BW_GITHUB_REF='main'
 
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/update.sh \
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/update.sh \
 | bash
 
 unset BW_GITHUB_REPO
@@ -142,7 +160,7 @@ grep -E '^BW_GITHUB_(REPO|REF)=' \
 Kỳ vọng:
 
 ```text
-BW_GITHUB_REPO=tuanchu1121/bw-monitor-production.1
+BW_GITHUB_REPO=tuanchu1121/virtinfra-monitor
 BW_GITHUB_REF=main
 ```
 
@@ -164,7 +182,7 @@ Trên trình duyệt:
 Ctrl + F5
 ```
 
-Bản `50.3.2` không bắt buộc update Agent nếu node đã chạy Agent của `50.3.0/50.3.1`.
+Bản `50.4.4` không đổi Agent protocol, payload, endpoint hoặc chu kỳ nên không bắt buộc update Agent chỉ để dùng Storage V2.
 
 ---
 
@@ -188,7 +206,7 @@ Cài:
 
 ```bash
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/install.sh \
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/install.sh \
 | bash -s -- \
 --public-ip IP-MONITOR \
 --port 8080
@@ -245,7 +263,7 @@ apt-get update
 apt-get install -y curl ca-certificates tar
 
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/install.sh \
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/install.sh \
 | bash -s -- \
 --domain monitor.example.com \
 --email ops@example.com
@@ -270,7 +288,7 @@ Ví dụ SSH port `1812`:
 
 ```bash
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/install.sh \
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/install.sh \
 | bash -s -- \
 --domain monitor.example.com \
 --email ops@example.com \
@@ -465,7 +483,7 @@ read -rsp 'Nhap VirtInfra Agent token: ' BW_TOKEN
 echo
 
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/install-agent.sh \
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/install-agent.sh \
 | env \
 VIRTINFRA_AGENT_API='https://DOMAIN-CUA-M/push' \
 VIRTINFRA_AGENT_TOKEN="$BW_TOKEN" \
@@ -482,7 +500,7 @@ read -rsp 'Nhap VirtInfra Agent token: ' BW_TOKEN
 echo
 
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/install-agent.sh \
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/install-agent.sh \
 | env \
 VIRTINFRA_AGENT_API='http://IP-MONITOR:8080/push' \
 VIRTINFRA_AGENT_TOKEN="$BW_TOKEN" \
@@ -501,7 +519,7 @@ read -rsp 'Nhap VirtInfra Agent token: ' BW_TOKEN
 echo
 
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/install-agent.sh \
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/install-agent.sh \
 | bash -s -- \
 --api 'https://DOMAIN-CUA-M/push' \
 --token "$BW_TOKEN" \
@@ -528,7 +546,7 @@ read -rsp 'Nhap VirtInfra Agent token: ' BW_TOKEN
 echo
 
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/install-agent.sh \
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/install-agent.sh \
 | bash -s -- \
 --api 'https://DOMAIN-CUA-M/push' \
 --token "$BW_TOKEN" \
@@ -757,7 +775,7 @@ read -rsp 'Nhap VirtInfra Agent token: ' BW_TOKEN
 echo
 
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/install-agent.sh \
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/install-agent.sh \
 | env \
 VIRTINFRA_AGENT_API='https://DOMAIN-CUA-M/push' \
 VIRTINFRA_AGENT_TOKEN="$BW_TOKEN" \
@@ -804,7 +822,7 @@ read -rsp 'Nhap VirtInfra Agent token: ' BW_TOKEN
 echo
 
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/install-agent.sh \
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/install-agent.sh \
 | bash -s -- \
 --api 'https://DOMAIN-CUA-M/push' \
 --token "$BW_TOKEN" \
@@ -822,7 +840,7 @@ unset BW_TOKEN
 
 ```bash
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/uninstall-agent.sh \
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/uninstall-agent.sh \
 | bash -s -- \
 --keep-state
 ```
@@ -837,7 +855,7 @@ State giữ tại:
 
 ```bash
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/uninstall-agent.sh \
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/uninstall-agent.sh \
 | bash
 ```
 
@@ -877,7 +895,7 @@ Nếu chưa clone:
 
 ```bash
 git clone \
-https://github.com/tuanchu1121/bw-monitor-production.1.git \
+https://github.com/tuanchu1121/virtinfra-monitor.git \
 agent
 ```
 
@@ -1778,7 +1796,7 @@ Kiểm tra GitHub raw:
 
 ```bash
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/VERSION
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 ```
 
 Kiểm tra config repo/ref:
@@ -2038,7 +2056,7 @@ read -rsp 'Nhap VirtInfra Agent token: ' BW_TOKEN
 echo
 
 curl -fsSL \
-https://raw.githubusercontent.com/tuanchu1121/bw-monitor-production.1/main/install-agent.sh \
+https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/install-agent.sh \
 | env \
 VIRTINFRA_AGENT_API='https://DOMAIN-CUA-M/push' \
 VIRTINFRA_AGENT_TOKEN="$BW_TOKEN" \

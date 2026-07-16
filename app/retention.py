@@ -71,7 +71,7 @@ def main() -> int:
         result = module.run_retention(dry_run=False)
         print(json.dumps({
             "ok": True,
-            "version": "50.3.2-prod-r1-github-desktop-operations-guide",
+            "version": "50.5.1-prod-r1-full-batch-ingest",
             "started_at": started,
             "finished_at": int(time.time()),
             "result": result,

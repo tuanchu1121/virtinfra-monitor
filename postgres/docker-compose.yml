@@ -1,6 +1,6 @@
 services:
   timescaledb:
-    image: ${BW_TIMESCALE_IMAGE:-timescale/timescaledb:2.27.2-pg17-oss}
+    image: ${BW_TIMESCALE_IMAGE:-timescale/timescaledb:2.27.2-pg17}
     container_name: bw-timescaledb
     restart: unless-stopped
     environment:

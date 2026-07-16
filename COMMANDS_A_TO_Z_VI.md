@@ -1,8 +1,8 @@
 # VirtInfra Monitor - Toàn bộ command triển khai và bảo trì từ A đến Z
 
-> Release: `50.5.1-prod-r1-full-batch-ingest`
+> Release: `50.5.3-prod-r1-snapshot-detail-alignment`
 
-> Release: `50.5.1-prod-r1-full-batch-ingest`
+> Release: `50.5.3-prod-r1-snapshot-detail-alignment`
 >
 > Chạy command Monitor bằng `root`. Với node KVM, chạy Agent bằng `root` để Agent đọc được libvirt, interface, disk và host metrics.
 
@@ -107,7 +107,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Kết quả mong đợi:
 
 ```text
-50.5.1-prod-r1-full-batch-ingest
+50.5.3-prod-r1-snapshot-detail-alignment
 ```
 
 ## 2.2 Update chuẩn, có backup trước

@@ -1,9 +1,9 @@
 # VirtInfra Monitor v50 PostgreSQL Native
 
-**Release:** `50.5.1-prod-r1-full-batch-ingest`
+**Release:** `50.5.3-prod-r1-snapshot-detail-alignment`
 Production monitoring for KVM/libvirt nodes and virtual machines. PostgreSQL 17 + TimescaleDB is the only runtime data plane. This repository keeps the complete v48/v49 dashboard, Abuse Engine, storage views, Admin tools, REST API and Agent protocol, while replacing the runtime data store with one PostgreSQL 17 + TimescaleDB database.
 
-> Release: `50.5.1-prod-r1-full-batch-ingest`
+> Release: `50.5.3-prod-r1-snapshot-detail-alignment`
 
 > **Operations source of truth:** [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md)
 >

@@ -1,6 +1,6 @@
 # Storage V2 compatibility matrix
 
-Release: `50.5.1-prod-r1-full-batch-ingest`
+Release: `50.5.3-prod-r1-snapshot-detail-alignment`
 
 Status values: **UNCHANGED**, **V2 READ**, **V2 WRITE**, **ADDITIVE**, **FALLBACK AVAILABLE**.
 

@@ -8,7 +8,7 @@ for f in "$ROOT/install.sh" "$ROOT/update.sh" "$I" "$ROOT/deploy/postgres/bw-mon
   bash -n "$f"
 done
 
-grep -q 'RELEASE="50.5.1-prod-r1-full-batch-ingest"' "$I" || fail "release marker missing"
+grep -q 'RELEASE="50.5.3-prod-r1-snapshot-detail-alignment"' "$I" || fail "release marker missing"
 CANONICAL='tuanchu1121/virtinfra-monitor'
 [[ "$(cat "$ROOT/CANONICAL_REPOSITORY")" == "$CANONICAL" ]] || fail "canonical repository contract is wrong"
 for repo_file in \

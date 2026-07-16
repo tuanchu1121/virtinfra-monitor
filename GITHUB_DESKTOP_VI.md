@@ -1,8 +1,8 @@
 # Đưa VirtInfra Monitor lên GitHub bằng GitHub Desktop
 
-> Release: `50.5.1-prod-r1-full-batch-ingest`
+> Release: `50.5.3-prod-r1-snapshot-detail-alignment`
 
-> Dùng cho release `50.5.1-prod-r1-full-batch-ingest`.
+> Dùng cho release `50.5.3-prod-r1-snapshot-detail-alignment`.
 
 > Source of truth vận hành: [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md).
 >
@@ -78,7 +78,7 @@ update.sh
 Giải nén file ZIP release ra một thư mục riêng, ví dụ:
 
 ```text
-D:\Downloads\virtinfra-monitor-50.5.1-prod-r1-full-batch-ingest\
+D:\Downloads\virtinfra-monitor-50.5.3-prod-r1-snapshot-detail-alignment\
 ```
 
 Mở thư mục đó. Bên trong phải thấy trực tiếp:
@@ -214,7 +214,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Phải trả về:
 
 ```text
-50.5.1-prod-r1-full-batch-ingest
+50.5.3-prod-r1-snapshot-detail-alignment
 ```
 
 Kiểm tra file installer:
@@ -250,7 +250,7 @@ virtinfra-monitorctl version
 Phải ra:
 
 ```text
-50.5.1-prod-r1-full-batch-ingest
+50.5.3-prod-r1-snapshot-detail-alignment
 ```
 
 Kiểm tra:
@@ -292,7 +292,7 @@ Sai:
 
 ```text
 repo-root/
-└── virtinfra-monitor-50.5.1-prod-r1-full-batch-ingest/
+└── virtinfra-monitor-50.5.3-prod-r1-snapshot-detail-alignment/
     ├── app/
     ├── deploy/
     └── install.sh

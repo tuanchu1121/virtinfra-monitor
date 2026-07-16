@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE="50.5.1-prod-r1-full-batch-ingest"
+RELEASE="50.5.3-prod-r1-snapshot-detail-alignment"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 APP_SRC="$REPO_ROOT/app"
@@ -240,6 +240,7 @@ install -m 0644 "$PG_SRC/sql/001_bootstrap.sql" "$APP_DIR/postgres/sql/001_boots
 install -m 0644 "$PG_SRC/sql/002_timescale.sql" "$APP_DIR/postgres/sql/002_timescale.sql"
 install -m 0644 "$PG_SRC/sql/003_native_indexes.sql" "$APP_DIR/postgres/sql/003_native_indexes.sql"
 install -m 0644 "$PG_SRC/sql/004_storage_v2.sql" "$APP_DIR/postgres/sql/004_storage_v2.sql"
+install -m 0644 "$PG_SRC/sql/005_ingest_write_profile.sql" "$APP_DIR/postgres/sql/005_ingest_write_profile.sql"
 
 log "Start PostgreSQL 17 + TimescaleDB"
 "${COMPOSE[@]}" --env-file "$PG_ENV" -f "$APP_DIR/postgres/docker-compose.yml" pull
@@ -380,6 +381,8 @@ TS_CAPS="$(docker exec bw-timescaledb psql -U "$PG_USER" -d "$PG_DATABASE" -Atqc
 [[ "$TS_CAPS" == "2" ]] || die "TimescaleDB retention/compression policy functions are unavailable; refusing a partial Storage V2 install."
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/003_native_indexes.sql"
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/004_storage_v2.sql"
+log "Apply low-write ingest index profile"
+docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/005_ingest_write_profile.sql"
 
 log "Install services and management tools"
 install -m 0644 "$SCRIPT_DIR/bw-monitor.service" "$SERVICE_FILE"

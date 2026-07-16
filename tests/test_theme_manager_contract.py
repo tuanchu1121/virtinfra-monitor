@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static regression contract for protected core modes and custom themes."""
+"""Static regression contract for the simple preset and one-custom theme model."""
 from __future__ import annotations
 
 import ast
@@ -17,49 +17,53 @@ def need(condition: bool, message: str) -> None:
 
 
 required = [
-    'V5047_THEME_SETTING_KEY = "custom_theme_library_v2"',
-    'V5047_THEME_SELECTION_KEY = "virtinfra-theme-selection-v2"',
+    'V5048_THEME_SETTING_KEY = "simple_theme_settings_v3"',
+    'V5048_THEME_SELECTION_KEY = "virtinfra-theme-selection-v3"',
+    'V5048_CUSTOM_THEME_ID = "simple-custom"',
     'data-custom-theme',
-    'custom-theme-select',
-    'custom_theme_library_updated',
+    'simple-theme-select',
+    'simple_theme_settings_updated',
     '@app.route("/admin/theme", methods=["GET", "POST"])',
     'require_admin()',
-    '"toggle"',
-    '"duplicate"',
-    '"delete"',
-    '"reset"',
-    'Core Auto, Light and Dark',
-    'Auto, Light and Dark remain untouched',
+    'Preset themes shown to users',
+    'One simple Custom theme',
+    'Save themes',
+    'Reset theme settings',
     'bw-theme-mode',
-    'V5047_THEME_MAX_ITEMS = 24',
 ]
 for item in required:
-    need(item in SOURCE, f"custom theme contract missing: {item}")
+    need(item in SOURCE, f"simple theme contract missing: {item}")
 
 for key in (
-    "virtinfra_ocean",
-    "grafana_inspired",
-    "zabbix_inspired",
-    "datadog_inspired",
-    "prometheus_inspired",
-    "noc_high_contrast",
-    "dense_operations",
+    "virtinfra-ocean",
+    "grafana-inspired",
+    "zabbix-inspired",
+    "prometheus-inspired",
+    "noc-high-contrast",
 ):
-    need(f'"{key}": {{' in SOURCE, f"built-in theme template missing: {key}")
+    need(f'"{key}": {{' in SOURCE, f"built-in theme preset missing: {key}")
 
-# Original core controls must remain explicit and protected.
+# The removed library complexity must stay removed.
+block = SOURCE[SOURCE.index("V5048_THEME_SETTING_KEY"):]
+for forbidden in (
+    "V5047_THEME_MAX_ITEMS",
+    "custom_theme_library_v2",
+    'action == "duplicate"',
+    'action == "delete"',
+    'action == "toggle"',
+    "Create from monitoring presets",
+    "Theme key cannot change",
+):
+    need(forbidden not in block, f"removed theme-library complexity remains: {forbidden}")
+
+# Original core controls remain explicit and the simple themes are scoped.
 need(SOURCE.count('data-theme-mode="auto"') >= 2, "Auto core theme control missing")
 need(SOURCE.count('data-theme-mode="dark"') >= 2, "Dark core theme control missing")
 need(SOURCE.count('data-theme-mode="light"') >= 2, "Light core theme control missing")
 need("localStorage.getItem('bw-theme-mode') || 'auto'" in SOURCE, "core theme preference was rewritten")
-need("localStorage.getItem('bw-theme-mode') || %s" not in SOURCE, "admin default still overwrites core mode")
-
-# Custom CSS must be scoped, not injected globally into Light/Dark.
-block = SOURCE[SOURCE.index("V5047_THEME_SETTING_KEY"):]
 need('html[data-custom-theme="%s"]' in block, "custom CSS selector is not scoped")
-need('html[data-theme="light"] {' not in block, "custom manager overwrites core Light")
-need('html[data-theme="dark"] {' not in block, "custom manager overwrites core Dark")
-need("application_theme_v1" not in block, "legacy shared-palette setting still active")
+need('html[data-theme="light"] {' not in block, "simple manager overwrites core Light")
+need('html[data-theme="dark"] {' not in block, "simple manager overwrites core Dark")
 need("eval(" not in block, "stored theme configuration must not be evaluated")
 
 routes = []
@@ -76,6 +80,6 @@ need(routes == ["admin_theme_manager"], f"expected one /admin/theme route, got {
 
 need('all(ch in "0123456789abcdef"' in block, "hex validation missing")
 need("_v48140_bump_cache_generation()" in block, "page cache invalidation missing")
-need("set_admin_setting(V5047_THEME_SETTING_KEY" in block, "PostgreSQL persistence missing")
+need("set_admin_setting(V5048_THEME_SETTING_KEY" in block, "PostgreSQL persistence missing")
 
-print("PASS: protected Auto/Light/Dark and admin-published custom theme library")
+print("PASS: five fixed presets, one simple custom theme and protected core modes")

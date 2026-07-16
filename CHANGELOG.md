@@ -1,3 +1,12 @@
+## 50.4.8-prod-r1-simple-theme-selector
+
+- Simplifies Admin theme management to one page with five fixed presets and one optional Custom theme.
+- Removes create, duplicate, delete, per-theme edit and publish workflows from the previous theme library.
+- Keeps the original Auto, Dark and Light themes protected and unchanged.
+- Lets Admin tick which presets are visible to users: VirtInfra Ocean, Grafana Inspired, Zabbix Inspired, Prometheus Inspired and NOC High Contrast.
+- Provides one simple Custom slot with name, Light/Dark base, density and seven main colors.
+- Keeps each user's selection in the browser and safely falls back to the previous core mode when a preset is hidden.
+
 ## 50.4.7-prod-r1-custom-theme-library
 
 - Protects the original dashboard `Auto`, `Light`, and `Dark` modes. Admin theme settings no longer overwrite their CSS or default behavior.

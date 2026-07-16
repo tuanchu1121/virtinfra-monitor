@@ -2,7 +2,7 @@
 
 Production monitoring for KVM/libvirt nodes and virtual machines. PostgreSQL 17 + TimescaleDB is the only runtime data plane. This repository keeps the complete v48/v49 dashboard, Abuse Engine, storage views, Admin tools, REST API and Agent protocol, while replacing the runtime data store with one PostgreSQL 17 + TimescaleDB database.
 
-> Release: `50.4.7-prod-r1-custom-theme-library`
+> Release: `50.4.8-prod-r1-simple-theme-selector`
 
 > **Operations source of truth:** [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md)
 >
@@ -323,8 +323,8 @@ Release audit and archives:
 
 The public product name is **VirtInfra Monitor** and the node collector is **VirtInfra Agent**. New Agent deployments use `virtinfra-agent.service`, `/etc/virtinfra-agent.env`, `/usr/local/lib/virtinfra-agent`, and `/var/lib/virtinfra-agent`. The monitor keeps legacy internal `/opt/bw-monitor`, `BW_*`, and `bw-monitor.service` identifiers as compatibility anchors so an upgrade does not move the PostgreSQL data volume, invalidate existing automation, or break the one-command installer. Canonical operator commands are `virtinfra-monitorctl` and `virtinfra-agent-doctor`; the legacy `bw-monitorctl`, `bw-monitor.service`, `BW_*` and old Agent identifiers remain available only as upgrade/integration compatibility anchors.
 
-## Custom Theme Library
+## Simple Theme Selector
 
-The original dashboard `Auto`, `Light`, and `Dark` modes are protected and keep their existing CSS. Administrators can open `Admin -> Themes` to create, edit, publish, hide, duplicate, or delete separate custom themes. Published themes appear in a user selector beside the protected core controls, and every browser keeps its own choice. Built-in templates include VirtInfra Ocean, Grafana Inspired, Zabbix Inspired, Datadog Inspired, Prometheus Inspired, NOC High Contrast, and Dense Operations.
+The original dashboard `Auto`, `Light`, and `Dark` modes remain protected and unchanged. In `Admin -> Themes`, an administrator simply ticks which ready-made presets users may select and may optionally configure one Custom theme. There are no create, duplicate, delete, or per-theme publishing workflows. Available presets are VirtInfra Ocean, Grafana Inspired, Zabbix Inspired, Prometheus Inspired, and NOC High Contrast.
 
 See [docs/THEME_MANAGER.md](docs/THEME_MANAGER.md).

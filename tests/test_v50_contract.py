@@ -9,7 +9,7 @@ def need(cond: bool, message: str) -> None:
         raise AssertionError(message)
 
 version = (ROOT / "VERSION").read_text().strip()
-need(version == "50.4.7-prod-r1-custom-theme-library", f"unexpected VERSION: {version}")
+need(version == "50.4.8-prod-r1-simple-theme-selector", f"unexpected VERSION: {version}")
 
 app = (ROOT / "app/app.py").read_text()
 pg = (ROOT / "app/bw_pg.py").read_text()

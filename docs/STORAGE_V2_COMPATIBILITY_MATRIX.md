@@ -1,6 +1,6 @@
 # Storage V2 compatibility matrix
 
-Release: `50.4.7-prod-r1-custom-theme-library`
+Release: `50.4.8-prod-r1-simple-theme-selector`
 
 Status values: **UNCHANGED**, **V2 READ**, **V2 WRITE**, **ADDITIVE**, **FALLBACK AVAILABLE**.
 

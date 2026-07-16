@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE="50.4.7-prod-r1-custom-theme-library"
+RELEASE="50.4.8-prod-r1-simple-theme-selector"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 APP_SRC="$REPO_ROOT/app"

@@ -17,13 +17,13 @@ Assume:
 
 ```text
 checkout: /.data/agent
-archive:  /root/virtinfra-monitor-50.4.7-prod-r1-custom-theme-library-github-production.zip
+archive:  /root/virtinfra-monitor-50.4.8-prod-r1-simple-theme-selector-github-production.zip
 ```
 
 ```bash
 set -euo pipefail
 
-ZIP=/root/virtinfra-monitor-50.4.7-prod-r1-custom-theme-library-github-production.zip
+ZIP=/root/virtinfra-monitor-50.4.8-prod-r1-simple-theme-selector-github-production.zip
 REPO=/.data/agent
 TMP=/tmp/virtinfra-monitor-v50-publish
 
@@ -64,7 +64,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Expected:
 
 ```text
-50.4.7-prod-r1-custom-theme-library
+50.4.8-prod-r1-simple-theme-selector
 ```
 
 ## Secret review

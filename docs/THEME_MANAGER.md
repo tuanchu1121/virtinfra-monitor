@@ -1,22 +1,18 @@
-# VirtInfra Monitor Theme Manager
+# VirtInfra Monitor simple themes
 
-## Behavior model
+## Behavior
 
-The dashboard always keeps the three protected core choices:
+The dashboard always keeps the original core choices:
 
 - `Auto`
-- `Light`
 - `Dark`
+- `Light`
 
-These use the original VirtInfra Monitor CSS and are never overwritten by Admin settings.
+Admin settings never overwrite these three themes.
 
-Administrators manage a separate custom theme library. Only custom themes marked as published appear in the dashboard theme selector. Dashboard users may select a published custom theme, but they cannot create, edit, publish, hide, duplicate, or delete themes.
+The Admin page only controls which additional presets appear to users. Each user chooses a theme in their own browser. When a preset is hidden, browsers using it safely return to their previous Auto, Dark, or Light mode.
 
-Each browser stores its own selection. Choosing or removing a custom theme does not erase the browser's existing Auto, Light, or Dark preference. If an administrator hides or deletes a theme that a browser was using, that browser automatically falls back to its protected core preference.
-
-## Open the manager
-
-Sign in as an administrator and open:
+## Open settings
 
 ```text
 Admin -> Themes
@@ -28,68 +24,53 @@ Direct route:
 /admin/theme
 ```
 
-## Built-in custom templates
+## Ready-made presets
 
-The library starts with original VirtInfra implementations inspired by common monitoring aesthetics:
+Admin can show or hide these fixed presets with checkboxes:
 
 - VirtInfra Ocean
 - Grafana Inspired
 - Zabbix Inspired
-- Datadog Inspired
 - Prometheus Inspired
 - NOC High Contrast
-- Dense Operations
 
-No vendor logos, trademarks, copied stylesheets, or external theme assets are included.
+The presets are fixed. There is no create, edit, duplicate, delete, or separate publish workflow.
 
-## Admin actions
+## One Custom theme
 
-An administrator can:
+There is exactly one optional Custom theme. Admin can set:
 
-- create a theme from a built-in template
-- edit a theme
-- publish or hide a theme from dashboard users
-- duplicate a theme
-- delete a theme
-- restore the built-in custom theme library
+- displayed name
+- Light or Dark base
+- Compact, Normal, or Comfortable density
+- background
+- panel
+- text
+- border
+- accent
+- RX
+- TX
 
-The protected Auto, Light, and Dark choices cannot be deleted or edited.
+Admin checks `Show Custom theme to users` to make it available. Users can only select it, not edit it.
 
-## Custom controls
+## Storage
 
-Each custom theme has its own:
-
-- fixed Light or Dark base appearance
-- background, panel, soft panel, header, text, muted text, border, and accent colors
-- RX, TX, Success, Warning, and Danger colors
-- font profile
-- base, table, and small text sizes
-- table row height
-- card padding
-- border radius
-- shadow strength
-- chart line width
-
-All colors are validated as six-digit hexadecimal values. Numeric fields are range checked server-side.
-
-## Storage and activation
-
-The library is stored in PostgreSQL `admin_settings` under:
+Settings are stored in PostgreSQL `admin_settings` under:
 
 ```text
-custom_theme_library_v2
+simple_theme_settings_v3
 ```
 
-Saving any theme action increments the shared page-cache generation. Newly rendered pages receive the updated selector and CSS immediately. No Monitor or Agent restart is required.
-
-The browser choice is stored in local storage under:
+The user's additional-theme choice is stored in the browser under:
 
 ```text
-virtinfra-theme-selection-v2
+virtinfra-theme-selection-v3
 ```
 
-The original core preference remains stored separately under the existing:
+The original core preference remains separate:
 
 ```text
 bw-theme-mode
 ```
+
+Saving settings clears the rendered-page cache. No Monitor restart or Agent update is required.

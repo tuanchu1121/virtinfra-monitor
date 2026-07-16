@@ -1,5 +1,7 @@
-## 50.5.4-prod-r1-snapshot-detail-correctness
+## 50.5.5-prod-r1-native-copy-sql-compat-hotfix
 
+- Fixed the PostgreSQL compatibility translator so native `CREATE TABLE ... (LIKE source INCLUDING ...)` staging DDL is never rewritten to invalid `ILIKE` syntax.
+- Added a regression test covering native COPY temp-table creation while preserving case-insensitive dashboard search `LIKE` to `ILIKE` translation.
 - Built directly from the 50.5.2 native COPY ingest release.
 - Node Filesystems now reads capacity and I/O from the same retained `node_push_snapshots.storage_payload` bucket selected by the period/custom time.
 - VM Overview and Virtual Disk I/O now use the exact selected retained snapshot and never overlay current rates onto historical pages.

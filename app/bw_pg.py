@@ -83,6 +83,14 @@ _RE_PRAGMA_TABLE_INFO = re.compile(r"^\s*PRAGMA\s+table_info\s*\(\s*([\w\"]+)\s*
 _RE_PRAGMA = re.compile(r"^\s*PRAGMA\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:=\s*([^;]+))?\s*;?\s*$", re.I)
 _RE_CREATE_TABLE = re.compile(r"^\s*CREATE\s+(TEMP(?:ORARY)?\s+)?TABLE\s+", re.I)
 _RE_CREATE_TABLE_NAME = re.compile(r"^\s*CREATE\s+(?:TEMP(?:ORARY)?\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([\w\.\"]+)", re.I)
+_RE_TABLE_LIKE_CLAUSE = re.compile(
+    r"(\(\s*)LIKE(\s+(?:[A-Za-z_][A-Za-z0-9_$]*|\"(?:\"\"|[^\"])+\")"
+    r"(?:\.(?:[A-Za-z_][A-Za-z0-9_$]*|\"(?:\"\"|[^\"])+\"))*"
+    r"(?:\s+(?:INCLUDING|EXCLUDING)\s+"
+    r"(?:COMMENTS|COMPRESSION|CONSTRAINTS|DEFAULTS|GENERATED|IDENTITY|INDEXES|STATISTICS|STORAGE|ALL))*"
+    r"\s*\))",
+    re.I,
+)
 
 # Append-only history tables become Timescale hypertables after application
 # schema initialization. Their generated id is intentionally not a standalone
@@ -483,6 +491,29 @@ def _translate_create_table(sql: str) -> str:
     return sql
 
 
+def _translate_like_operators(sql: str) -> str:
+    """Translate SQLite search LIKE to PostgreSQL ILIKE without corrupting
+    PostgreSQL's CREATE TABLE ... (LIKE source INCLUDING ...) clone clause.
+
+    The compatibility layer historically replaced every LIKE token globally.
+    Native COPY staging introduced PostgreSQL table cloning, where LIKE is DDL
+    syntax rather than a comparison operator. Protect those clauses, translate
+    the remaining operators, then restore the exact DDL text.
+    """
+    protected: list[str] = []
+
+    def protect(match: re.Match[str]) -> str:
+        marker = f"__VI_TABLE_CLONE_{len(protected)}__"
+        protected.append(match.group(0))
+        return marker
+
+    translated = _RE_TABLE_LIKE_CLAUSE.sub(protect, sql)
+    translated = re.sub(r"\bLIKE\b", "ILIKE", translated, flags=re.I)
+    for index, original in enumerate(protected):
+        translated = translated.replace(f"__VI_TABLE_CLONE_{index}__", original)
+    return translated
+
+
 def translate_sql(raw_conn: psycopg.Connection, sql: str) -> str:
     sql = str(sql or "").strip()
     if not sql:
@@ -506,8 +537,9 @@ def translate_sql(raw_conn: psycopg.Connection, sql: str) -> str:
         sql = _translate_insert_or(raw_conn, sql)
     sql = _translate_scalar_minmax(sql)
     # SQLite LIKE is ASCII case-insensitive by default. ILIKE preserves the
-    # search/filter behavior users already have in the dashboard.
-    sql = re.sub(r"\bLIKE\b", "ILIKE", sql, flags=re.I)
+    # search/filter behavior users already have in the dashboard. PostgreSQL
+    # CREATE TABLE ... (LIKE source ...) is protected by the helper.
+    sql = _translate_like_operators(sql)
     sql = _qmarks_to_psycopg(sql)
     return sql
 

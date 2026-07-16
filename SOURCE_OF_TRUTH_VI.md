@@ -1,8 +1,8 @@
 # SOURCE OF TRUTH VẬN HÀNH
 
-> Release: `50.5.4-prod-r1-snapshot-detail-correctness`
+> Release: `50.5.5-prod-r1-native-copy-sql-compat-hotfix`
 
-> Release: `50.5.4-prod-r1-snapshot-detail-correctness`
+> Release: `50.5.5-prod-r1-native-copy-sql-compat-hotfix`
 >
 > Tài liệu này được đối chiếu trực tiếp với `install.sh`, `deploy/postgres/*`, `deploy/agent/*`, `postgres/docker-compose.yml`, `app/app.py` và các test contract hiện tại.
 

@@ -1,6 +1,6 @@
 # Storage V2 compatibility matrix
 
-Release: `50.5.4-prod-r1-snapshot-detail-correctness`
+Release: `50.5.5-prod-r1-native-copy-sql-compat-hotfix`
 
 Status values: **UNCHANGED**, **V2 READ**, **V2 WRITE**, **ADDITIVE**, **FALLBACK AVAILABLE**.
 

@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.4-prod-r1-snapshot-detail-correctness`
+Release: `50.5.5-prod-r1-native-copy-sql-compat-hotfix`
 
 ## Final data path
 

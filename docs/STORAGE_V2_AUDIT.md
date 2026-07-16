@@ -1,6 +1,6 @@
 # Storage V2 source audit
 
-Release: `50.5.4-prod-r1-snapshot-detail-correctness`
+Release: `50.5.5-prod-r1-native-copy-sql-compat-hotfix`
 
 This audit was generated from the complete `app/app.py`, Agent, installer, PostgreSQL helper, maintenance and deployment source before the Storage V2 read path was enabled. The existing route names, response shapes, templates, CSS, authentication, CSRF, timezone, Agent payload, Abuse policy and Consumption calculations remain unchanged.
 

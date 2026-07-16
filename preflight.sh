@@ -26,7 +26,7 @@ fail(){ echo "ERROR: $*" >&2; exit 1; }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.4-prod-r1-snapshot-detail-correctness" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.5.5-prod-r1-native-copy-sql-compat-hotfix" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/bw_pg.py && -f deploy/agent/agent.py ]] || fail "full source tree is incomplete"
 [[ ! -d release && ! -d enterprise ]] || fail "legacy duplicate runtime trees must not be shipped"
 
@@ -88,6 +88,9 @@ log "Validate v50.5.2 native COPY ingest contract"
 
 log "Validate v50.5.4 selected-snapshot detail correctness"
 "$PYTHON" -m pytest -q tests/test_v5054_snapshot_detail_correctness.py
+
+log "Validate v50.5.5 PostgreSQL LIKE compatibility hotfix"
+"$PYTHON" -m pytest -q tests/test_v5055_sql_compat_hotfix.py
 
 log "Validate standalone repository contract"
 "$PYTHON" tests/test_repository_contract.py

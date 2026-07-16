@@ -15,7 +15,7 @@ def function_block(name: str) -> str:
 
 
 def test_release_identity_and_preflight_dependencies():
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.4-prod-r1-snapshot-detail-correctness"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.5-prod-r1-native-copy-sql-compat-hotfix"
     requirements = (ROOT / "requirements.txt").read_text()
     assert "pytest>=8,<9" in requirements
     assert "PyYAML>=6,<7" in requirements

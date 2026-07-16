@@ -1,6 +1,6 @@
 # HƯỚNG DẪN ĐẦY ĐỦ CHO REPO MỚI `virtinfra-monitor`
 
-> Release: `50.5.4-prod-r1-snapshot-detail-correctness`
+> Release: `50.5.5-prod-r1-native-copy-sql-compat-hotfix`
 >
 > Repo chuẩn duy nhất: `tuanchu1121/virtinfra-monitor`
 >
@@ -59,7 +59,7 @@ https://github.com/tuanchu1121/virtinfra-monitor
 1. Giải nén file:
 
 ```text
-virtinfra-monitor-50.5.4-prod-r1-snapshot-detail-correctness.zip
+virtinfra-monitor-50.5.5-prod-r1-native-copy-sql-compat-hotfix.zip
 ```
 
 2. Mở GitHub Desktop.
@@ -95,7 +95,7 @@ Sai:
 
 ```text
 virtinfra-monitor\
-└── virtinfra-monitor-50.5.4-prod-r1-snapshot-detail-correctness\
+└── virtinfra-monitor-50.5.5-prod-r1-native-copy-sql-compat-hotfix\
     ├── app\
     ├── deploy\
     └── install.sh
@@ -158,7 +158,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Kết quả phải là:
 
 ```text
-50.5.4-prod-r1-snapshot-detail-correctness
+50.5.5-prod-r1-native-copy-sql-compat-hotfix
 ```
 
 Kiểm tra hai file Storage V2:
@@ -272,7 +272,7 @@ virtinfra-monitorctl urls
 Version phải là:
 
 ```text
-50.5.4-prod-r1-snapshot-detail-correctness
+50.5.5-prod-r1-native-copy-sql-compat-hotfix
 ```
 
 Storage V2 cần thấy:
@@ -617,7 +617,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 ```text
 [ ] Repo đúng: tuanchu1121/virtinfra-monitor
 [ ] Branch đúng: main
-[ ] VERSION trả đúng 50.5.4-prod-r1-snapshot-detail-correctness
+[ ] VERSION trả đúng 50.5.5-prod-r1-native-copy-sql-compat-hotfix
 [ ] app/storage_v2.py trả HTTP 200
 [ ] postgres/sql/004_storage_v2.sql trả HTTP 200
 [ ] install.sh nằm ở root repo

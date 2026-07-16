@@ -1,6 +1,6 @@
 # VIRTINFRA MONITOR: TÀI LIỆU VẬN HÀNH
 
-> Release `50.4.8-prod-r1-simple-theme-selector`
+> Release `50.4.9-prod-r1-professional-theme-suite`
 
 Runtime hiện tại dùng PostgreSQL 17 + TimescaleDB làm nguồn dữ liệu duy nhất.
 

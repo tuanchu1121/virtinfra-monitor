@@ -1,6 +1,6 @@
-# VirtInfra Monitor simple themes
+# VirtInfra Monitor themes
 
-## Behavior
+## Simple behavior
 
 The dashboard always keeps the original core choices:
 
@@ -8,9 +8,9 @@ The dashboard always keeps the original core choices:
 - `Dark`
 - `Light`
 
-Admin settings never overwrite these three themes.
+Admin settings never overwrite those three modes.
 
-The Admin page only controls which additional presets appear to users. Each user chooses a theme in their own browser. When a preset is hidden, browsers using it safely return to their previous Auto, Dark, or Light mode.
+The Admin page only controls which additional VirtInfra presets appear to users. Every browser keeps its own selection. If a preset is hidden, the browser safely returns to its previous Auto, Dark or Light mode.
 
 ## Open settings
 
@@ -24,17 +24,19 @@ Direct route:
 /admin/theme
 ```
 
-## Ready-made presets
+## Ready-made VirtInfra presets
 
-Admin can show or hide these fixed presets with checkboxes:
+Admin enables or hides these fixed themes with checkboxes:
 
-- VirtInfra Ocean
-- Grafana Inspired
-- Zabbix Inspired
-- Prometheus Inspired
-- NOC High Contrast
+- `VirtInfra Core`: balanced navy for daily operations
+- `Midnight Signal`: deep blue-black with crisp telemetry
+- `Arctic Console`: clean cool light interface
+- `Graphite Edge`: compact neutral graphite
+- `NOC Vision`: high contrast and larger metrics for wall displays
 
-The presets are fixed. There is no create, edit, duplicate, delete, or separate publish workflow.
+There is no create, duplicate, delete or per-theme publishing workflow. The presets already coordinate background, text, muted text, borders, cards, tables, metric weight, numeric alignment, RX/TX, chart line width, density and responsive sizing.
+
+Responsive profiles automatically adjust spacing and metric size for common HD, 2K and 4K viewports. SVG charts remain vector sharp, and operational values use tabular lining numerals so columns stay aligned.
 
 ## One Custom theme
 
@@ -42,7 +44,7 @@ There is exactly one optional Custom theme. Admin can set:
 
 - displayed name
 - Light or Dark base
-- Compact, Normal, or Comfortable density
+- Compact, Normal or Comfortable density
 - background
 - panel
 - text
@@ -51,20 +53,20 @@ There is exactly one optional Custom theme. Admin can set:
 - RX
 - TX
 
-Admin checks `Show Custom theme to users` to make it available. Users can only select it, not edit it.
+The application derives soft panels, table headers, hover states, status colors, shadows, chart width and responsive sizing automatically. Users can select Custom but cannot edit it.
 
 ## Storage
 
 Settings are stored in PostgreSQL `admin_settings` under:
 
 ```text
-simple_theme_settings_v3
+simple_theme_settings_v4
 ```
 
 The user's additional-theme choice is stored in the browser under:
 
 ```text
-virtinfra-theme-selection-v3
+virtinfra-theme-selection-v4
 ```
 
 The original core preference remains separate:
@@ -73,4 +75,4 @@ The original core preference remains separate:
 bw-theme-mode
 ```
 
-Saving settings clears the rendered-page cache. No Monitor restart or Agent update is required.
+Release 50.4.9 migrates the previous simple selector settings and browser choice when available. Saving settings clears the rendered-page cache. No Monitor restart or Agent update is required.

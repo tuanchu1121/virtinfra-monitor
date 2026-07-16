@@ -1,11 +1,11 @@
-## 50.4.8-prod-r1-simple-theme-selector
+## 50.4.9-prod-r1-professional-theme-suite
 
-- Simplifies Admin theme management to one page with five fixed presets and one optional Custom theme.
-- Removes create, duplicate, delete, per-theme edit and publish workflows from the previous theme library.
-- Keeps the original Auto, Dark and Light themes protected and unchanged.
-- Lets Admin tick which presets are visible to users: VirtInfra Ocean, Grafana Inspired, Zabbix Inspired, Prometheus Inspired and NOC High Contrast.
-- Provides one simple Custom slot with name, Light/Dark base, density and seven main colors.
-- Keeps each user's selection in the browser and safely falls back to the previous core mode when a preset is hidden.
+- Replaced third-party-style preset names with five original VirtInfra themes: VirtInfra Core, Midnight Signal, Arctic Console, Graphite Edge and NOC Vision.
+- Preserved the simple management model: Admin only ticks fixed presets and may configure one Custom theme; Auto, Dark and Light remain protected.
+- Upgraded every preset from a palette swap to a coordinated visual system covering typography, numeric alignment, panel hierarchy, tables, cards, status states, RX/TX and chart line weight.
+- Added responsive HD, 2K and 4K scaling for font size, metric size, card padding, table density, page width and Consumption group layout.
+- Improved metric sharpness with tabular lining numerals, geometric text rendering, balanced card minimum heights and consistent spacing.
+- Added migration from the v50.4.8 simple selector settings and browser selection.
 
 ## 50.4.7-prod-r1-custom-theme-library
 

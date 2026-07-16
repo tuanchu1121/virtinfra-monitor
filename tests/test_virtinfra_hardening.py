@@ -3,7 +3,7 @@ from pathlib import Path
 root=Path(__file__).resolve().parents[1]
 app=(root/'app/app.py').read_text()
 agent=(root/'deploy/agent/agent.py').read_text()
-assert (root/'VERSION').read_text().strip() == '50.4.8-prod-r1-simple-theme-selector'
+assert (root/'VERSION').read_text().strip() == '50.4.9-prod-r1-professional-theme-suite'
 assert 'VirtInfra Monitor' in app
 assert 'WAL reserved/recycled' in app
 assert 'SHM {human' not in app

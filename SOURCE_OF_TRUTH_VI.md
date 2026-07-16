@@ -1,6 +1,6 @@
 # SOURCE OF TRUTH VẬN HÀNH
 
-> Release: `50.4.8-prod-r1-simple-theme-selector`
+> Release: `50.4.9-prod-r1-professional-theme-suite`
 >
 > Tài liệu này được đối chiếu trực tiếp với `install.sh`, `deploy/postgres/*`, `deploy/agent/*`, `postgres/docker-compose.yml`, `app/app.py` và các test contract hiện tại.
 

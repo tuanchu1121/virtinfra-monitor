@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.4.8-prod-r1-simple-theme-selector`
+Release: `50.4.9-prod-r1-professional-theme-suite`
 
 ## Final data path
 

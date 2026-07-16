@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static regression contract for the simple preset and one-custom theme model."""
+"""Static regression contract for professional fixed presets and one Custom theme."""
 from __future__ import annotations
 
 import ast
@@ -17,34 +17,38 @@ def need(condition: bool, message: str) -> None:
 
 
 required = [
-    'V5048_THEME_SETTING_KEY = "simple_theme_settings_v3"',
-    'V5048_THEME_SELECTION_KEY = "virtinfra-theme-selection-v3"',
-    'V5048_CUSTOM_THEME_ID = "simple-custom"',
+    'V5049_THEME_SETTING_KEY = "simple_theme_settings_v4"',
+    'V5049_THEME_SELECTION_KEY = "virtinfra-theme-selection-v4"',
+    'V5049_CUSTOM_THEME_ID = "simple-custom"',
     'data-custom-theme',
     'simple-theme-select',
     'simple_theme_settings_updated',
     '@app.route("/admin/theme", methods=["GET", "POST"])',
     'require_admin()',
-    'Preset themes shown to users',
+    'Ready-made VirtInfra themes',
     'One simple Custom theme',
+    'HD / 2K / 4K',
     'Save themes',
     'Reset theme settings',
     'bw-theme-mode',
+    'font-variant-numeric:tabular-nums lining-nums',
+    'text-rendering:geometricPrecision',
+    '@media(min-width:1900px)',
+    '@media(min-width:3000px)',
 ]
 for item in required:
-    need(item in SOURCE, f"simple theme contract missing: {item}")
+    need(item in SOURCE, f"professional theme contract missing: {item}")
 
 for key in (
-    "virtinfra-ocean",
-    "grafana-inspired",
-    "zabbix-inspired",
-    "prometheus-inspired",
-    "noc-high-contrast",
+    "virtinfra-core",
+    "midnight-signal",
+    "arctic-console",
+    "graphite-edge",
+    "noc-vision",
 ):
-    need(f'"{key}": {{' in SOURCE, f"built-in theme preset missing: {key}")
+    need(f'"{key}": {{' in SOURCE, f"built-in VirtInfra preset missing: {key}")
 
-# The removed library complexity must stay removed.
-block = SOURCE[SOURCE.index("V5048_THEME_SETTING_KEY"):]
+block = SOURCE[SOURCE.index("V5049_THEME_SETTING_KEY"):]
 for forbidden in (
     "V5047_THEME_MAX_ITEMS",
     "custom_theme_library_v2",
@@ -53,17 +57,20 @@ for forbidden in (
     'action == "toggle"',
     "Create from monitoring presets",
     "Theme key cannot change",
+    "Grafana Inspired",
+    "Zabbix Inspired",
+    "Prometheus Inspired",
+    "Datadog Inspired",
 ):
-    need(forbidden not in block, f"removed theme-library complexity remains: {forbidden}")
+    need(forbidden not in block, f"removed or copied theme concept remains: {forbidden}")
 
-# Original core controls remain explicit and the simple themes are scoped.
 need(SOURCE.count('data-theme-mode="auto"') >= 2, "Auto core theme control missing")
 need(SOURCE.count('data-theme-mode="dark"') >= 2, "Dark core theme control missing")
 need(SOURCE.count('data-theme-mode="light"') >= 2, "Light core theme control missing")
 need("localStorage.getItem('bw-theme-mode') || 'auto'" in SOURCE, "core theme preference was rewritten")
 need('html[data-custom-theme="%s"]' in block, "custom CSS selector is not scoped")
-need('html[data-theme="light"] {' not in block, "simple manager overwrites core Light")
-need('html[data-theme="dark"] {' not in block, "simple manager overwrites core Dark")
+need('html[data-theme="light"] {' not in block, "theme manager overwrites core Light")
+need('html[data-theme="dark"] {' not in block, "theme manager overwrites core Dark")
 need("eval(" not in block, "stored theme configuration must not be evaluated")
 
 routes = []
@@ -80,6 +87,7 @@ need(routes == ["admin_theme_manager"], f"expected one /admin/theme route, got {
 
 need('all(ch in "0123456789abcdef"' in block, "hex validation missing")
 need("_v48140_bump_cache_generation()" in block, "page cache invalidation missing")
-need("set_admin_setting(V5048_THEME_SETTING_KEY" in block, "PostgreSQL persistence missing")
+need("set_admin_setting(V5049_THEME_SETTING_KEY" in block, "PostgreSQL persistence missing")
+need("V5049_LEGACY_PRESET_MAP" in block, "v50.4.8 preset migration missing")
 
-print("PASS: five fixed presets, one simple custom theme and protected core modes")
+print("PASS: original VirtInfra presets, professional responsive styling, one Custom and protected core modes")

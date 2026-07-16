@@ -28313,7 +28313,7 @@ def api_v1_performance_v48140():
             try: redis_ok = bool(client.ping())
             except Exception: redis_ok = False
         return jsonify({
-            "version":"50.4.5-prod-r1-consumption-neutral-ui",
+            "version":"50.4.6-prod-r1-theme-manager",
             "database":{
                 "engine":"PostgreSQL + TimescaleDB",
                 "database":pg.get("database"),
@@ -28618,7 +28618,7 @@ def page(title, content):
 # protocol. Agents submit one compact node aggregate for each completed local
 # 2-hour bucket. VM UUIDs and per-VM history are deliberately not stored.
 
-V5030_RELEASE = "50.4.5-prod-r1-consumption-neutral-ui"
+V5030_RELEASE = "50.4.6-prod-r1-theme-manager"
 V5030_BW_TABLE = "node_bandwidth_consumption_2h"
 V5030_BW_BUCKET_SECONDS = 2 * 3600
 V5030_BW_RETENTION_SECONDS = 7 * 86400
@@ -29900,3 +29900,426 @@ def _v5040_healthz():
 
 
 app.view_functions["virtinfra_healthz"] = _v5040_healthz
+
+
+# ---------------------------------------------------------------------------
+# VirtInfra Monitor v50.4.6 application-wide Theme Manager
+# ---------------------------------------------------------------------------
+# The existing Auto / Dark / Light per-browser switch remains unchanged. Admin
+# settings define the default appearance and the shared palette used by every
+# page. Values are stored in admin_settings so no schema change or restart is
+# required.
+
+V5046_THEME_SETTING_KEY = "application_theme_v1"
+V5046_THEME_DEFAULT_PRESET = "neutral_blue"
+V5046_THEME_COLOR_FIELDS = (
+    "light_bg", "light_panel", "light_panel_soft", "light_header",
+    "light_text", "light_muted", "light_line", "light_brand",
+    "dark_bg", "dark_panel", "dark_panel_soft", "dark_header",
+    "dark_text", "dark_muted", "dark_line", "dark_brand",
+    "success", "warning", "danger", "rx", "tx",
+)
+V5046_THEME_PRESETS = {
+    "neutral_blue": {
+        "label": "Neutral Blue",
+        "description": "Balanced production default with restrained blue accents.",
+        "light_bg": "#f4f6f8", "light_panel": "#ffffff", "light_panel_soft": "#f8fafc",
+        "light_header": "#0f172a", "light_text": "#111827", "light_muted": "#667085",
+        "light_line": "#dfe5ec", "light_brand": "#2563eb",
+        "dark_bg": "#07101d", "dark_panel": "#0f1b2c", "dark_panel_soft": "#132238",
+        "dark_header": "#050b16", "dark_text": "#e7edf7", "dark_muted": "#94a3b8",
+        "dark_line": "#2b3d57", "dark_brand": "#60a5fa",
+        "success": "#16a34a", "warning": "#d97706", "danger": "#dc2626",
+        "rx": "#2563eb", "tx": "#ea580c",
+    },
+    "slate_indigo": {
+        "label": "Slate Indigo",
+        "description": "Cool slate surfaces with an indigo control accent.",
+        "light_bg": "#f5f6fa", "light_panel": "#ffffff", "light_panel_soft": "#f3f4f8",
+        "light_header": "#171827", "light_text": "#18181b", "light_muted": "#6b7280",
+        "light_line": "#d9dce7", "light_brand": "#4f46e5",
+        "dark_bg": "#0b0d18", "dark_panel": "#141827", "dark_panel_soft": "#1b2032",
+        "dark_header": "#080a12", "dark_text": "#eef0f8", "dark_muted": "#9ca3b8",
+        "dark_line": "#33394f", "dark_brand": "#818cf8",
+        "success": "#22a06b", "warning": "#d97706", "danger": "#e5484d",
+        "rx": "#6366f1", "tx": "#f59e0b",
+    },
+    "emerald": {
+        "label": "Emerald",
+        "description": "Quiet green accents for an operations-focused interface.",
+        "light_bg": "#f3f7f5", "light_panel": "#ffffff", "light_panel_soft": "#f1f6f3",
+        "light_header": "#10231d", "light_text": "#17211d", "light_muted": "#64736c",
+        "light_line": "#d6e2dc", "light_brand": "#059669",
+        "dark_bg": "#07130f", "dark_panel": "#0e211a", "dark_panel_soft": "#142b22",
+        "dark_header": "#04100c", "dark_text": "#e5f3ec", "dark_muted": "#91aa9d",
+        "dark_line": "#29483a", "dark_brand": "#34d399",
+        "success": "#16a34a", "warning": "#d97706", "danger": "#dc4c4c",
+        "rx": "#0f9f8f", "tx": "#d97706",
+    },
+    "graphite": {
+        "label": "Graphite",
+        "description": "Nearly monochrome surfaces with a calm steel-blue accent.",
+        "light_bg": "#f3f4f5", "light_panel": "#ffffff", "light_panel_soft": "#f6f7f8",
+        "light_header": "#181a1f", "light_text": "#202226", "light_muted": "#6d7178",
+        "light_line": "#d9dce0", "light_brand": "#526d82",
+        "dark_bg": "#0d0f12", "dark_panel": "#171a1f", "dark_panel_soft": "#1e2228",
+        "dark_header": "#08090b", "dark_text": "#e7e9ec", "dark_muted": "#9ca1a9",
+        "dark_line": "#353a42", "dark_brand": "#8fb3cc",
+        "success": "#2f9e67", "warning": "#c88719", "danger": "#d85757",
+        "rx": "#5b8db8", "tx": "#c88719",
+    },
+    "warm_amber": {
+        "label": "Warm Amber",
+        "description": "Neutral cream surfaces with a warm amber control accent.",
+        "light_bg": "#f8f6f1", "light_panel": "#ffffff", "light_panel_soft": "#faf7f0",
+        "light_header": "#292117", "light_text": "#251f18", "light_muted": "#746a5d",
+        "light_line": "#e3ddd2", "light_brand": "#b96800",
+        "dark_bg": "#15110c", "dark_panel": "#211b13", "dark_panel_soft": "#2b2319",
+        "dark_header": "#0d0a07", "dark_text": "#f1e9dd", "dark_muted": "#b2a493",
+        "dark_line": "#4a3c2c", "dark_brand": "#f0a43c",
+        "success": "#3a9b68", "warning": "#d97706", "danger": "#d64f4f",
+        "rx": "#3f7fa8", "tx": "#d97706",
+    },
+}
+
+
+def _v5046_valid_hex(value, fallback):
+    value = str(value or "").strip().lower()
+    if len(value) == 7 and value.startswith("#") and all(ch in "0123456789abcdef" for ch in value[1:]):
+        return value
+    return fallback
+
+
+def _v5046_default_theme_config():
+    preset = V5046_THEME_PRESETS[V5046_THEME_DEFAULT_PRESET]
+    config = {key: preset[key] for key in V5046_THEME_COLOR_FIELDS}
+    config.update({
+        "preset": V5046_THEME_DEFAULT_PRESET,
+        "name": preset["label"],
+        "default_mode": "auto",
+    })
+    return config
+
+
+def _v5046_normalize_theme_config(raw=None):
+    base = _v5046_default_theme_config()
+    raw = raw if isinstance(raw, dict) else {}
+    preset_key = str(raw.get("preset") or base["preset"]).strip().lower()
+    preset = V5046_THEME_PRESETS.get(preset_key)
+    if preset is None:
+        preset_key = "custom"
+        preset = V5046_THEME_PRESETS[V5046_THEME_DEFAULT_PRESET]
+    for key in V5046_THEME_COLOR_FIELDS:
+        fallback = preset.get(key, base[key])
+        base[key] = _v5046_valid_hex(raw.get(key), fallback)
+    mode = str(raw.get("default_mode") or "auto").strip().lower()
+    base["default_mode"] = mode if mode in {"auto", "light", "dark"} else "auto"
+    base["preset"] = preset_key
+    name = str(raw.get("name") or (preset.get("label") if preset_key != "custom" else "Custom")).strip()
+    base["name"] = (name or "Custom")[:60]
+    return base
+
+
+def _v5046_theme_config():
+    raw = get_admin_setting(V5046_THEME_SETTING_KEY, "")
+    if not raw:
+        return _v5046_default_theme_config()
+    try:
+        return _v5046_normalize_theme_config(json.loads(raw))
+    except Exception:
+        app.logger.warning("Invalid Theme Manager configuration; using Neutral Blue")
+        return _v5046_default_theme_config()
+
+
+def _v5046_theme_css(config=None):
+    c = config or _v5046_theme_config()
+    return f"""
+<style id="virtinfra-admin-theme-manager">
+:root,
+html[data-theme="light"] {{
+  --theme-bg:{c['light_bg']};--theme-panel:{c['light_panel']};--theme-panel-soft:{c['light_panel_soft']};
+  --theme-header:{c['light_header']};--theme-text:{c['light_text']};--theme-muted:{c['light_muted']};
+  --theme-line:{c['light_line']};--theme-brand:{c['light_brand']};
+  --theme-success:{c['success']};--theme-warning:{c['warning']};--theme-danger:{c['danger']};
+  --theme-rx:{c['rx']};--theme-tx:{c['tx']};
+  --bg:var(--theme-bg);--panel:var(--theme-panel);--panel-soft:var(--theme-panel-soft);
+  --card:var(--theme-panel);--line:var(--theme-line);--text:var(--theme-text);
+  --muted:var(--theme-muted);--brand:var(--theme-brand);
+}}
+html[data-theme="dark"] {{
+  --theme-bg:{c['dark_bg']};--theme-panel:{c['dark_panel']};--theme-panel-soft:{c['dark_panel_soft']};
+  --theme-header:{c['dark_header']};--theme-text:{c['dark_text']};--theme-muted:{c['dark_muted']};
+  --theme-line:{c['dark_line']};--theme-brand:{c['dark_brand']};
+  --theme-success:{c['success']};--theme-warning:{c['warning']};--theme-danger:{c['danger']};
+  --theme-rx:{c['rx']};--theme-tx:{c['tx']};
+  --bg:var(--theme-bg);--panel:var(--theme-panel);--panel-soft:var(--theme-panel-soft);
+  --card:var(--theme-panel);--line:var(--theme-line);--text:var(--theme-text);
+  --muted:var(--theme-muted);--brand:var(--theme-brand);
+}}
+html[data-theme] body.app-v490,html[data-theme] body {{background:var(--theme-bg)!important;color:var(--theme-text)!important}}
+html[data-theme] header {{background:var(--theme-header)!important;border-bottom-color:var(--theme-line)!important}}
+html[data-theme] .brand {{color:#fff!important}}
+html[data-theme] a,html[data-theme] .sort-link:hover,html[data-theme] .eyebrow {{color:var(--theme-brand)!important}}
+html[data-theme] .card,html[data-theme] .admin-kpi,html[data-theme] .quick-link-card,
+html[data-theme] .action-menu>div,html[data-theme] .action-menu summary,
+html[data-theme] .storage-entity-card-v48139,html[data-theme] .storage-section-box-v48139,
+html[data-theme] .storage-vm-card,html[data-theme] .storage-node-card,
+html[data-theme] .storage-child-item,html[data-theme] .vm-disk-panel {{
+  background:var(--theme-panel)!important;border-color:var(--theme-line)!important;color:var(--theme-text)!important
+}}
+html[data-theme] .stat,html[data-theme] .traffic-box,html[data-theme] .overview-meta span,
+html[data-theme] .count-badges span,html[data-theme] .info-strip span,html[data-theme] .node-line span,
+html[data-theme] .hero-meta span,html[data-theme] .status-chip {{
+  background:var(--theme-panel-soft)!important;border-color:var(--theme-line)!important;color:var(--theme-text)!important
+}}
+html[data-theme] .page-hero,html[data-theme] .admin-hero {{
+  background:linear-gradient(135deg,var(--theme-panel),color-mix(in srgb,var(--theme-brand) 9%,var(--theme-panel)))!important;
+  border-color:var(--theme-line)!important
+}}
+html[data-theme] th {{background:var(--theme-panel-soft)!important;color:var(--theme-muted)!important;border-color:var(--theme-line)!important}}
+html[data-theme] td {{border-color:var(--theme-line)!important;color:var(--theme-text)!important}}
+html[data-theme] tbody tr:hover {{background:color-mix(in srgb,var(--theme-brand) 6%,var(--theme-panel))!important}}
+html[data-theme] .label,html[data-theme] .table-hint,html[data-theme] .admin-note,
+html[data-theme] .breadcrumb,html[data-theme] .chart-note,html[data-theme] .row-sub,
+html[data-theme] small,html[data-theme] .storage-note {{color:var(--theme-muted)!important}}
+html[data-theme] input,html[data-theme] select,html[data-theme] textarea,
+html[data-theme] .search input,html[data-theme] .form-grid input,html[data-theme] .inline-form input {{
+  background:var(--theme-panel-soft)!important;color:var(--theme-text)!important;border-color:var(--theme-line)!important
+}}
+html[data-theme] .btn,html[data-theme] button:not(.btn-danger):not(.copy-btn),
+html[data-theme] .periods a,html[data-theme] .scope-links a,html[data-theme] .page-link,
+html[data-theme] .copy-btn {{background:var(--theme-panel-soft)!important;color:var(--theme-text)!important;border-color:var(--theme-line)!important}}
+html[data-theme] button[type="submit"]:not(.btn-danger),html[data-theme] .search button,
+html[data-theme] .periods a.active,html[data-theme] .scope-links a.active,
+html[data-theme] .admin-tabs a.active,html[data-theme] .theme-switch button.active {{
+  background:var(--theme-brand)!important;border-color:var(--theme-brand)!important;color:#fff!important
+}}
+html[data-theme] .admin-tabs {{background:var(--theme-panel-soft)!important;border-color:var(--theme-line)!important}}
+html[data-theme] .admin-tabs a {{color:var(--theme-muted)!important}}
+html[data-theme] .admin-tabs a:hover {{background:color-mix(in srgb,var(--theme-brand) 8%,var(--theme-panel))!important}}
+html[data-theme] .btn-danger {{background:color-mix(in srgb,var(--theme-danger) 10%,var(--theme-panel))!important;color:var(--theme-danger)!important;border-color:color-mix(in srgb,var(--theme-danger) 45%,var(--theme-line))!important}}
+html[data-theme] .success-box,html[data-theme] .status.ok {{background:color-mix(in srgb,var(--theme-success) 12%,var(--theme-panel))!important;color:var(--theme-success)!important;border-color:color-mix(in srgb,var(--theme-success) 45%,var(--theme-line))!important}}
+html[data-theme] .status.warn,html[data-theme] .health-pill.warning {{background:color-mix(in srgb,var(--theme-warning) 13%,var(--theme-panel))!important;color:var(--theme-warning)!important;border-color:color-mix(in srgb,var(--theme-warning) 45%,var(--theme-line))!important}}
+html[data-theme] .error-box,html[data-theme] .status.crit {{background:color-mix(in srgb,var(--theme-danger) 12%,var(--theme-panel))!important;color:var(--theme-danger)!important;border-color:color-mix(in srgb,var(--theme-danger) 45%,var(--theme-line))!important}}
+html[data-theme] .rx-line {{stroke:var(--theme-rx)!important}}html[data-theme] .rx-dot,html[data-theme] .legend .rx {{fill:var(--theme-rx)!important;background:var(--theme-rx)!important}}
+html[data-theme] .tx-line {{stroke:var(--theme-tx)!important}}html[data-theme] .tx-dot,html[data-theme] .legend .tx {{fill:var(--theme-tx)!important;background:var(--theme-tx)!important}}
+html[data-theme] .total-line {{stroke:var(--theme-text)!important}}html[data-theme] .total-dot {{fill:var(--theme-text)!important}}
+html[data-theme] .grid-line {{stroke:var(--theme-line)!important}}html[data-theme] .axis {{stroke:var(--theme-muted)!important}}
+</style>
+"""
+
+
+def _v5046_theme_field(label, key, config):
+    value = config[key]
+    return (
+        '<label class="theme-color-field"><span>%s</span>'
+        '<div><input type="color" name="%s" value="%s" data-theme-color="%s">'
+        '<code data-theme-hex="%s">%s</code></div></label>'
+    ) % (escape(label), escape(key, quote=True), escape(value, quote=True), escape(key, quote=True), escape(key, quote=True), escape(value))
+
+
+def _v5046_theme_manager_content(message="", error=""):
+    config = _v5046_theme_config()
+    preset_options = []
+    for key, item in V5046_THEME_PRESETS.items():
+        selected = " selected" if config.get("preset") == key else ""
+        preset_options.append('<option value="%s"%s>%s</option>' % (escape(key, quote=True), selected, escape(item["label"])))
+    preset_options.append('<option value="custom"%s>Custom palette</option>' % (" selected" if config.get("preset") == "custom" else ""))
+
+    light_fields = "".join([
+        _v5046_theme_field("Background", "light_bg", config),
+        _v5046_theme_field("Panel", "light_panel", config),
+        _v5046_theme_field("Soft panel", "light_panel_soft", config),
+        _v5046_theme_field("Header", "light_header", config),
+        _v5046_theme_field("Text", "light_text", config),
+        _v5046_theme_field("Muted text", "light_muted", config),
+        _v5046_theme_field("Border", "light_line", config),
+        _v5046_theme_field("Accent", "light_brand", config),
+    ])
+    dark_fields = "".join([
+        _v5046_theme_field("Background", "dark_bg", config),
+        _v5046_theme_field("Panel", "dark_panel", config),
+        _v5046_theme_field("Soft panel", "dark_panel_soft", config),
+        _v5046_theme_field("Header", "dark_header", config),
+        _v5046_theme_field("Text", "dark_text", config),
+        _v5046_theme_field("Muted text", "dark_muted", config),
+        _v5046_theme_field("Border", "dark_line", config),
+        _v5046_theme_field("Accent", "dark_brand", config),
+    ])
+    semantic_fields = "".join([
+        _v5046_theme_field("RX", "rx", config),
+        _v5046_theme_field("TX", "tx", config),
+        _v5046_theme_field("Success", "success", config),
+        _v5046_theme_field("Warning", "warning", config),
+        _v5046_theme_field("Danger", "danger", config),
+    ])
+    presets_json = json.dumps({key: {field: value for field, value in item.items() if field in V5046_THEME_COLOR_FIELDS} for key, item in V5046_THEME_PRESETS.items()}, separators=(",", ":")).replace("</", "<\\/")
+    return f"""
+    <style id="v5046-theme-admin-css">
+      .theme-manager-head{{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap}}
+      .theme-manager-grid{{display:grid;grid-template-columns:repeat(2,minmax(320px,1fr));gap:14px}}
+      .theme-palette-box{{border:1px solid var(--line,#dfe5ec);border-radius:13px;padding:14px;background:var(--panel-soft,#f8fafc)}}
+      .theme-palette-box h4{{margin:0 0 12px}}.theme-color-grid{{display:grid;grid-template-columns:repeat(2,minmax(140px,1fr));gap:10px}}
+      .theme-color-field{{display:grid;gap:6px;font-size:11px;font-weight:800;color:var(--muted,#667085)}}
+      .theme-color-field>div{{display:flex;align-items:center;gap:8px;border:1px solid var(--line,#dfe5ec);border-radius:9px;padding:6px 8px;background:var(--panel,#fff)}}
+      .theme-color-field input[type=color]{{width:36px;min-width:36px;height:30px;padding:0!important;border:0!important;background:transparent!important;cursor:pointer}}
+      .theme-color-field code{{font-size:11px;color:var(--text,#111827)}}
+      .theme-preset-row{{display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;align-items:end}}
+      .theme-preset-row label{{display:grid;gap:5px;font-size:11px;font-weight:800;color:var(--muted,#667085)}}
+      .theme-preview{{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}}
+      .theme-preview-pane{{border:1px solid var(--preview-line);background:var(--preview-bg);color:var(--preview-text);border-radius:12px;overflow:hidden}}
+      .theme-preview-pane header{{position:static!important;padding:10px 12px!important;background:var(--preview-header)!important;color:#fff!important}}
+      .theme-preview-body{{padding:12px}}.theme-preview-card{{padding:10px;border:1px solid var(--preview-line);border-radius:9px;background:var(--preview-panel)}}
+      .theme-preview-card b,.theme-preview-card span{{display:block}}.theme-preview-card span{{color:var(--preview-muted);font-size:11px;margin-top:4px}}
+      .theme-preview-actions{{display:flex;gap:7px;margin-top:10px}}.theme-preview-actions i{{font-style:normal;padding:6px 9px;border-radius:7px;background:var(--preview-brand);color:#fff;font-size:11px;font-weight:800}}
+      @media(max-width:900px){{.theme-manager-grid,.theme-preview{{grid-template-columns:1fr}}.theme-preset-row{{grid-template-columns:1fr}}}}
+    </style>
+    <div class="card theme-manager-head"><div><span class="eyebrow">APPEARANCE</span><h2>Theme Manager</h2><p>One shared palette for the entire Monitor. Each user can still choose Auto, Dark or Light from the header.</p></div><div class="hero-meta"><span>Current <b>{escape(config['name'])}</b></span><span>Restart <b>not required</b></span></div></div>
+    {f'<div class="success-box">{escape(message)}</div>' if message else ''}
+    {f'<div class="error-box">{escape(error)}</div>' if error else ''}
+    <form method="post" action="{url_for('admin_theme_manager')}" class="card" id="theme-manager-form">
+      <input type="hidden" name="csrf_token" value="{escape(csrf_token(), quote=True)}">
+      <div class="theme-preset-row">
+        <label>Preset<select name="preset" id="theme-preset">{''.join(preset_options)}</select></label>
+        <label>Theme name<input name="name" maxlength="60" value="{escape(config['name'], quote=True)}"></label>
+        <label>Default appearance<select name="default_mode"><option value="auto"{' selected' if config['default_mode']=='auto' else ''}>Auto</option><option value="light"{' selected' if config['default_mode']=='light' else ''}>Light</option><option value="dark"{' selected' if config['default_mode']=='dark' else ''}>Dark</option></select></label>
+      </div>
+      <div class="theme-manager-grid" style="margin-top:14px">
+        <section class="theme-palette-box"><h4>Light palette</h4><div class="theme-color-grid">{light_fields}</div></section>
+        <section class="theme-palette-box"><h4>Dark palette</h4><div class="theme-color-grid">{dark_fields}</div></section>
+      </div>
+      <section class="theme-palette-box" style="margin-top:14px"><h4>Metrics and state colors</h4><div class="theme-color-grid">{semantic_fields}</div></section>
+      <div class="theme-preview">
+        <div class="theme-preview-pane" id="theme-preview-light"><header>Light preview</header><div class="theme-preview-body"><div class="theme-preview-card"><b>VirtInfra Monitor</b><span>Panel, border, text and accent preview</span><div class="theme-preview-actions"><i>Primary</i><i>RX / TX</i></div></div></div></div>
+        <div class="theme-preview-pane" id="theme-preview-dark"><header>Dark preview</header><div class="theme-preview-body"><div class="theme-preview-card"><b>VirtInfra Monitor</b><span>Panel, border, text and accent preview</span><div class="theme-preview-actions"><i>Primary</i><i>RX / TX</i></div></div></div></div>
+      </div>
+      <div class="bulk-bar" style="margin-top:15px"><button type="submit" name="action" value="save">Save and apply</button><button type="submit" name="action" value="reset" class="btn-danger" onclick="return confirm('Reset the application palette to Neutral Blue?')">Reset default</button></div>
+      <div class="table-hint">Invalid color values are rejected server-side. Existing user Auto/Dark/Light choices remain in their browser.</div>
+    </form>
+    <script>
+    (function(){{
+      const presets={presets_json};
+      const form=document.getElementById('theme-manager-form');
+      const select=document.getElementById('theme-preset');
+      function value(key){{const el=form.querySelector('[name="'+key+'"]');return el?el.value:'';}}
+      function updateHex(el){{const out=form.querySelector('[data-theme-hex="'+el.name+'"]');if(out)out.textContent=el.value.toLowerCase();}}
+      function preview(id,prefix){{
+        const pane=document.getElementById(id);if(!pane)return;
+        pane.style.setProperty('--preview-bg',value(prefix+'_bg'));
+        pane.style.setProperty('--preview-panel',value(prefix+'_panel'));
+        pane.style.setProperty('--preview-header',value(prefix+'_header'));
+        pane.style.setProperty('--preview-text',value(prefix+'_text'));
+        pane.style.setProperty('--preview-muted',value(prefix+'_muted'));
+        pane.style.setProperty('--preview-line',value(prefix+'_line'));
+        pane.style.setProperty('--preview-brand',value(prefix+'_brand'));
+      }}
+      function refresh(){{form.querySelectorAll('input[type=color]').forEach(updateHex);preview('theme-preview-light','light');preview('theme-preview-dark','dark');}}
+      select.addEventListener('change',function(){{
+        const data=presets[this.value];if(!data)return;
+        Object.keys(data).forEach(function(key){{const el=form.querySelector('[name="'+key+'"]');if(el)el.value=data[key];}});
+        const name=form.querySelector('[name=name]');if(name)name.value=select.options[select.selectedIndex].text;
+        refresh();
+      }});
+      form.querySelectorAll('input[type=color]').forEach(function(el){{el.addEventListener('input',function(){{select.value='custom';updateHex(el);refresh();}});}});
+      refresh();
+    }})();
+    </script>
+    """
+
+
+@app.route("/admin/theme", methods=["GET", "POST"])
+def admin_theme_manager():
+    deny = require_admin()
+    if deny:
+        return deny
+    message = str(request.args.get("message") or "").strip()[:300]
+    error = ""
+    if request.method == "POST":
+        action = str(request.form.get("action") or "save").strip().lower()
+        if action == "reset":
+            config = _v5046_default_theme_config()
+        else:
+            submitted = {
+                "preset": str(request.form.get("preset") or "custom").strip().lower(),
+                "name": str(request.form.get("name") or "Custom").strip(),
+                "default_mode": str(request.form.get("default_mode") or "auto").strip().lower(),
+            }
+            invalid = []
+            for key in V5046_THEME_COLOR_FIELDS:
+                raw = str(request.form.get(key) or "").strip().lower()
+                if not (len(raw) == 7 and raw.startswith("#") and all(ch in "0123456789abcdef" for ch in raw[1:])):
+                    invalid.append(key)
+                submitted[key] = raw
+            if invalid:
+                error = "Invalid hexadecimal color: " + ", ".join(invalid)
+                content = _v5046_theme_manager_content(error=error)
+                return page("Admin · Theme Manager", '<div class="card admin-hero"><div><span class="eyebrow">CONTROL CENTER</span><h2>Administration</h2></div></div>' + _v490_admin_nav("theme") + content), 400
+            config = _v5046_normalize_theme_config(submitted)
+        set_admin_setting(V5046_THEME_SETTING_KEY, json.dumps(config, separators=(",", ":"), sort_keys=True))
+        _v48140_bump_cache_generation()
+        actor = dashboard_username() or get_admin_username()
+        log_account_event(
+            "application_theme_updated",
+            username=actor,
+            realm="admin",
+            role="admin",
+            detail=("preset=%s;name=%s;default_mode=%s" % (config["preset"], config["name"], config["default_mode"]))[:700],
+        )
+        return redirect(url_for("admin_theme_manager", message="Theme saved and applied across the application."))
+
+    content = _v5046_theme_manager_content(message=message, error=error)
+    shell = f'''
+    <div class="card admin-hero"><div><span class="eyebrow">CONTROL CENTER</span><h2>Administration</h2><p>Application appearance and shared color palette.</p></div><div class="admin-user-actions"><a class="btn" href="{url_for('index')}">Dashboard</a><a class="btn" href="{url_for('admin_logout')}">Logout</a></div></div>
+    {_v490_admin_nav('theme')}
+    {content}
+    '''
+    return page("Admin · Theme Manager", shell)
+
+
+_v5046_admin_nav_base = _v490_admin_nav
+
+
+def _v490_admin_nav(active):
+    html = _v5046_admin_nav_base(active)
+    link = '<a class="%s" href="%s">Theme</a>' % (
+        "active" if active == "theme" else "",
+        escape(url_for("admin_theme_manager"), quote=True),
+    )
+    return html.replace("</nav>", link + "</nav>", 1)
+
+
+_v5046_admin_overview_base = _v490_admin_overview
+
+
+def _v490_admin_overview(stats):
+    base = _v5046_admin_overview_base(stats)
+    config = _v5046_theme_config()
+    card = f'''
+    <div class="card admin-section">
+      <div class="section-head"><div><span class="eyebrow">THEME MANAGER</span><h3>Application-wide appearance</h3><p>Choose a production preset or customize the Light, Dark and metric palettes without restarting the service.</p></div><a class="btn" href="{url_for('admin_theme_manager')}">Manage theme</a></div>
+      <div class="admin-kpis"><div><small>ACTIVE THEME</small><b>{escape(config['name'])}</b></div><div><small>DEFAULT MODE</small><b>{escape(config['default_mode'].title())}</b></div><div><small>LIGHT ACCENT</small><b class="mono">{escape(config['light_brand'])}</b></div><div><small>DARK ACCENT</small><b class="mono">{escape(config['dark_brand'])}</b></div><div><small>RESTART</small><b>Not required</b></div></div>
+    </div>
+    '''
+    return base + card
+
+
+_page_v5046_theme_base = page
+
+
+def page(title, content):
+    response = _page_v5046_theme_base(title, content)
+    try:
+        config = _v5046_theme_config()
+        html = response.get_data(as_text=True)
+        html = html.replace("</head>", _v5046_theme_css(config) + "</head>", 1)
+        default_mode = config.get("default_mode", "auto")
+        html = html.replace(
+            "localStorage.getItem('bw-theme-mode') || 'auto'",
+            "localStorage.getItem('bw-theme-mode') || %s" % json.dumps(default_mode),
+            1,
+        )
+        html = html.replace("<html>", '<html data-admin-theme="%s">' % escape(config.get("preset", "custom"), quote=True), 1)
+        response.set_data(html)
+    except Exception:
+        app.logger.exception("Could not apply application Theme Manager")
+    return response

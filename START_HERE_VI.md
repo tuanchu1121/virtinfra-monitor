@@ -1,6 +1,6 @@
 # BẮT ĐẦU TẠI ĐÂY - VirtInfra Monitor
 
-> Release: `50.4.5-prod-r1-consumption-neutral-ui`
+> Release: `50.4.6-prod-r1-theme-manager`
 >
 > Bản này giữ nguyên toàn bộ chức năng, route, giao diện, Agent, Abuse, Storage I/O và Consumption hiện tại; đồng thời bổ sung Storage V2 với chart đúng từng điểm 5 phút trong 7 ngày, raw interface 48 giờ, Timescale retention và rollback reader nhanh.
 
@@ -109,7 +109,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Kết quả phải là:
 
 ```text
-50.4.5-prod-r1-consumption-neutral-ui
+50.4.6-prod-r1-theme-manager
 ```
 
 ### Bước B - Update Monitor đang chạy
@@ -127,7 +127,7 @@ virtinfra-monitorctl version
 Kết quả version phải là:
 
 ```text
-50.4.5-prod-r1-consumption-neutral-ui
+50.4.6-prod-r1-theme-manager
 ```
 
 Kiểm tra thêm:

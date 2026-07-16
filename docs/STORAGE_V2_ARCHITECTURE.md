@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.4.5-prod-r1-consumption-neutral-ui`
+Release: `50.4.6-prod-r1-theme-manager`
 
 ## Final data path
 

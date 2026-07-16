@@ -1,11 +1,14 @@
-## 50.4.5-prod-r1-consumption-neutral-ui
+## 50.4.6-prod-r1-theme-manager
 
-- Changed the Consumption node rows from bright pastel network cards to the same neutral panel and border treatment used by the rest of the application, including dark mode.
-- Kept Physical Public, Physical Private, VM Public, VM Private and Difference as separate sections while using typography instead of colored backgrounds for hierarchy.
-- Displayed only the node Public IP under the node name and retained its one-click copy button.
-- Changed Public/Private Difference formatting to a signed value with exactly two decimal places, using MB as the minimum unit and automatically scaling to GB or TB.
-- Preserved the Consumption endpoint, 2-hour bucket calculations, retention, sorting, filters, node detail route and database schema.
-- Retained the canonical `TOKEN` authentication fix and exact checksum manifest build safeguards from 50.4.4.
+- Added an Admin `Theme Manager` page at `/admin/theme` for application-wide palette management.
+- Added five built-in production presets: Neutral Blue, Slate Indigo, Emerald, Graphite and Warm Amber.
+- Added independent Light and Dark palettes for background, panel, soft panel, header, text, muted text, border and accent colors.
+- Added shared RX, TX, Success, Warning and Danger colors used across charts, controls and status components.
+- Preserved the existing per-browser Auto, Dark and Light switch while allowing Admin to choose the default appearance for new browsers.
+- Stored the complete theme configuration in PostgreSQL `admin_settings`; saving applies immediately and invalidates the page cache without restarting the service.
+- Added strict six-digit hexadecimal validation and a one-click reset to the Neutral Blue default.
+- Added a live preview and an Admin overview card showing the active theme.
+- Preserved all routes, metrics, Agent protocol, Abuse logic, Consumption logic, Storage V2 and existing functional behavior.
 
 ## 50.4.4-prod-r1-manifest-consumption-ui-fix
 

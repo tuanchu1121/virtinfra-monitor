@@ -1,3 +1,13 @@
+## 50.4.7-prod-r1-custom-theme-library
+
+- Protects the original dashboard `Auto`, `Light`, and `Dark` modes. Admin theme settings no longer overwrite their CSS or default behavior.
+- Replaces the single shared palette with an admin-only custom theme library stored in PostgreSQL `admin_settings` under `custom_theme_library_v2`.
+- Publishes only enabled custom themes to a separate dashboard selector. Each browser keeps its own custom choice while retaining its original core mode preference.
+- Adds create, edit, publish/hide, duplicate, delete, and reset workflows for custom themes. Disabled or deleted selections automatically fall back to the user's core Auto/Dark/Light choice.
+- Adds seven built-in monitoring-style templates: VirtInfra Ocean, Grafana Inspired, Zabbix Inspired, Datadog Inspired, Prometheus Inspired, NOC High Contrast, and Dense Operations.
+- Adds typography, table density, card spacing, border radius, shadow, chart line width, palette, RX/TX, and semantic-state controls per custom theme.
+- Keeps Agent, push APIs, Abuse, Storage V2, Consumption, retention, and existing dashboard data behavior unchanged.
+
 ## 50.4.6-prod-r1-theme-manager
 
 - Added an Admin `Theme Manager` page at `/admin/theme` for application-wide palette management.

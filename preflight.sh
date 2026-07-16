@@ -26,7 +26,7 @@ fail(){ echo "ERROR: $*" >&2; exit 1; }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.4.6-prod-r1-theme-manager" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.4.7-prod-r1-custom-theme-library" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/bw_pg.py && -f deploy/agent/agent.py ]] || fail "full source tree is incomplete"
 [[ ! -d release && ! -d enterprise ]] || fail "legacy duplicate runtime trees must not be shipped"
 
@@ -101,8 +101,9 @@ log "Validate Consumption endpoint authentication contract"
 log "Validate Consumption neutral UI contract"
 "$PYTHON" tests/test_consumption_ui_contract.py
 
-log "Validate application-wide Theme Manager contract"
+log "Validate protected core and custom Theme Library contract"
 "$PYTHON" tests/test_theme_manager_contract.py
+"$PYTHON" tests/test_custom_theme_runtime.py
 
 log "Verify one-command installer and operations flow"
 bash ./tools/test-installer-flow.sh

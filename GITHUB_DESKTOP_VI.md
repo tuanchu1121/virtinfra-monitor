@@ -1,6 +1,6 @@
 # Đưa VirtInfra Monitor lên GitHub bằng GitHub Desktop
 
-> Dùng cho release `50.4.6-prod-r1-theme-manager`.
+> Dùng cho release `50.4.7-prod-r1-custom-theme-library`.
 
 > Source of truth vận hành: [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md).
 >
@@ -76,7 +76,7 @@ update.sh
 Giải nén file ZIP release ra một thư mục riêng, ví dụ:
 
 ```text
-D:\Downloads\virtinfra-monitor-50.4.6-prod-r1-theme-manager\
+D:\Downloads\virtinfra-monitor-50.4.7-prod-r1-custom-theme-library\
 ```
 
 Mở thư mục đó. Bên trong phải thấy trực tiếp:
@@ -212,7 +212,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Phải trả về:
 
 ```text
-50.4.6-prod-r1-theme-manager
+50.4.7-prod-r1-custom-theme-library
 ```
 
 Kiểm tra file installer:
@@ -248,7 +248,7 @@ virtinfra-monitorctl version
 Phải ra:
 
 ```text
-50.4.6-prod-r1-theme-manager
+50.4.7-prod-r1-custom-theme-library
 ```
 
 Kiểm tra:
@@ -290,7 +290,7 @@ Sai:
 
 ```text
 repo-root/
-└── virtinfra-monitor-50.4.6-prod-r1-theme-manager/
+└── virtinfra-monitor-50.4.7-prod-r1-custom-theme-library/
     ├── app/
     ├── deploy/
     └── install.sh

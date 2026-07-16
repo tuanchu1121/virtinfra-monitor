@@ -88,7 +88,7 @@ virtinfra-monitorctl restore --from /var/backups/bw-monitor/YYYYMMDD-HHMMSS --ye
 > Storage V2 requires the pinned Community image `timescale/timescaledb:2.27.2-pg17`. Do not use the `-oss` tag because V2 depends on Timescale background retention and compression policy APIs.
 
 
-Release `50.4.6-prod-r1-theme-manager` adds three Timescale hypertables without changing the existing current-state, Abuse, Storage I/O or Consumption tables:
+Release `50.4.7-prod-r1-custom-theme-library` adds three Timescale hypertables without changing the existing current-state, Abuse, Storage I/O or Consumption tables:
 
 | Table | Purpose | Retention |
 |---|---|---:|

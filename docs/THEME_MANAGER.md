@@ -1,11 +1,25 @@
 # VirtInfra Monitor Theme Manager
 
+## Behavior model
+
+The dashboard always keeps the three protected core choices:
+
+- `Auto`
+- `Light`
+- `Dark`
+
+These use the original VirtInfra Monitor CSS and are never overwritten by Admin settings.
+
+Administrators manage a separate custom theme library. Only custom themes marked as published appear in the dashboard theme selector. Dashboard users may select a published custom theme, but they cannot create, edit, publish, hide, duplicate, or delete themes.
+
+Each browser stores its own selection. Choosing or removing a custom theme does not erase the browser's existing Auto, Light, or Dark preference. If an administrator hides or deletes a theme that a browser was using, that browser automatically falls back to its protected core preference.
+
 ## Open the manager
 
 Sign in as an administrator and open:
 
 ```text
-Admin -> Theme
+Admin -> Themes
 ```
 
 Direct route:
@@ -14,47 +28,68 @@ Direct route:
 /admin/theme
 ```
 
-## Built-in presets
+## Built-in custom templates
 
-- Neutral Blue, the production default
-- Slate Indigo
-- Emerald
-- Graphite
-- Warm Amber
+The library starts with original VirtInfra implementations inspired by common monitoring aesthetics:
 
-Selecting a preset fills every Light, Dark and semantic color. Administrators may then adjust any color with the color picker; the palette becomes `Custom`.
+- VirtInfra Ocean
+- Grafana Inspired
+- Zabbix Inspired
+- Datadog Inspired
+- Prometheus Inspired
+- NOC High Contrast
+- Dense Operations
 
-## Customizable application colors
+No vendor logos, trademarks, copied stylesheets, or external theme assets are included.
 
-Light and Dark modes each expose:
+## Admin actions
 
-- application background
-- panel background
-- soft panel and table-header background
-- header background
-- main text
-- muted text
-- border
-- accent / primary action
+An administrator can:
 
-Shared semantic colors:
+- create a theme from a built-in template
+- edit a theme
+- publish or hide a theme from dashboard users
+- duplicate a theme
+- delete a theme
+- restore the built-in custom theme library
 
-- RX
-- TX
-- Success
-- Warning
-- Danger
+The protected Auto, Light, and Dark choices cannot be deleted or edited.
 
-All values are validated as six-digit hexadecimal colors before saving. Invalid values are rejected and the existing theme remains active.
+## Custom controls
 
-## User appearance behavior
+Each custom theme has its own:
 
-The administrator selects the default appearance: Auto, Light or Dark. Each signed-in user may still choose Auto, Light or Dark from the header. The user's browser choice overrides the administrator default and remains stored in local storage.
+- fixed Light or Dark base appearance
+- background, panel, soft panel, header, text, muted text, border, and accent colors
+- RX, TX, Success, Warning, and Danger colors
+- font profile
+- base, table, and small text sizes
+- table row height
+- card padding
+- border radius
+- shadow strength
+- chart line width
+
+All colors are validated as six-digit hexadecimal values. Numeric fields are range checked server-side.
 
 ## Storage and activation
 
-The configuration is stored under `application_theme_v1` in PostgreSQL `admin_settings`. Saving a theme increments the page-cache generation, so newly rendered pages use the palette immediately. No Monitor or Agent restart is required.
+The library is stored in PostgreSQL `admin_settings` under:
 
-## Reset
+```text
+custom_theme_library_v2
+```
 
-Use `Reset default` to restore Neutral Blue. This changes only application appearance. It does not modify users, metrics, history, Abuse, Consumption or Agent configuration.
+Saving any theme action increments the shared page-cache generation. Newly rendered pages receive the updated selector and CSS immediately. No Monitor or Agent restart is required.
+
+The browser choice is stored in local storage under:
+
+```text
+virtinfra-theme-selection-v2
+```
+
+The original core preference remains stored separately under the existing:
+
+```text
+bw-theme-mode
+```

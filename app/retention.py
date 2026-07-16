@@ -71,7 +71,7 @@ def main() -> int:
         result = module.run_retention(dry_run=False)
         print(json.dumps({
             "ok": True,
-            "version": "50.4.6-prod-r1-theme-manager",
+            "version": "50.4.7-prod-r1-custom-theme-library",
             "started_at": started,
             "finished_at": int(time.time()),
             "result": result,

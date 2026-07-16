@@ -1,4 +1,22 @@
+## 50.5.4-prod-r1-snapshot-detail-correctness
+
+- Built directly from the 50.5.2 native COPY ingest release.
+- Node Filesystems now reads capacity and I/O from the same retained `node_push_snapshots.storage_payload` bucket selected by the period/custom time.
+- VM Overview and Virtual Disk I/O now use the exact selected retained snapshot and never overlay current rates onto historical pages.
+- Dashboard LOAD pills use fixed tabular width; `SRC` is renamed to `INTERFACE` and moved to the last column.
+- Installer preflight dependencies (`pytest`, `PyYAML`) are declared so clean updates do not stop before deployment.
+- No new history table or extra per-push history write is introduced.
+
 # Changelog
+
+## 50.5.2-prod-r1-native-copy-ingest
+
+- Replaced JSONB recordset ingestion on the primary `/push` path with Psycopg native `COPY FROM STDIN` stages for VM network, VM performance, presence, current tables, disk current and Abuse state batches.
+- Merged network and VM performance into `vm_latest_metrics` once per VM using PostgreSQL `MERGE`, preserving partial-source fields without sentinel values.
+- Preserved Asia/Ho_Chi_Minh hourly/daily bandwidth bucket boundaries in the set-based writer.
+- Added a lean write-index profile that keeps lookup/default-rank indexes and removes high-churn metric-sort btrees from bounded current tables.
+- Added per-stage `push_perf` timings for presence, COPY, merge, latest, disk current, current/Abuse and commit.
+- Agent payload, API routes, Dashboard, Abuse, Consumption, retention and Storage V2 defaults remain compatible with 50.5.0.
 
 ## 50.5.0-prod-r1-batched-ingest
 
@@ -10,7 +28,7 @@
 - Added `tools/ingest-performance-status.sh` for active-query and write-churn diagnostics.
 - Preserved Agent payload, abuse policy semantics, migration confirmation, dashboard routes, Consumption, and legacy history readers.
 
-## 50.5.0-prod-r1-batched-ingest
+## 50.4.9-prod-r1-professional-theme-suite
 
 - Protects the original dashboard `Auto`, `Light`, and `Dark` modes. Admin theme settings no longer overwrite their CSS or default behavior.
 - Replaces the single shared palette with an admin-only custom theme library stored in PostgreSQL `admin_settings` under `custom_theme_library_v2`.

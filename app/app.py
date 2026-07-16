@@ -850,8 +850,6 @@ def db():
     conn.execute("CREATE INDEX IF NOT EXISTS idx_vm_perf_node_vm_time ON vm_perf_stats(node, vm_uuid, time)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_vm_perf_bucket_node ON vm_perf_stats(bucket, node)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_vm_latest_node_seen ON vm_latest_metrics(node, last_seen)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_vm_latest_cpu ON vm_latest_metrics(cpu_percent)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_vm_latest_pps ON vm_latest_metrics(rx_pps, tx_pps)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_vm_location_node_seen ON vm_location_latest(node, last_seen)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_vm_migration_events_time ON vm_migration_events(time)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_vm_migration_events_vm_time ON vm_migration_events(vm_uuid, time)")
@@ -960,8 +958,6 @@ def db():
     );
     CREATE INDEX IF NOT EXISTS idx_vm_current_fast_seen ON vm_current_fast(last_seen DESC);
     CREATE INDEX IF NOT EXISTS idx_vm_current_fast_node_seen ON vm_current_fast(node,last_seen DESC);
-    CREATE INDEX IF NOT EXISTS idx_vm_current_fast_cpu_core ON vm_current_fast(cpu_core_percent DESC,last_seen DESC);
-    CREATE INDEX IF NOT EXISTS idx_vm_current_fast_cpu_full ON vm_current_fast(cpu_full_percent DESC,last_seen DESC);
     CREATE INDEX IF NOT EXISTS idx_vm_iface_current_node_bridge ON vm_iface_current(node,bridge,last_seen DESC);
     CREATE INDEX IF NOT EXISTS idx_node_current_fast_seen ON node_current_fast(last_seen DESC);
     CREATE INDEX IF NOT EXISTS idx_vm_abuse_active ON vm_abuse_state(is_abuse,severity DESC,last_seen DESC);
@@ -3252,18 +3248,35 @@ def compact_ipv4(value):
     return value.split("/", 1)[0] if value else ""
 
 
-def dashboard_load_html(load1, load5, load15, cpu_count, host_present=True):
-    """Color host load by load1 as a percentage of available CPU cores.
+V5054_DASHBOARD_CSS = r'''
+<style id="v5054-dashboard-column-alignment">
+.node-dashboard-table{min-width:1960px;table-layout:auto}
+.node-dashboard-table th,.node-dashboard-table td{vertical-align:middle}
+.node-dashboard-table .dashboard-load-col{width:148px;min-width:148px;max-width:148px;text-align:center;white-space:nowrap}
+.node-dashboard-table .dashboard-load-pill{display:inline-flex;box-sizing:border-box;width:132px;min-width:132px;max-width:132px;justify-content:center;align-items:center;white-space:nowrap;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+.node-dashboard-table .dashboard-interface-col{width:210px;min-width:210px;max-width:210px}
+.node-dashboard-table .dashboard-interface-cell{width:210px;min-width:210px;max-width:210px;overflow:hidden}
+.node-dashboard-table .dashboard-interface-wrap{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0}
+.node-dashboard-table .dashboard-interface-wrap small{display:block;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.node-dashboard-table .dashboard-interface-wrap .vm-state{display:inline-flex;box-sizing:border-box;min-width:64px;justify-content:center;text-align:center;flex:0 0 auto}
+@media(max-width:1500px){.node-dashboard-table{min-width:1880px}.node-dashboard-table .dashboard-interface-col,.node-dashboard-table .dashboard-interface-cell{width:190px;min-width:190px;max-width:190px}}
+</style>
+'''
 
-    Green: below 60%, orange: 60% to below 90%, red: 90% or higher.
-    """
+
+def dashboard_load_html(load1, load5, load15, cpu_count, host_present=True):
+    """Render a fixed-width Load 1/5/15 pill for stable dashboard alignment."""
     if not host_present:
-        return "-"
+        return '<span class="metric-pill metric-unknown dashboard-load-pill" title="Host load is not reported">-</span>'
 
     values = f"{float(load1 or 0):.2f} / {float(load5 or 0):.2f} / {float(load15 or 0):.2f}"
     cores = max(0, safe_int(cpu_count, 0))
     if cores <= 0:
-        return values
+        return (
+            '<span class="metric-pill metric-unknown dashboard-load-pill" '
+            'title="CPU core count is missing in this retained snapshot">'
+            f'{values}</span>'
+        )
 
     load_pct = max(0.0, float(load1 or 0) * 100.0 / float(cores))
     if load_pct < 60.0:
@@ -3274,7 +3287,7 @@ def dashboard_load_html(load1, load5, load15, cpu_count, host_present=True):
         level = "crit"
 
     return (
-        f'<span class="metric-pill metric-{level}" '
+        f'<span class="metric-pill metric-{level} dashboard-load-pill" '
         f'title="Load1 {load_pct:.1f}% of {cores} CPU cores; green &lt;60%, orange 60-&lt;90%, red ≥90%">'
         f'{values}</span>'
     )
@@ -3309,12 +3322,10 @@ def node_table(rows, sort_by="node", order="asc"):
         source_cls = "active" if source == "NIC" else ("yellow" if source in ("MIXED", "VM") else "stale")
         iface_note = ""
         if source in ("NIC", "MIXED"):
-            iface_note = f'<small>pub {escape(str(public_ifaces or "-"))} · pri {escape(str(private_ifaces or "-"))}</small>'
+            iface_note = f'<small title="Public {escape(str(public_ifaces or "-"), quote=True)} · Private {escape(str(private_ifaces or "-"), quote=True)}">pub {escape(str(public_ifaces or "-"))} · pri {escape(str(private_ifaces or "-"))}</small>'
         elif source == "VM":
             source = "VM TAP"
-            iface_note = '<small class="metric-subline">physical uplink sample unavailable</small>' 
-        tier = str(retention_tier or "raw")
-        tier_cls = "active" if tier == "raw" else "yellow"
+            iface_note = '<small class="metric-subline">physical uplink sample unavailable</small>'
         load_html = dashboard_load_html(load1, load5, load15, cpu_count, host_present=bool(host_present))
         cpu_html = fmt_percent(cpu_percent) if host_present else "-"
         ram_html = fmt_percent(ram_percent) if host_present else "-"
@@ -3334,7 +3345,7 @@ def node_table(rows, sort_by="node", order="asc"):
             <td>{status_badge(live_last_seen)}</td>
             <td class="mono">{fmt_full(selected_bucket)}</td>
             <td class="num">{int(vm_count or 0)}</td>
-            <td class="num" title="Host load average captured at the displayed snapshot">{load_html}</td>
+            <td class="num dashboard-load-col" title="Host load average captured at the displayed snapshot">{load_html}</td>
             <td class="num">{fmt_uptime(uptime_seconds) if host_present else '-'}</td>
             <td class="num">{cpu_html}</td>
             <td class="num">{ram_html}</td>
@@ -3345,9 +3356,9 @@ def node_table(rows, sort_by="node", order="asc"):
             <td class="num"><b>{human(node_total)}</b></td>
             <td class="num">{disk_r_html}</td>
             <td class="num">{disk_w_html}</td>
-            <td><span class="vm-state {source_cls}">{escape(source)}</span>{iface_note}</td>
             <td class="num">{int(net_drops or 0)}</td>
             <td class="num">{int(net_errors or 0)}</td>
+            <td class="dashboard-interface-cell"><div class="dashboard-interface-wrap"><span class="vm-state {source_cls}">{escape(source)}</span>{iface_note}</div></td>
         </tr>
         """
 
@@ -3372,9 +3383,10 @@ def node_table(rows, sort_by="node", order="asc"):
         "diskw": node_sort_header("DISK W/s", "diskw", period, q, sort_by, order),
         "drops": node_sort_header("DROPS", "drops", period, q, sort_by, order),
         "errors": node_sort_header("ERR", "errors", period, q, sort_by, order),
-        "source": node_sort_header("SRC", "source", period, q, sort_by, order),
+        "source": node_sort_header("INTERFACE", "source", period, q, sort_by, order),
     }
     return f"""
+    {V5054_DASHBOARD_CSS}
     <div class="card overview-card">
         <div class="overview-head"><h3>Exact Snapshot Summary</h3>
             <div class="overview-meta"><span>Nodes <b>{total_nodes}</b></span><span>VM <b>{total_vms}</b></span><span>Mode <b>one real push per node</b></span></div>
@@ -3387,13 +3399,13 @@ def node_table(rows, sort_by="node", order="asc"):
     </div>
     <div class="card">
         <div class="table-title-row"><h3>Nodes</h3><div class="count-badges"><span>Sort <b>{escape(sort_by)} {escape(order)}</b></span><span>Status <b>live</b></span><span>Metrics <b>selected snapshot</b></span></div></div>
-        <table><thead><tr>
+        <div class="table-wrap"><table class="node-dashboard-table"><thead><tr>
             <th>{headers['node']}</th><th>{headers['status']}</th><th>{headers['snapshot']}</th>
-            <th>{headers['vm']}</th><th>{headers['load']}</th><th>{headers['uptime']}</th><th>{headers['cpu']}</th><th>{headers['ram']}</th>
+            <th>{headers['vm']}</th><th class="dashboard-load-col">{headers['load']}</th><th>{headers['uptime']}</th><th>{headers['cpu']}</th><th>{headers['ram']}</th>
             <th>{headers['pubpps']}</th><th>{headers['pripps']}</th><th>{headers['public']}</th><th>{headers['private']}</th><th>{headers['total']}</th>
-            <th>{headers['diskr']}</th><th>{headers['diskw']}</th><th>{headers['source']}</th><th>{headers['drops']}</th><th>{headers['errors']}</th>
-        </tr></thead><tbody>{body}</tbody></table>
-        <div class="table-hint">STATUS is live: Online with fewer than 2 missed pushes, Missed at exactly 2, Down after that. LOAD color uses Load1 / CPU cores: green below 60%, orange from 60% to below 90%, red at 90% or higher. LOAD 1/5/15 and every other metric come from the displayed SNAPSHOT.</div>
+            <th>{headers['diskr']}</th><th>{headers['diskw']}</th><th>{headers['drops']}</th><th>{headers['errors']}</th><th class="dashboard-interface-col">{headers['source']}</th>
+        </tr></thead><tbody>{body}</tbody></table></div>
+        <div class="table-hint">STATUS is live: Online with fewer than 2 missed pushes, Missed at exactly 2, Down after that. LOAD color uses Load1 / CPU cores: green below 60%, orange from 60% to below 90%, red at 90% or higher. LOAD 1/5/15 and every other metric come from the displayed SNAPSHOT. INTERFACE is shown last to keep the numeric columns aligned.</div>
     </div>
     """
 
@@ -8287,56 +8299,125 @@ def get_vm_latest_metric(node, vm_uuid):
 
 @app.route("/vm")
 def vm_page():
-    node=(request.args.get("node") or "").strip(); vm_uuid=(request.args.get("vm_uuid") or "").strip()
-    bridge=(request.args.get("bridge") or "").strip(); iface=(request.args.get("iface") or "").strip()
-    period=clean_period(request.args.get("period","1h")); raw_sort=clean_chart_table_sort(request.args.get("raw_sort","time")); raw_order=clean_sort_order(request.args.get("raw_order","desc"))
-    if not node or not vm_uuid:return Response("Missing node or vm_uuid\n",status=400,mimetype="text/plain")
-    rows,start,end,step=query_vm_chart(node,vm_uuid,period,bridge=bridge,iface=iface)
-    perf_rows,_a,_b,_c=query_vm_perf_chart(node,vm_uuid,period)
-    rx_total=sum(r["rx"] for r in rows); tx_total=sum(r["tx"] for r in rows); total=sum(r["total"] for r in rows)
-    packets_total=sum(r.get("packets",0) for r in rows); drops_total=sum(r.get("drops",0) for r in rows); errors_total=sum(r.get("errors",0) for r in rows)
-    non_zero_points=sum(1 for r in rows if r["total"]>0 or r.get("packets",0)>0); perf_points=sum(1 for r in perf_rows if r.get("last_push",0)>0)
-    last_push=max(max((r["last_push"] for r in rows),default=0),max((r.get("last_push",0) for r in perf_rows),default=0))
-    scope=vm_scope_text(bridge,iface); latest=get_vm_latest_metric(node,vm_uuid); directional=get_vm_directional_current(node,vm_uuid)
+    node = (request.args.get("node") or "").strip()
+    vm_uuid = (request.args.get("vm_uuid") or "").strip()
+    bridge = (request.args.get("bridge") or "").strip()
+    iface = (request.args.get("iface") or "").strip()
+    period = clean_period(request.args.get("period", "1h"))
+    raw_sort = clean_chart_table_sort(request.args.get("raw_sort", "time"))
+    raw_order = clean_sort_order(request.args.get("raw_order", "desc"))
+    if not node or not vm_uuid:
+        return Response("Missing node or vm_uuid\n", status=400, mimetype="text/plain")
+
+    rows, start, end, step = query_vm_chart(node, vm_uuid, period, bridge=bridge, iface=iface)
+    perf_rows, _a, _b, _c = query_vm_perf_chart(node, vm_uuid, period)
+    chart_rx_total = sum(r["rx"] for r in rows)
+    chart_tx_total = sum(r["tx"] for r in rows)
+    chart_total = sum(r["total"] for r in rows)
+    chart_packets_total = sum(r.get("packets", 0) for r in rows)
+    chart_drops_total = sum(r.get("drops", 0) for r in rows)
+    chart_errors_total = sum(r.get("errors", 0) for r in rows)
+    non_zero_points = sum(1 for r in rows if r["total"] > 0 or r.get("packets", 0) > 0)
+    perf_points = sum(1 for r in perf_rows if r.get("last_push", 0) > 0)
+    chart_last_push = max(
+        max((r["last_push"] for r in rows), default=0),
+        max((r.get("last_push", 0) for r in perf_rows), default=0),
+    )
+
+    scope = vm_scope_text(bridge, iface)
+    snapshot = _v5054_vm_snapshot_overview(node, vm_uuid, period, bridge=bridge, iface=iface)
+    latest = _v5054_vm_snapshot_metric_tuple(snapshot)
+    if latest is None and _request_target_ts() is None and period == "5m":
+        latest = _get_vm_latest_metric_v483(node, vm_uuid)
+
     if latest:
-        (_seen,_interval,_iface,_bridge,lm_rx_mbps,lm_tx_mbps,lm_rx_pps,lm_tx_pps,
-         lm_rx_mbps_peak,lm_tx_mbps_peak,lm_rx_pps_peak,lm_tx_pps_peak,lm_rx_pkt_size,lm_tx_pkt_size,
-         lm_samples,lm_expected,lm_max_gap,lm_over_pps,lm_over_mbps,lm_quality,lm_drops,lm_errors,
-         lm_cpu,lm_vcpu,lm_ram_current,lm_ram_max,lm_ram_rss,lm_ram_available,lm_disk_read_bps,lm_disk_write_bps)=latest
+        (
+            _seen, _interval, _iface, _bridge, lm_rx_mbps, lm_tx_mbps, lm_rx_pps, lm_tx_pps,
+            lm_rx_mbps_peak, lm_tx_mbps_peak, lm_rx_pps_peak, lm_tx_pps_peak,
+            lm_rx_pkt_size, lm_tx_pkt_size, lm_samples, lm_expected, lm_max_gap,
+            lm_over_pps, lm_over_mbps, lm_quality, lm_drops, lm_errors,
+            lm_cpu, lm_vcpu, lm_ram_current, lm_ram_max, lm_ram_rss, lm_ram_available,
+            lm_disk_read_bps, lm_disk_write_bps,
+        ) = latest
     else:
-        lm_rx_mbps=lm_tx_mbps=lm_rx_pps=lm_tx_pps=lm_rx_mbps_peak=lm_tx_mbps_peak=lm_rx_pps_peak=lm_tx_pps_peak=0
-        lm_rx_pkt_size=lm_tx_pkt_size=lm_max_gap=0; lm_samples=lm_expected=lm_over_pps=lm_over_mbps=lm_drops=lm_errors=0; lm_quality='LEGACY'
-        lm_cpu=lm_vcpu=lm_ram_current=lm_ram_max=lm_ram_rss=lm_ram_available=lm_disk_read_bps=lm_disk_write_bps=0
-    sample_badge=network_sample_badge(lm_quality,lm_samples,lm_expected,lm_max_gap)
-    current_location=get_vm_current_location(vm_uuid); migration_notice=""
-    if current_location and current_location.get("node") and current_location.get("node")!=node:
-        current_node=current_location.get("node"); latest_href=url_for("vm_page",node=current_node,vm_uuid=vm_uuid,bridge=current_location.get("last_bridge") or "",iface=current_location.get("last_iface") or "",period=period)
-        migration_notice=f"""<div class="card warn-card"><h3>VM migrated</h3><p>This VM is currently reported on <b class="mono">{escape(current_node)}</b>. This page shows historical data for <b class="mono">{escape(node)}</b>.</p><p>Moved at <b>{fmt_full(current_location.get('moved_at'))}</b> · Previous node <b class="mono">{escape(current_location.get('previous_node') or '-')}</b> · Move count <b>{int(current_location.get('move_count') or 0)}</b></p><a href="{escape(latest_href,quote=True)}">Open current VM location</a></div>"""
-    back_href=url_for("node_page",node=node,period=period,q=vm_uuid)
-    content=f"""
+        lm_rx_mbps = lm_tx_mbps = lm_rx_pps = lm_tx_pps = 0
+        lm_rx_mbps_peak = lm_tx_mbps_peak = lm_rx_pps_peak = lm_tx_pps_peak = 0
+        lm_rx_pkt_size = lm_tx_pkt_size = lm_max_gap = 0
+        lm_samples = lm_expected = lm_over_pps = lm_over_mbps = lm_drops = lm_errors = 0
+        lm_quality = "LEGACY"
+        lm_cpu = lm_vcpu = lm_ram_current = lm_ram_max = lm_ram_rss = lm_ram_available = 0
+        lm_disk_read_bps = lm_disk_write_bps = 0
+
+    if snapshot:
+        overview_rx_total = snapshot["rx_bytes"]
+        overview_tx_total = snapshot["tx_bytes"]
+        overview_total = snapshot["total_bytes"]
+        overview_packets_total = snapshot["packets"]
+        overview_drops_total = snapshot["drops"]
+        overview_errors_total = snapshot["errors"]
+        overview_last_push = snapshot["last_push"]
+        selected_snapshot = snapshot["selected_bucket"]
+    else:
+        # Compatibility path for a live installation that has not produced its
+        # first retained snapshot yet. Historical pages never borrow current data.
+        live_request = _request_target_ts() is None and period == "5m"
+        overview_rx_total = chart_rx_total if live_request else 0
+        overview_tx_total = chart_tx_total if live_request else 0
+        overview_total = chart_total if live_request else 0
+        overview_packets_total = chart_packets_total if live_request else 0
+        overview_drops_total = chart_drops_total if live_request else 0
+        overview_errors_total = chart_errors_total if live_request else 0
+        overview_last_push = chart_last_push if live_request else 0
+        selected_snapshot = overview_last_push
+
+    directional = get_vm_directional_current(node, vm_uuid)
+    if directional:
+        directional_value = (
+            f"RX {int(directional.get('seconds_over_rx_pps', 0))}s / "
+            f"TX {int(directional.get('seconds_over_tx_pps', 0))}s"
+        )
+        directional_note = "One direction must stay high for about 5 minutes"
+    else:
+        directional_value = "N/A"
+        directional_note = "Directional streak counters are current-only"
+
+    sample_badge = network_sample_badge(lm_quality, lm_samples, lm_expected, lm_max_gap)
+    current_location = get_vm_current_location(vm_uuid)
+    migration_notice = ""
+    if current_location and current_location.get("node") and current_location.get("node") != node:
+        current_node = current_location.get("node")
+        latest_href = url_for(
+            "vm_page", node=current_node, vm_uuid=vm_uuid,
+            bridge=current_location.get("last_bridge") or "",
+            iface=current_location.get("last_iface") or "", period=period,
+        )
+        migration_notice = f"""<div class="card warn-card"><h3>VM migrated</h3><p>This VM is currently reported on <b class="mono">{escape(current_node)}</b>. This page shows historical data for <b class="mono">{escape(node)}</b>.</p><p>Moved at <b>{fmt_full(current_location.get('moved_at'))}</b> · Previous node <b class="mono">{escape(current_location.get('previous_node') or '-')}</b> · Move count <b>{int(current_location.get('move_count') or 0)}</b></p><a href="{escape(latest_href, quote=True)}">Open current VM location</a></div>"""
+
+    back_href = url_for("node_page", node=node, period=period, q=vm_uuid)
+    content = f"""
     {migration_notice}
-    <div class="card"><h3>VM Metrics</h3><a href="{escape(back_href,quote=True)}">← Back to node</a><div class="grid" style="margin-top:14px"><div class="stat">Node<b class="mono">{escape(node)}</b></div><div class="stat">VM UUID<b class="mono">{escape(vm_uuid)}</b></div><div class="stat">Scope<b>{escape(scope)}</b></div><div class="stat">Last Push<b>{fmt_push(last_push)}</b></div></div></div>
-    <div class="card top-card"><div class="top-grid"><div><div class="label">Updated</div><div class="value">{fmt_full(end)}</div></div><div><div class="label">Timezone</div><div class="value">{display_timezone_name()}</div></div><div><div class="label">Current Range</div><div class="value">{fmt_range(start)} <span class="arrow">→</span> {fmt_range(end)}</div></div></div><div class="label period-label">Period</div><div class="periods">{vm_period_links(period,node,vm_uuid,bridge,iface)}</div></div>
+    <div class="card"><h3>VM Metrics</h3><a href="{escape(back_href, quote=True)}">← Back to node</a><div class="grid" style="margin-top:14px"><div class="stat">Node<b class="mono">{escape(node)}</b></div><div class="stat">VM UUID<b class="mono">{escape(vm_uuid)}</b></div><div class="stat">Scope<b>{escape(scope)}</b></div><div class="stat">Last Push<b>{fmt_push(overview_last_push)}</b></div></div></div>
+    <div class="card top-card"><div class="top-grid"><div><div class="label">Selected Snapshot</div><div class="value">{fmt_full(selected_snapshot)}</div></div><div><div class="label">Timezone</div><div class="value">{display_timezone_name()}</div></div><div><div class="label">Chart Range</div><div class="value">{fmt_range(start)} <span class="arrow">→</span> {fmt_range(end)}</div></div></div><div class="label period-label">Period</div><div class="periods">{vm_period_links(period, node, vm_uuid, bridge, iface)}</div></div>
     <div class="card"><h3>Overview</h3><div class="grid">
-      <div class="stat">RX / TX<b>{human(rx_total)} / {human(tx_total)}</b></div><div class="stat">TOTAL<b>{human(total)}</b></div><div class="stat">Points<b>{non_zero_points}</b><small>Perf {perf_points}</small></div><div class="stat">Bucket Step<b>{int(step/60)}m</b></div>
-      <div class="stat">AVG RX/TX Mbps<b>{lm_rx_mbps:.2f} / {lm_tx_mbps:.2f}</b></div><div class="stat">PEAK RX/TX Mbps<b>{lm_rx_mbps_peak:.2f} / {lm_tx_mbps_peak:.2f}</b><small>Local sampler peak</small></div>
-      <div class="stat">AVG RX/TX PPS<b>{fmt_pps_value(lm_rx_pps)} / {fmt_pps_value(lm_tx_pps)}</b></div><div class="stat">PEAK RX/TX PPS<b>{fmt_pps_value(lm_rx_pps_peak)} / {fmt_pps_value(lm_tx_pps_peak)}</b><small>Packets total {int(packets_total)}</small></div>
-      <div class="stat">Sample Quality<b>{sample_badge}</b><small>{int(lm_samples)}/{int(lm_expected)} samples, max gap {float(lm_max_gap):.1f}s</small></div><div class="stat">PPS ≥ {ABUSE_NETWORK_PPS:,.0f}/s<b>RX {int(directional.get('seconds_over_rx_pps',0))}s / TX {int(directional.get('seconds_over_tx_pps',0))}s</b><small>One direction must stay high for about 5 minutes</small></div>
-      <div class="stat">Avg Packet Size<b>{float(lm_rx_pkt_size):.0f} / {float(lm_tx_pkt_size):.0f} B</b><small>RX / TX</small></div><div class="stat">Drops / Errors<b>{int(drops_total)} / {int(errors_total)}</b><small>Latest {int(lm_drops)} / {int(lm_errors)}</small></div>
-      {_v48129_vm_detail_cpu_stat(lm_cpu,lm_vcpu)}<div class="stat">RAM<b>{fmt_ram_pair(lm_ram_rss,lm_ram_current)}</b><small>Available {fmt_kib(lm_ram_available)}</small></div><div class="stat">Disk Read / Write<b>{human_rate(lm_disk_read_bps)} / {human_rate(lm_disk_write_bps)}</b></div>
+      <div class="stat">RX / TX<b>{human(overview_rx_total)} / {human(overview_tx_total)}</b><small>Selected snapshot</small></div><div class="stat">TOTAL<b>{human(overview_total)}</b><small>Selected snapshot</small></div><div class="stat">Points<b>{non_zero_points}</b><small>Perf {perf_points}</small></div><div class="stat">Bucket Step<b>{int(step / 60)}m</b></div>
+      <div class="stat">AVG RX/TX Mbps<b>{lm_rx_mbps:.2f} / {lm_tx_mbps:.2f}</b></div><div class="stat">PEAK RX/TX Mbps<b>{lm_rx_mbps_peak:.2f} / {lm_tx_mbps_peak:.2f}</b><small>Selected local sampler peak</small></div>
+      <div class="stat">AVG RX/TX PPS<b>{fmt_pps_value(lm_rx_pps)} / {fmt_pps_value(lm_tx_pps)}</b></div><div class="stat">PEAK RX/TX PPS<b>{fmt_pps_value(lm_rx_pps_peak)} / {fmt_pps_value(lm_tx_pps_peak)}</b><small>Packets {int(overview_packets_total)}</small></div>
+      <div class="stat">Sample Quality<b>{sample_badge}</b><small>{int(lm_samples)}/{int(lm_expected)} samples, max gap {float(lm_max_gap):.1f}s</small></div><div class="stat">PPS ≥ {ABUSE_NETWORK_PPS:,.0f}/s<b>{directional_value}</b><small>{directional_note}</small></div>
+      <div class="stat">Avg Packet Size<b>{float(lm_rx_pkt_size):.0f} / {float(lm_tx_pkt_size):.0f} B</b><small>RX / TX</small></div><div class="stat">Drops / Errors<b>{int(overview_drops_total)} / {int(overview_errors_total)}</b><small>Selected snapshot</small></div>
+      {_v48129_vm_detail_cpu_stat(lm_cpu, lm_vcpu)}<div class="stat">RAM<b>{fmt_ram_pair(lm_ram_rss, lm_ram_current)}</b><small>Available {fmt_kib(lm_ram_available)}</small></div><div class="stat">Disk Read / Write<b>{human_rate(lm_disk_read_bps)} / {human_rate(lm_disk_write_bps)}</b><small>Selected snapshot</small></div>
     </div></div>
     <div class="vm-charts-grid">
-      {vm_metric_chart_svg(rows,"Average Mbps",[{"key":"rx_mbps","label":"RX AVG","kind":"mbps","class":"metric1"},{"key":"tx_mbps","label":"TX AVG","kind":"mbps","class":"metric2"}],"Exact counter delta divided by actual push interval")}
-      {vm_metric_chart_svg(rows,"Peak Mbps",[{"key":"rx_mbps_peak","label":"RX PEAK","kind":"mbps","class":"metric1"},{"key":"tx_mbps_peak","label":"TX PEAK","kind":"mbps","class":"metric2"}],"Highest local sampler value; no 15-second rows stored")}
-      {vm_metric_chart_svg(rows,"Average PPS",[{"key":"rx_pps","label":"RX AVG","kind":"pps","class":"metric1"},{"key":"tx_pps","label":"TX AVG","kind":"pps","class":"metric2"}],"Exact packet counter delta divided by actual interval")}
-      {vm_metric_chart_svg(rows,"Peak PPS",[{"key":"rx_pps_peak","label":"RX PEAK","kind":"pps","class":"metric1"},{"key":"tx_pps_peak","label":"TX PEAK","kind":"pps","class":"metric2"}],"Highest local sampler value")}
-      {vm_metric_chart_svg(rows,"Drops / Errors",[{"key":"drops","label":"Drops","kind":"count","class":"metric1"},{"key":"errors","label":"Errors","kind":"count","class":"metric2"}],"Exact counters",render_zero=True)}
-      {vm_metric_chart_svg(perf_rows,"CPU Core Usage",[{"key":"cpu_core_percent","label":"CPU Core%","kind":"percent","class":"metric1"}],"100% = 1 full core")}
-      {vm_metric_chart_svg(perf_rows,"VM RAM",[{"key":"guest_used_bytes","label":"Guest Used","kind":"bytes","class":"metric1"},{"key":"ram_rss_bytes","label":"Host RSS","kind":"bytes","class":"metric2"},{"key":"ram_current_bytes","label":"Assigned","kind":"bytes","class":"metric3"}],"Guest Used = balloon available - usable. Host RSS is QEMU resident memory on the node; Assigned is the VM allocation.")}
-      {vm_metric_chart_svg(perf_rows,"Disk IO",[{"key":"disk_read_bps","label":"Read/s","kind":"rate","class":"metric1"},{"key":"disk_write_bps","label":"Write/s","kind":"rate","class":"metric2"}],"virsh domstats block counters")}
+      {vm_metric_chart_svg(rows, "Average Mbps", [{"key":"rx_mbps","label":"RX AVG","kind":"mbps","class":"metric1"},{"key":"tx_mbps","label":"TX AVG","kind":"mbps","class":"metric2"}], "Exact counter delta divided by actual push interval")}
+      {vm_metric_chart_svg(rows, "Peak Mbps", [{"key":"rx_mbps_peak","label":"RX PEAK","kind":"mbps","class":"metric1"},{"key":"tx_mbps_peak","label":"TX PEAK","kind":"mbps","class":"metric2"}], "Highest local sampler value; no 15-second rows stored")}
+      {vm_metric_chart_svg(rows, "Average PPS", [{"key":"rx_pps","label":"RX AVG","kind":"pps","class":"metric1"},{"key":"tx_pps","label":"TX AVG","kind":"pps","class":"metric2"}], "Exact packet counter delta divided by actual interval")}
+      {vm_metric_chart_svg(rows, "Peak PPS", [{"key":"rx_pps_peak","label":"RX PEAK","kind":"pps","class":"metric1"},{"key":"tx_pps_peak","label":"TX PEAK","kind":"pps","class":"metric2"}], "Highest local sampler value")}
+      {vm_metric_chart_svg(rows, "Drops / Errors", [{"key":"drops","label":"Drops","kind":"count","class":"metric1"},{"key":"errors","label":"Errors","kind":"count","class":"metric2"}], "Exact counters", render_zero=True)}
+      {vm_metric_chart_svg(perf_rows, "CPU Core Usage", [{"key":"cpu_core_percent","label":"CPU Core%","kind":"percent","class":"metric1"}], "100% = 1 full core")}
+      {vm_metric_chart_svg(perf_rows, "VM RAM", [{"key":"guest_used_bytes","label":"Guest Used","kind":"bytes","class":"metric1"},{"key":"ram_rss_bytes","label":"Host RSS","kind":"bytes","class":"metric2"},{"key":"ram_current_bytes","label":"Assigned","kind":"bytes","class":"metric3"}], "Guest Used = balloon available - usable. Host RSS is QEMU resident memory on the node; Assigned is the VM allocation.")}
+      {vm_metric_chart_svg(perf_rows, "Disk IO", [{"key":"disk_read_bps","label":"Read/s","kind":"rate","class":"metric1"},{"key":"disk_write_bps","label":"Write/s","kind":"rate","class":"metric2"}], "virsh domstats block counters")}
     </div>
-    {vm_chart_table(rows,node,vm_uuid,bridge,iface,period,raw_sort=raw_sort,raw_order=raw_order)}"""
-    return page(f"VM {vm_uuid}",content)
+    {vm_chart_table(rows, node, vm_uuid, bridge, iface, period, raw_sort=raw_sort, raw_order=raw_order)}"""
+    return page(f"VM {vm_uuid}", content)
 
 def api_vm():
     node = (request.args.get("node") or "").strip()
@@ -10462,6 +10543,12 @@ def push():
     snapshot_vm_count = len(snapshot_vm_uuids)
     push_parse_ms = (time.perf_counter() - push_started) * 1000.0
     storage_v2_stats = storage_v2.WriteStats(enabled=storage_v2.STORAGE_V2_ENABLED)
+    native_iface_stats = {"rows": 0, "copy_ms": 0.0, "merge_ms": 0.0}
+    native_vm_stats = {"rows": 0, "copy_ms": 0.0, "merge_ms": 0.0}
+    native_latest_ms = 0.0
+    presence_stats = {"rows": 0, "copy_ms": 0.0, "merge_ms": 0.0}
+    disk_current_ms = 0.0
+    current_abuse_ms = 0.0
     commit_ms = 0.0
 
     conn = db()
@@ -10694,288 +10781,22 @@ def push():
                 inv_bridge = "-"
             if seen_uuid and seen_uuid != "-" and seen_uuid not in seen_vm_locations:
                 seen_vm_locations[seen_uuid] = {"iface": inv_iface, "bridge": inv_bridge}
-        process_node_vm_presence(
+        presence_stats = process_node_vm_presence(
             conn, node, seen_vm_locations, data_time,
             inventory_complete=inventory_complete,
-        )
+        ) or presence_stats
         auto_purge_migrated_vms(conn)
 
-        for item in interfaces:
-            if not isinstance(item, dict):
-                continue
-            vm_uuid = str(item.get("vm_uuid") or "-")
-            iface = str(item.get("iface") or "-")
-            bridge = str(item.get("bridge") or "-")
-            rx_delta = max(0, safe_int(item.get("rx_delta"), 0))
-            tx_delta = max(0, safe_int(item.get("tx_delta"), 0))
-            rx_packets_delta = max(0, safe_int(item.get("rx_packets_delta"), 0))
-            tx_packets_delta = max(0, safe_int(item.get("tx_packets_delta"), 0))
-            rx_drop_delta = max(0, safe_int(item.get("rx_drop_delta"), 0))
-            tx_drop_delta = max(0, safe_int(item.get("tx_drop_delta"), 0))
-            rx_error_delta = max(0, safe_int(item.get("rx_error_delta"), 0))
-            tx_error_delta = max(0, safe_int(item.get("tx_error_delta"), 0))
-            item_interval_seconds = max(1, min(86400, safe_int(item.get("interval_seconds"), interval_seconds)))
-            rx_mbps_peak = max(0.0, safe_float(item.get("rx_mbps_peak"), 0.0))
-            tx_mbps_peak = max(0.0, safe_float(item.get("tx_mbps_peak"), 0.0))
-            rx_pps_peak = max(0.0, safe_float(item.get("rx_pps_peak"), 0.0))
-            tx_pps_peak = max(0.0, safe_float(item.get("tx_pps_peak"), 0.0))
-            rx_packet_size_avg = max(0.0, safe_float(item.get("rx_packet_size_avg"), 0.0))
-            tx_packet_size_avg = max(0.0, safe_float(item.get("tx_packet_size_avg"), 0.0))
-            network_sample_count = max(0, safe_int(item.get("network_sample_count"), 0))
-            network_sample_expected = max(0, safe_int(item.get("network_sample_expected"), 0))
-            network_sample_max_gap_seconds = max(0.0, safe_float(item.get("network_sample_max_gap_seconds"), 0.0))
-            seconds_over_pps = max(0, safe_int(item.get("seconds_over_pps"), 0))
-            seconds_over_mbps = max(0, safe_int(item.get("seconds_over_mbps"), 0))
-            network_sample_quality = clean_network_sample_quality(item.get("network_sample_quality"))
+        native_iface_stats = _v5052_write_interface_copy_batch(
+            conn, node, data_time, bucket, interval_seconds, interfaces
+        )
 
-            conn.execute("""
-                INSERT INTO vm_inventory(
-                    node, vm_uuid, first_seen, last_seen, last_iface, last_bridge, status, hidden_at, deleted_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, 'active', NULL, NULL)
-                ON CONFLICT(node, vm_uuid)
-                DO UPDATE SET
-                    last_seen = MAX(vm_inventory.last_seen, excluded.last_seen),
-                    last_iface = excluded.last_iface,
-                    last_bridge = excluded.last_bridge,
-                    status = CASE
-                        WHEN vm_inventory.status = 'hidden' THEN 'hidden'
-                        ELSE 'active'
-                    END,
-                    hidden_at = CASE
-                        WHEN vm_inventory.status = 'hidden' THEN vm_inventory.hidden_at
-                        ELSE NULL
-                    END,
-                    deleted_at = NULL
-            """, (
-                node,
-                vm_uuid,
-                data_time,
-                data_time,
-                iface,
-                bridge,
-            ))
-
-            add_bandwidth_rollup(
-                conn, data_time, node, vm_uuid, bridge,
-                rx_delta, tx_delta, rx_packets_delta, tx_packets_delta,
-                rx_drop_delta, tx_drop_delta, rx_error_delta, tx_error_delta,
-            )
-
-            if WRITE_LEGACY_USAGE:
-                conn.execute("""
-                    INSERT INTO usage(
-                        time,node,vm_uuid,iface,bridge,mac,rx_delta,tx_delta,
-                        rx_packets_delta,tx_packets_delta,
-                        rx_drop_delta,tx_drop_delta,
-                        rx_error_delta,tx_error_delta,
-                        interval_seconds
-                    )
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """, (
-                    data_time, node, vm_uuid, iface, bridge, item.get("mac"),
-                    rx_delta, tx_delta, rx_packets_delta, tx_packets_delta,
-                    rx_drop_delta, tx_drop_delta, rx_error_delta, tx_error_delta,
-                    item_interval_seconds,
-                ))
-
-            conn.execute("""
-                INSERT INTO node_stats(
-                    bucket, node, bridge, iface, vm_uuid,
-                    rx_delta, tx_delta, rx_packets_delta, tx_packets_delta,
-                    rx_drop_delta, tx_drop_delta, rx_error_delta, tx_error_delta,
-                    rx_mbps_peak, tx_mbps_peak, rx_pps_peak, tx_pps_peak,
-                    rx_packet_size_avg, tx_packet_size_avg,
-                    network_sample_count, network_sample_expected, network_sample_max_gap_seconds,
-                    seconds_over_pps, seconds_over_mbps, network_sample_quality,
-                    interval_seconds, last_push
-                )
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                ON CONFLICT(bucket, node, bridge, iface, vm_uuid)
-                DO UPDATE SET
-                    rx_delta=node_stats.rx_delta+excluded.rx_delta,
-                    tx_delta=node_stats.tx_delta+excluded.tx_delta,
-                    rx_packets_delta=node_stats.rx_packets_delta+excluded.rx_packets_delta,
-                    tx_packets_delta=node_stats.tx_packets_delta+excluded.tx_packets_delta,
-                    rx_drop_delta=node_stats.rx_drop_delta+excluded.rx_drop_delta,
-                    tx_drop_delta=node_stats.tx_drop_delta+excluded.tx_drop_delta,
-                    rx_error_delta=node_stats.rx_error_delta+excluded.rx_error_delta,
-                    tx_error_delta=node_stats.tx_error_delta+excluded.tx_error_delta,
-                    rx_mbps_peak=MAX(node_stats.rx_mbps_peak,excluded.rx_mbps_peak),
-                    tx_mbps_peak=MAX(node_stats.tx_mbps_peak,excluded.tx_mbps_peak),
-                    rx_pps_peak=MAX(node_stats.rx_pps_peak,excluded.rx_pps_peak),
-                    tx_pps_peak=MAX(node_stats.tx_pps_peak,excluded.tx_pps_peak),
-                    rx_packet_size_avg=CASE WHEN excluded.rx_packet_size_avg>0 THEN excluded.rx_packet_size_avg ELSE node_stats.rx_packet_size_avg END,
-                    tx_packet_size_avg=CASE WHEN excluded.tx_packet_size_avg>0 THEN excluded.tx_packet_size_avg ELSE node_stats.tx_packet_size_avg END,
-                    network_sample_count=node_stats.network_sample_count+excluded.network_sample_count,
-                    network_sample_expected=node_stats.network_sample_expected+excluded.network_sample_expected,
-                    network_sample_max_gap_seconds=MAX(node_stats.network_sample_max_gap_seconds,excluded.network_sample_max_gap_seconds),
-                    seconds_over_pps=node_stats.seconds_over_pps+excluded.seconds_over_pps,
-                    seconds_over_mbps=node_stats.seconds_over_mbps+excluded.seconds_over_mbps,
-                    network_sample_quality=CASE
-                        WHEN node_stats.network_sample_quality='POOR' OR excluded.network_sample_quality='POOR' THEN 'POOR'
-                        WHEN node_stats.network_sample_quality='DEGRADED' OR excluded.network_sample_quality='DEGRADED' THEN 'DEGRADED'
-                        WHEN node_stats.network_sample_quality='GOOD' OR excluded.network_sample_quality='GOOD' THEN 'GOOD'
-                        WHEN excluded.network_sample_quality='NO_DATA' THEN 'NO_DATA'
-                        ELSE node_stats.network_sample_quality END,
-                    interval_seconds=excluded.interval_seconds,
-                    last_push=MAX(node_stats.last_push,excluded.last_push)
-            """, (
-                bucket,node,bridge,iface,vm_uuid,
-                rx_delta,tx_delta,rx_packets_delta,tx_packets_delta,
-                rx_drop_delta,tx_drop_delta,rx_error_delta,tx_error_delta,
-                rx_mbps_peak,tx_mbps_peak,rx_pps_peak,tx_pps_peak,
-                rx_packet_size_avg,tx_packet_size_avg,
-                network_sample_count,network_sample_expected,network_sample_max_gap_seconds,
-                seconds_over_pps,seconds_over_mbps,network_sample_quality,
-                item_interval_seconds,data_time,
-            ))
-
-            rx_mbps = rx_delta * 8.0 / item_interval_seconds / 1000000.0
-            tx_mbps = tx_delta * 8.0 / item_interval_seconds / 1000000.0
-            rx_pps = rx_packets_delta / float(item_interval_seconds)
-            tx_pps = tx_packets_delta / float(item_interval_seconds)
-            # A real peak cannot be lower than the whole-window average.
-            rx_mbps_peak = max(rx_mbps_peak, rx_mbps)
-            tx_mbps_peak = max(tx_mbps_peak, tx_mbps)
-            rx_pps_peak = max(rx_pps_peak, rx_pps)
-            tx_pps_peak = max(tx_pps_peak, tx_pps)
-            flags = []
-            peak_pps = max(rx_pps_peak, tx_pps_peak)
-            peak_mbps = max(rx_mbps_peak, tx_mbps_peak)
-            if peak_pps >= VM_NET_CRIT_PPS > 0: flags.append("PPS_PEAK_CRITICAL")
-            elif peak_pps >= VM_NET_WARN_PPS > 0: flags.append("PPS_PEAK_HIGH")
-            if peak_mbps >= VM_NET_CRIT_MBPS > 0: flags.append("MBPS_PEAK_CRITICAL")
-            elif peak_mbps >= VM_NET_WARN_MBPS > 0: flags.append("MBPS_PEAK_HIGH")
-            if network_sample_quality == "POOR": flags.append("SAMPLE_POOR")
-            alert_level = "warn" if flags else "ok"
-            alert_flags = ",".join(flags)
-
-            conn.execute("""
-                INSERT INTO vm_latest_metrics(
-                    node,vm_uuid,iface,bridge,last_seen,interval_seconds,
-                    rx_mbps,tx_mbps,rx_pps,tx_pps,
-                    rx_mbps_peak,tx_mbps_peak,rx_pps_peak,tx_pps_peak,
-                    rx_packet_size_avg,tx_packet_size_avg,
-                    network_sample_count,network_sample_expected,network_sample_max_gap_seconds,
-                    seconds_over_pps,seconds_over_mbps,network_sample_quality,
-                    rx_drop_delta,tx_drop_delta,rx_error_delta,tx_error_delta,
-                    alert_level,alert_flags
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                ON CONFLICT(node,vm_uuid) DO UPDATE SET
-                    iface=excluded.iface,bridge=excluded.bridge,last_seen=MAX(vm_latest_metrics.last_seen,excluded.last_seen),interval_seconds=excluded.interval_seconds,
-                    rx_mbps=excluded.rx_mbps,tx_mbps=excluded.tx_mbps,rx_pps=excluded.rx_pps,tx_pps=excluded.tx_pps,
-                    rx_mbps_peak=excluded.rx_mbps_peak,tx_mbps_peak=excluded.tx_mbps_peak,rx_pps_peak=excluded.rx_pps_peak,tx_pps_peak=excluded.tx_pps_peak,
-                    rx_packet_size_avg=excluded.rx_packet_size_avg,tx_packet_size_avg=excluded.tx_packet_size_avg,
-                    network_sample_count=excluded.network_sample_count,network_sample_expected=excluded.network_sample_expected,
-                    network_sample_max_gap_seconds=excluded.network_sample_max_gap_seconds,seconds_over_pps=excluded.seconds_over_pps,seconds_over_mbps=excluded.seconds_over_mbps,
-                    network_sample_quality=excluded.network_sample_quality,
-                    rx_drop_delta=excluded.rx_drop_delta,tx_drop_delta=excluded.tx_drop_delta,rx_error_delta=excluded.rx_error_delta,tx_error_delta=excluded.tx_error_delta,
-                    alert_level=excluded.alert_level,alert_flags=excluded.alert_flags
-            """,(
-                node,vm_uuid,iface,bridge,data_time,item_interval_seconds,
-                rx_mbps,tx_mbps,rx_pps,tx_pps,
-                rx_mbps_peak,tx_mbps_peak,rx_pps_peak,tx_pps_peak,
-                rx_packet_size_avg,tx_packet_size_avg,
-                network_sample_count,network_sample_expected,network_sample_max_gap_seconds,
-                seconds_over_pps,seconds_over_mbps,network_sample_quality,
-                rx_drop_delta,tx_drop_delta,rx_error_delta,tx_error_delta,
-                alert_level,alert_flags,
-            ))
-
-        for vm_item in vms:
-            if not isinstance(vm_item, dict):
-                continue
-            vm_uuid = str(vm_item.get("vm_uuid") or "-")
-            if not vm_uuid or vm_uuid == "-":
-                continue
-
-            vcpu_current = max(0, safe_int(vm_item.get("vcpu_current"), 0))
-            # Store normalized VM CPU for backward compatibility.
-            # Old agents send cpu_percent normalized to vCPU count.
-            # Agent v4 may also send cpu_core_percent/cpu_normalized_percent.
-            # UI converts normalized CPU to core-based display using vCPU count.
-            if vm_item.get("cpu_normalized_percent") is not None:
-                cpu_percent = max(0.0, min(100.0, float(vm_item.get("cpu_normalized_percent") or 0)))
-            else:
-                cpu_percent = max(0.0, float(vm_item.get("cpu_percent") or 0))
-            ram_current_kib = max(0, safe_int(vm_item.get("ram_current_kib"), 0))
-            ram_maximum_kib = max(0, safe_int(vm_item.get("ram_maximum_kib"), 0))
-            ram_rss_kib = max(0, safe_int(vm_item.get("ram_rss_kib"), 0))
-            ram_available_kib = max(0, safe_int(vm_item.get("ram_available_kib"), 0))
-            ram_unused_kib = max(0, safe_int(vm_item.get("ram_unused_kib"), 0))
-            ram_usable_kib = max(0, safe_int(vm_item.get("ram_usable_kib"), 0))
-            disk_read_delta = max(0, safe_int(vm_item.get("disk_read_delta"), 0))
-            disk_write_delta = max(0, safe_int(vm_item.get("disk_write_delta"), 0))
-            disk_read_reqs_delta = max(0, safe_int(vm_item.get("disk_read_reqs_delta"), 0))
-            disk_write_reqs_delta = max(0, safe_int(vm_item.get("disk_write_reqs_delta"), 0))
-            disk_read_bps = disk_read_delta / float(interval_seconds) if interval_seconds > 0 else 0.0
-            disk_write_bps = disk_write_delta / float(interval_seconds) if interval_seconds > 0 else 0.0
-
-            conn.execute("""
-                INSERT INTO vm_perf_stats(
-                    time, bucket, node, vm_uuid, interval_seconds,
-                    vcpu_current, cpu_percent,
-                    ram_current_kib, ram_maximum_kib, ram_rss_kib, ram_available_kib, ram_unused_kib, ram_usable_kib,
-                    disk_read_delta, disk_write_delta, disk_read_reqs_delta, disk_write_reqs_delta,
-                    last_push
-                )
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """, (
-                data_time,
-                bucket,
-                node,
-                vm_uuid,
-                interval_seconds,
-                vcpu_current,
-                cpu_percent,
-                ram_current_kib,
-                ram_maximum_kib,
-                ram_rss_kib,
-                ram_available_kib,
-                ram_unused_kib,
-                ram_usable_kib,
-                disk_read_delta,
-                disk_write_delta,
-                disk_read_reqs_delta,
-                disk_write_reqs_delta,
-                data_time,
-            ))
-
-            conn.execute("""
-                INSERT INTO vm_latest_metrics(
-                    node, vm_uuid, last_seen, interval_seconds,
-                    cpu_percent, vcpu_current,
-                    ram_current_kib, ram_maximum_kib, ram_rss_kib, ram_available_kib,
-                    disk_read_bps, disk_write_bps
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(node, vm_uuid)
-                DO UPDATE SET
-                    last_seen=MAX(vm_latest_metrics.last_seen, excluded.last_seen),
-                    interval_seconds=excluded.interval_seconds,
-                    cpu_percent=excluded.cpu_percent,
-                    vcpu_current=excluded.vcpu_current,
-                    ram_current_kib=excluded.ram_current_kib,
-                    ram_maximum_kib=excluded.ram_maximum_kib,
-                    ram_rss_kib=excluded.ram_rss_kib,
-                    ram_available_kib=excluded.ram_available_kib,
-                    disk_read_bps=excluded.disk_read_bps,
-                    disk_write_bps=excluded.disk_write_bps
-            """, (
-                node,
-                vm_uuid,
-                data_time,
-                interval_seconds,
-                cpu_percent,
-                vcpu_current,
-                ram_current_kib,
-                ram_maximum_kib,
-                ram_rss_kib,
-                ram_available_kib,
-                disk_read_bps,
-                disk_write_bps,
-            ))
+        native_vm_stats = _v5052_write_vm_copy_batch(
+            conn, node, data_time, bucket, interval_seconds, vms
+        )
+        native_latest_started = time.perf_counter()
+        _v5052_merge_latest_metrics(conn, node, data_time)
+        native_latest_ms = (time.perf_counter() - native_latest_started) * 1000.0
 
 
         if node_host:
@@ -11191,8 +11012,12 @@ def push():
                 alert_level, alert_flags,
             ))
 
+        disk_current_started = time.perf_counter()
         ingest_disk_io_current(conn, node, data_time, interval_seconds, vms, node_host)
+        disk_current_ms = (time.perf_counter() - disk_current_started) * 1000.0
+        current_abuse_started = time.perf_counter()
         refresh_fast_current_state(conn, node, data_time, interval_seconds, interfaces, vms, node_host, inventory_complete)
+        current_abuse_ms = (time.perf_counter() - current_abuse_started) * 1000.0
         try:
             storage_v2_stats = storage_v2.write_storage_v2(
                 conn,
@@ -11222,11 +11047,19 @@ def push():
         total_ms = (time.perf_counter() - push_started) * 1000.0
         app.logger.info(
             "push_perf node=%s bucket=%s total_ms=%.2f parse_ms=%.2f "
+            "presence_copy_ms=%.2f presence_merge_ms=%.2f "
+            "iface_copy_ms=%.2f iface_merge_ms=%.2f vm_copy_ms=%.2f vm_merge_ms=%.2f latest_ms=%.2f "
+            "disk_current_ms=%.2f current_abuse_ms=%.2f "
             "chart_write_ms=%.2f raw_write_ms=%.2f node_write_ms=%.2f commit_ms=%.2f "
-            "rows_chart=%s rows_raw=%s rows_node=%s",
+            "rows_presence=%s rows_iface=%s rows_vm=%s rows_chart=%s rows_raw=%s rows_node=%s",
             node, bucket, total_ms, push_parse_ms,
+            presence_stats.get("copy_ms", 0.0), presence_stats.get("merge_ms", 0.0),
+            native_iface_stats.get("copy_ms", 0.0), native_iface_stats.get("merge_ms", 0.0),
+            native_vm_stats.get("copy_ms", 0.0), native_vm_stats.get("merge_ms", 0.0), native_latest_ms,
+            disk_current_ms, current_abuse_ms,
             storage_v2_stats.chart_write_ms, storage_v2_stats.raw_write_ms,
             storage_v2_stats.node_write_ms, commit_ms,
+            presence_stats.get("rows", 0), native_iface_stats.get("rows", 0), native_vm_stats.get("rows", 0),
             storage_v2_stats.chart_rows, storage_v2_stats.raw_rows, storage_v2_stats.node_rows,
         )
     return {"ok": True, "count": len(interfaces), "vms": len(vms), "physical": len(physical_interfaces), "bridges": len(bridge_addresses), "inventory_complete": inventory_complete, "version": data.get("version", 1), "agent_config": get_agent_runtime_config()}
@@ -13231,7 +13064,6 @@ def _v484_migrate_schema():
         }.items():
             ensure_column(conn, "vm_abuse_events", column, ddl)
 
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_vm_abuse_mbps_active ON vm_abuse_state(is_abuse,network_rx_mbps_hit,network_tx_mbps_hit,severity DESC)")
         conn.commit()
     finally:
         conn.close()
@@ -13998,66 +13830,204 @@ def get_top_vm_rows(period, q="", sort_by="total", order="desc", scope="all", li
     return _get_top_vm_rows_v483(period,q=q,sort_by=sort_by,order=order,scope=scope,limit=limit)
 
 
-def _historical_vm_latest_metric(node, vm_uuid, target_ts):
+def _v5054_vm_snapshot_overview(node, vm_uuid, period, bridge="", iface=""):
+    """Build one coherent VM overview from one exact retained push bucket.
+
+    The selected Node snapshot is the source of truth. Network, CPU, RAM and
+    aggregate disk metrics are never borrowed from the current tables or from a
+    neighbouring bucket when an older period/custom time is selected.
+    """
+    period = clean_period(period)
+    node = str(node or "").strip()
+    vm_uuid = str(vm_uuid or "").strip()
+    bridge = str(bridge or "").strip()
+    iface = str(iface or "").strip()
+    if not node or not vm_uuid:
+        return None
+
     conn = db()
     try:
-        selected,_latest = resolve_snapshot_bucket(conn,"5m",node=node)
-        if not selected:
+        selected_bucket, latest_bucket = resolve_snapshot_bucket(conn, period, node=node)
+        if selected_bucket <= 0:
             return None
-        net_bucket = resolve_table_snapshot_bucket(conn,"node_stats",node,selected)
-        perf_bucket = resolve_table_snapshot_bucket(conn,"vm_perf_stats",node,selected)
-        net = conn.execute("""
-          SELECT MAX(last_push),MAX(COALESCE(interval_seconds,300)),
-                 SUM(rx_delta)*8.0/MAX(MAX(COALESCE(interval_seconds,300)),1)/1000000.0,
-                 SUM(tx_delta)*8.0/MAX(MAX(COALESCE(interval_seconds,300)),1)/1000000.0,
-                 SUM(rx_packets_delta)*1.0/MAX(MAX(COALESCE(interval_seconds,300)),1),
-                 SUM(tx_packets_delta)*1.0/MAX(MAX(COALESCE(interval_seconds,300)),1),
-                 MAX(COALESCE(rx_mbps_peak,0)),MAX(COALESCE(tx_mbps_peak,0)),
-                 MAX(COALESCE(rx_pps_peak,0)),MAX(COALESCE(tx_pps_peak,0)),
-                 SUM(COALESCE(network_sample_count,0)),SUM(COALESCE(network_sample_expected,0)),
-                 MAX(COALESCE(network_sample_max_gap_seconds,0)),SUM(COALESCE(seconds_over_pps,0)),
-                 SUM(COALESCE(seconds_over_mbps,0)),
-                 MAX(CASE UPPER(COALESCE(network_sample_quality,'LEGACY')) WHEN 'POOR' THEN 3 WHEN 'DEGRADED' THEN 2 WHEN 'GOOD' THEN 1 ELSE 0 END),
-                 SUM(rx_drop_delta+tx_drop_delta),SUM(rx_error_delta+tx_error_delta)
-          FROM node_stats WHERE node=? AND vm_uuid=? AND bucket=?
-        """,(node,vm_uuid,net_bucket)).fetchone()
+
+        net_where = ["node=?", "vm_uuid=?", "bucket=?"]
+        net_params = [node, vm_uuid, selected_bucket]
+        if bridge:
+            net_where.append("bridge=?")
+            net_params.append(bridge)
+        if iface:
+            net_where.append("iface=?")
+            net_params.append(iface)
+
+        net = conn.execute(f"""
+            SELECT
+                COUNT(*),
+                MAX(last_push),
+                MAX(COALESCE(interval_seconds, ?)),
+                COALESCE(SUM(rx_delta), 0),
+                COALESCE(SUM(tx_delta), 0),
+                COALESCE(SUM(rx_packets_delta), 0),
+                COALESCE(SUM(tx_packets_delta), 0),
+                COALESCE(SUM(rx_drop_delta + tx_drop_delta), 0),
+                COALESCE(SUM(rx_error_delta + tx_error_delta), 0),
+                MAX(COALESCE(rx_mbps_peak, 0)),
+                MAX(COALESCE(tx_mbps_peak, 0)),
+                MAX(COALESCE(rx_pps_peak, 0)),
+                MAX(COALESCE(tx_pps_peak, 0)),
+                COALESCE(SUM(network_sample_count), 0),
+                COALESCE(SUM(network_sample_expected), 0),
+                MAX(COALESCE(network_sample_max_gap_seconds, 0)),
+                COALESCE(SUM(seconds_over_pps), 0),
+                COALESCE(SUM(seconds_over_mbps), 0),
+                MAX(CASE UPPER(COALESCE(network_sample_quality, 'LEGACY'))
+                    WHEN 'POOR' THEN 3
+                    WHEN 'DEGRADED' THEN 2
+                    WHEN 'GOOD' THEN 1
+                    ELSE 0 END),
+                MAX(COALESCE(iface, '')),
+                MAX(COALESCE(bridge, ''))
+            FROM node_stats
+            WHERE {' AND '.join(net_where)}
+        """, [CACHE_BUCKET_SECONDS] + net_params).fetchone()
+
         perf = conn.execute("""
-          SELECT MAX(cpu_percent),MAX(vcpu_current),MAX(ram_current_kib),MAX(ram_maximum_kib),MAX(ram_rss_kib),MAX(ram_available_kib),
-                 MAX(disk_read_delta*1.0/MAX(interval_seconds,1)),MAX(disk_write_delta*1.0/MAX(interval_seconds,1))
-          FROM vm_perf_stats WHERE node=? AND vm_uuid=? AND bucket=?
-        """,(node,vm_uuid,perf_bucket)).fetchone()
-        if not net and not perf:
+            SELECT
+                COUNT(*),
+                MAX(last_push),
+                MAX(COALESCE(interval_seconds, ?)),
+                MAX(COALESCE(cpu_percent, 0)),
+                MAX(COALESCE(vcpu_current, 0)),
+                MAX(COALESCE(ram_current_kib, 0)),
+                MAX(COALESCE(ram_maximum_kib, 0)),
+                MAX(COALESCE(ram_rss_kib, 0)),
+                MAX(COALESCE(ram_available_kib, 0)),
+                MAX(COALESCE(disk_read_delta, 0) * 1.0 /
+                    GREATEST(COALESCE(interval_seconds, ?), 1)),
+                MAX(COALESCE(disk_write_delta, 0) * 1.0 /
+                    GREATEST(COALESCE(interval_seconds, ?), 1))
+            FROM vm_perf_stats
+            WHERE node=? AND vm_uuid=? AND bucket=?
+        """, (
+            CACHE_BUCKET_SECONDS, CACHE_BUCKET_SECONDS, CACHE_BUCKET_SECONDS,
+            node, vm_uuid, selected_bucket,
+        )).fetchone()
+
+        net_count = safe_int((net or [0])[0], 0)
+        perf_count = safe_int((perf or [0])[0], 0)
+        if net_count <= 0 and perf_count <= 0:
             return None
-        quality = network_quality_from_rank(safe_int((net or [0]*18)[15],0))
-        return (
-          safe_int((net or [0])[0],0),safe_int((net or [0,300])[1],300),'','',
-          safe_float((net or [0,0,0])[2],0),safe_float((net or [0,0,0,0])[3],0),
-          safe_float((net or [0,0,0,0,0])[4],0),safe_float((net or [0,0,0,0,0,0])[5],0),
-          safe_float((net or [0]*7)[6],0),safe_float((net or [0]*8)[7],0),safe_float((net or [0]*9)[8],0),safe_float((net or [0]*10)[9],0),
-          0,0,safe_int((net or [0]*11)[10],0),safe_int((net or [0]*12)[11],0),safe_float((net or [0]*13)[12],0),
-          safe_int((net or [0]*14)[13],0),safe_int((net or [0]*15)[14],0),quality,
-          safe_int((net or [0]*17)[16],0),safe_int((net or [0]*18)[17],0),
-          safe_float((perf or [0])[0],0),safe_int((perf or [0,0])[1],0),safe_int((perf or [0,0,0])[2],0),safe_int((perf or [0,0,0,0])[3],0),
-          safe_int((perf or [0,0,0,0,0])[4],0),safe_int((perf or [0,0,0,0,0,0])[5],0),safe_float((perf or [0]*7)[6],0),safe_float((perf or [0]*8)[7],0)
-        )
+
+        net_interval = max(1, safe_int((net or [0, 0, CACHE_BUCKET_SECONDS])[2], CACHE_BUCKET_SECONDS))
+        perf_interval = max(1, safe_int((perf or [0, 0, CACHE_BUCKET_SECONDS])[2], CACHE_BUCKET_SECONDS))
+        interval = max(net_interval, perf_interval)
+        rx_bytes = safe_int((net or [0] * 4)[3], 0)
+        tx_bytes = safe_int((net or [0] * 5)[4], 0)
+        rx_packets = safe_int((net or [0] * 6)[5], 0)
+        tx_packets = safe_int((net or [0] * 7)[6], 0)
+        quality = network_quality_from_rank(safe_int((net or [0] * 19)[18], 0))
+        net_seen = safe_int((net or [0, 0])[1], 0)
+        perf_seen = safe_int((perf or [0, 0])[1], 0)
+
+        result = {
+            "selected_bucket": selected_bucket,
+            "latest_bucket": latest_bucket,
+            "last_push": max(net_seen, perf_seen, selected_bucket),
+            "interval_seconds": interval,
+            "iface": str((net or [""] * 20)[19] or iface or ""),
+            "bridge": str((net or [""] * 21)[20] or bridge or ""),
+            "rx_bytes": rx_bytes,
+            "tx_bytes": tx_bytes,
+            "rx_packets": rx_packets,
+            "tx_packets": tx_packets,
+            "drops": safe_int((net or [0] * 8)[7], 0),
+            "errors": safe_int((net or [0] * 9)[8], 0),
+            "rx_mbps": rx_bytes * 8.0 / net_interval / 1000000.0 if net_count else 0.0,
+            "tx_mbps": tx_bytes * 8.0 / net_interval / 1000000.0 if net_count else 0.0,
+            "rx_mbps_peak": safe_float((net or [0] * 10)[9], 0),
+            "tx_mbps_peak": safe_float((net or [0] * 11)[10], 0),
+            "rx_pps": rx_packets * 1.0 / net_interval if net_count else 0.0,
+            "tx_pps": tx_packets * 1.0 / net_interval if net_count else 0.0,
+            "rx_pps_peak": safe_float((net or [0] * 12)[11], 0),
+            "tx_pps_peak": safe_float((net or [0] * 13)[12], 0),
+            "rx_packet_size_avg": rx_bytes * 1.0 / rx_packets if rx_packets else 0.0,
+            "tx_packet_size_avg": tx_bytes * 1.0 / tx_packets if tx_packets else 0.0,
+            "sample_count": safe_int((net or [0] * 14)[13], 0),
+            "sample_expected": safe_int((net or [0] * 15)[14], 0),
+            "sample_max_gap": safe_float((net or [0] * 16)[15], 0),
+            "seconds_over_pps": safe_int((net or [0] * 17)[16], 0),
+            "seconds_over_mbps": safe_int((net or [0] * 18)[17], 0),
+            "sample_quality": quality,
+            "cpu_percent": safe_float((perf or [0] * 4)[3], 0),
+            "vcpu_current": safe_int((perf or [0] * 5)[4], 0),
+            "ram_current_kib": safe_int((perf or [0] * 6)[5], 0),
+            "ram_maximum_kib": safe_int((perf or [0] * 7)[6], 0),
+            "ram_rss_kib": safe_int((perf or [0] * 8)[7], 0),
+            "ram_available_kib": safe_int((perf or [0] * 9)[8], 0),
+            "disk_read_bps": safe_float((perf or [0] * 10)[9], 0),
+            "disk_write_bps": safe_float((perf or [0] * 11)[10], 0),
+        }
+        result["total_bytes"] = result["rx_bytes"] + result["tx_bytes"]
+        result["packets"] = result["rx_packets"] + result["tx_packets"]
+        return result
     finally:
         conn.close()
 
 
+def _historical_vm_latest_metric(node, vm_uuid, target_ts):
+    """Compatibility wrapper retained for custom-time callers."""
+    return _v5054_vm_snapshot_overview(
+        node,
+        vm_uuid,
+        clean_period(request.args.get("period", "5m")),
+        bridge=(request.args.get("bridge") or "").strip(),
+        iface=(request.args.get("iface") or "").strip(),
+    )
+
+
+def _v5054_vm_snapshot_metric_tuple(snapshot):
+    if not snapshot:
+        return None
+    return (
+        snapshot["last_push"], snapshot["interval_seconds"],
+        snapshot["iface"], snapshot["bridge"],
+        snapshot["rx_mbps"], snapshot["tx_mbps"],
+        snapshot["rx_pps"], snapshot["tx_pps"],
+        snapshot["rx_mbps_peak"], snapshot["tx_mbps_peak"],
+        snapshot["rx_pps_peak"], snapshot["tx_pps_peak"],
+        snapshot["rx_packet_size_avg"], snapshot["tx_packet_size_avg"],
+        snapshot["sample_count"], snapshot["sample_expected"],
+        snapshot["sample_max_gap"], snapshot["seconds_over_pps"],
+        snapshot["seconds_over_mbps"], snapshot["sample_quality"],
+        snapshot["drops"], snapshot["errors"],
+        snapshot["cpu_percent"], snapshot["vcpu_current"],
+        snapshot["ram_current_kib"], snapshot["ram_maximum_kib"],
+        snapshot["ram_rss_kib"], snapshot["ram_available_kib"],
+        snapshot["disk_read_bps"], snapshot["disk_write_bps"],
+    )
+
+
 def get_vm_latest_metric(node, vm_uuid):
-    target = _request_target_ts()
-    if target is not None:
-        row = _historical_vm_latest_metric(node,vm_uuid,target)
-        if row:
-            return row
-    return _get_vm_latest_metric_v483(node,vm_uuid)
+    period = clean_period(request.args.get("period", "5m"))
+    snapshot = _v5054_vm_snapshot_overview(
+        node,
+        vm_uuid,
+        period,
+        bridge=(request.args.get("bridge") or "").strip(),
+        iface=(request.args.get("iface") or "").strip(),
+    )
+    if snapshot:
+        return _v5054_vm_snapshot_metric_tuple(snapshot)
+    if _request_target_ts() is None and period == "5m":
+        return _get_vm_latest_metric_v483(node, vm_uuid)
+    return None
 
 
 def get_vm_directional_current(node, vm_uuid):
-    if _request_target_ts() is not None:
+    period = clean_period(request.args.get("period", "5m"))
+    if _request_target_ts() is not None or period != "5m":
         return {}
-    return _get_vm_directional_current_v483(node,vm_uuid)
-
+    return _get_vm_directional_current_v483(node, vm_uuid)
 
 def vm_period_links(current,node,vm_uuid,bridge,iface):
     links = _vm_period_links_v483(current,node,vm_uuid,bridge,iface)
@@ -14785,14 +14755,6 @@ def _v4810_migrate_schema():
           ON vm_abuse_state(is_abuse, cpu_streak_cycles, disk_streak_cycles,
                             network_rx_mbps_streak_cycles, network_tx_mbps_streak_cycles,
                             last_seen DESC);
-        CREATE INDEX IF NOT EXISTS idx_vm_abuse_policy_severity
-          ON vm_abuse_state(is_abuse, policy_revision, engine_version, severity DESC, last_seen DESC);
-        CREATE INDEX IF NOT EXISTS idx_vm_abuse_policy_cpu
-          ON vm_abuse_state(is_abuse, policy_revision, engine_version, cpu_full_percent DESC, last_seen DESC);
-        CREATE INDEX IF NOT EXISTS idx_vm_abuse_policy_disk_read
-          ON vm_abuse_state(is_abuse, policy_revision, engine_version, disk_read_bps DESC, last_seen DESC);
-        CREATE INDEX IF NOT EXISTS idx_vm_abuse_policy_disk_write
-          ON vm_abuse_state(is_abuse, policy_revision, engine_version, disk_write_bps DESC, last_seen DESC);
         """)
 
         now = now_ts()
@@ -16450,8 +16412,6 @@ def db():
                     # worker may observe the column only after its own PRAGMA.
                     if "duplicate column" not in str(exc).lower():
                         raise
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_vm_current_fast_ram_rss ON vm_current_fast(ram_rss_kib DESC,last_seen DESC)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_vm_current_fast_ram_assigned ON vm_current_fast(ram_current_kib DESC,last_seen DESC)")
         conn.commit()
         _v48103_schema_ready = True
     return conn
@@ -21077,8 +21037,6 @@ def _v48126_migrate_schema():
           ON vm_abuse_incidents(node,vm_uuid,started_at DESC);
         CREATE INDEX IF NOT EXISTS idx_vm_abuse_incidents_score
           ON vm_abuse_incidents(weighted_score DESC,max_severity DESC,started_at DESC);
-        CREATE INDEX IF NOT EXISTS idx_vm_abuse_state_ram
-          ON vm_abuse_state(is_abuse,ram_guest_used_percent DESC,ram_rss_percent DESC,last_seen DESC);
         """)
         now = now_ts()
         # cycles-v3 adds RAM but keeps the cycles-v2 Network/CPU/Disk
@@ -24667,9 +24625,46 @@ def top_vm_table(rows, period, q, sort_by, order, scope, limit):
 
 
 def _v48133_vm_disks(node, vm_uuid):
+    """Return per-disk capacity and I/O for the selected VM snapshot."""
+    period = clean_period(request.args.get("period", "5m"))
     conn = db()
     try:
-        ensure_disk_io_schema(conn)
+        payload, selected_bucket, latest_bucket = _v5054_selected_storage_payload(conn, node, period)
+        if payload:
+            seen = safe_int(payload.get("t"), selected_bucket)
+            rows = []
+            for item in payload.get("d") or []:
+                if not isinstance(item, (list, tuple)) or len(item) < 14:
+                    continue
+                (
+                    payload_vm_uuid, target, source, mount, storage_device,
+                    storage_block, storage_fstype, capacity_bytes,
+                    allocation_bytes, physical_bytes, read_bps, write_bps,
+                    read_iops, write_iops,
+                ) = item[:14]
+                if str(payload_vm_uuid or "") != vm_uuid:
+                    continue
+                rows.append((
+                    str(target or ""), str(source or ""), str(mount or ""),
+                    str(storage_device or ""), str(storage_block or ""),
+                    str(storage_fstype or ""),
+                    max(0, safe_int(capacity_bytes, 0)),
+                    max(0, safe_int(allocation_bytes, 0)),
+                    max(0, safe_int(physical_bytes, 0)),
+                    max(0.0, safe_float(read_bps, 0.0)),
+                    max(0.0, safe_float(write_bps, 0.0)),
+                    max(0.0, safe_float(read_iops, 0.0)),
+                    max(0.0, safe_float(write_iops, 0.0)),
+                    seen,
+                ))
+            rows.sort(key=lambda r: (0 if r[0] == "vda" else 1 if r[0] == "vdb" else 2, r[0].lower(), r[1].lower()))
+            return rows
+
+        # Do not present current disk rates as historical data. Current-table
+        # fallback is permitted only for the newest 5-minute page.
+        live_request = _request_target_ts() is None and period == "5m" and selected_bucket == latest_bucket
+        if not live_request or not table_columns(conn, "vm_disk_current"):
+            return []
         return conn.execute("""
             SELECT target,source,mount,storage_device,storage_block,storage_fstype,
                    capacity_bytes,allocation_bytes,physical_bytes,
@@ -24681,6 +24676,7 @@ def _v48133_vm_disks(node, vm_uuid):
         """, (node, vm_uuid)).fetchall()
     finally:
         conn.close()
+
 
 
 def _v48133_disk_level(pct):
@@ -24755,7 +24751,7 @@ def _v48133_vm_disk_io_card(rows):
     return f'''
     <div class="card vm-disk-detail-card vm-disk-panels-only" id="virtual-disk-io">
       <div class="table-title-row">
-        <div><h3>Virtual Disk I/O</h3><div class="table-hint">Each customer disk is shown separately with its own capacity, current Read/Write and IOPS.</div></div>
+        <div><h3>Virtual Disk I/O</h3><div class="table-hint">Each customer disk is shown separately with capacity, Read/Write and IOPS from the selected retained Agent snapshot.</div></div>
         <div class="count-badges"><span>Disks <b>{len(rows)}</b></span><span>Seen <b>{fmt_push(latest)}</b></span></div>
       </div>
       <div class="vm-disk-detail-grid">{''.join(panels)}</div>
@@ -24815,69 +24811,73 @@ _get_node_filesystems_snapshot_v48133_base = get_node_filesystems_snapshot
 
 
 def get_node_filesystems_snapshot(node, period):
-    """Merge retained capacity with the latest I/O sample for every mount.
-
-    Capacity continues to follow the selected retained snapshot.  Current block
-    I/O is overlaid by mount even when that mount already exists in the retained
-    row.  The previous append-only merge left `/home2` and `/home3` with dashes
-    because only newly discovered mounts received the current I/O columns.
-    """
-    retained = list(_get_node_filesystems_snapshot_v48133_base(node, period) or [])
-    by_mount = {}
-    for row in retained:
-        if not row:
-            continue
-        values = list(row)
-        while len(values) < 14:
-            values.append(0)
-        by_mount[str(values[0] or "")] = values[:14]
-
+    """Return capacity and I/O from the same selected retained Agent push."""
+    period = clean_period(period)
     conn = db()
     try:
-        ensure_disk_io_schema(conn)
-        current = conn.execute("""
-            SELECT mount,device,fstype,size,used,avail,use_percent,last_seen,
-                   read_bps,write_bps,read_iops,write_iops,util_percent,last_seen
-            FROM node_storage_current
-            WHERE node=?
-            ORDER BY use_percent DESC,mount COLLATE NOCASE
-        """, (node,)).fetchall()
-        latest_fs = conn.execute("""
-            SELECT mount,device,fstype,size,used,avail,use_percent,last_seen
-            FROM node_filesystem_latest
-            WHERE node=?
-            ORDER BY use_percent DESC,mount COLLATE NOCASE
-        """, (node,)).fetchall()
+        payload, selected_bucket, latest_bucket = _v5054_selected_storage_payload(conn, node, period)
+        if payload:
+            seen = safe_int(payload.get("t"), selected_bucket)
+            rows = []
+            for item in payload.get("s") or []:
+                if not isinstance(item, (list, tuple)) or len(item) < 14:
+                    continue
+                (
+                    mount, device, block, raid_level, fstype,
+                    size, used, avail, use_percent,
+                    read_bps, write_bps, read_iops, write_iops, util_percent,
+                ) = item[:14]
+                mount = str(mount or "").strip()
+                if not mount:
+                    continue
+                rows.append((
+                    mount,
+                    str(device or (("/dev/" + str(block)) if block else "")),
+                    str(fstype or ""),
+                    max(0, safe_int(size, 0)),
+                    max(0, safe_int(used, 0)),
+                    max(0, safe_int(avail, 0)),
+                    max(0.0, safe_float(use_percent, 0.0)),
+                    seen,
+                    max(0.0, safe_float(read_bps, 0.0)),
+                    max(0.0, safe_float(write_bps, 0.0)),
+                    max(0.0, safe_float(read_iops, 0.0)),
+                    max(0.0, safe_float(write_iops, 0.0)),
+                    max(0.0, safe_float(util_percent, 0.0)),
+                    seen,
+                ))
+            if rows:
+                return sorted(rows, key=lambda r: (-safe_float(r[6], 0), str(r[0]).lower()))
+
+        # Compatibility fallback for snapshots created before retained Storage
+        # payloads existed. Capacity remains historical; I/O is deliberately N/A
+        # instead of borrowing current rates from another time.
+        fs_bucket = selected_bucket if table_columns(conn, "node_filesystem_stats") else 0
+        if fs_bucket:
+            rows = conn.execute("""
+                SELECT mount,device,fstype,size,used,avail,use_percent,last_push,
+                       0,0,0,0,0,0
+                FROM node_filesystem_stats
+                WHERE node=? AND bucket=?
+                ORDER BY use_percent DESC,mount COLLATE NOCASE
+            """, (node, fs_bucket)).fetchall()
+            if rows:
+                return rows
+
+        # Only the live/latest page may use current tables as a final fallback.
+        live_request = _request_target_ts() is None and period == "5m" and selected_bucket == latest_bucket
+        if live_request and table_columns(conn, "node_storage_current"):
+            return conn.execute("""
+                SELECT mount,device,fstype,size,used,avail,use_percent,last_seen,
+                       read_bps,write_bps,read_iops,write_iops,util_percent,last_seen
+                FROM node_storage_current
+                WHERE node=?
+                ORDER BY use_percent DESC,mount COLLATE NOCASE
+            """, (node,)).fetchall()
+        return []
     finally:
         conn.close()
 
-    for row in current:
-        values = list(row)
-        mount = str(values[0] or "")
-        if not mount:
-            continue
-        if mount in by_mount:
-            merged = by_mount[mount]
-            # Keep selected-snapshot capacity (0..7), overlay latest I/O (8..13).
-            merged[8:14] = values[8:14]
-            # Prefer a current source name only when retained metadata is blank.
-            if not merged[1] and values[1]:
-                merged[1] = values[1]
-            if not merged[2] and values[2]:
-                merged[2] = values[2]
-            by_mount[mount] = merged
-        else:
-            by_mount[mount] = values[:14]
-
-    for mount,device,fstype,size,used,avail,usep,seen in latest_fs:
-        mount = str(mount or "")
-        if mount and mount not in by_mount:
-            by_mount[mount] = [mount,device,fstype,size,used,avail,usep,seen,0,0,0,0,0,0]
-
-    return sorted(
-        [tuple(v) for v in by_mount.values()],
-        key=lambda r: (-safe_float(r[6], 0), str(r[0] or "").lower()),
-    )
 
 
 def _v48133_public_ip_sql(alias="d"):
@@ -25504,7 +25504,7 @@ def node_filesystem_table(rows):
       .node-filesystem-v48135 .disk-capacity{{min-width:220px}}
     </style>
     <div class="card">
-      <div class="table-title-row"><div><h3>Node Filesystems</h3><div class="table-hint">Only real filesystem roots are shown. Used / Size has the same capacity-bar language as RAM; Read/Write, IOPS and Util are the latest physical-device sample.</div></div></div>
+      <div class="table-title-row"><div><h3>Node Filesystems</h3><div class="table-hint">Only real filesystem roots are shown. Capacity, Read/Write, IOPS and Util all come from the same selected retained Agent snapshot; older snapshots without a retained Storage payload show I/O as N/A.</div></div></div>
       <div class="table-wrap"><table class="node-filesystem-v48135"><thead><tr>
         <th>Mount</th><th>Device / FS</th><th>USED / SIZE</th><th>Avail</th><th>Read</th><th>Write</th><th>R IOPS</th><th>W IOPS</th><th>Util</th><th>Last</th>
       </tr></thead><tbody>{body}</tbody></table></div>
@@ -26090,6 +26090,33 @@ def _v48137_unpack_storage_payload(blob):
     except Exception:
         app.logger.exception("Could not decode retained Storage I/O payload")
         return None
+
+
+
+def _v5054_selected_storage_payload(conn, node, period):
+    """Return the exact retained Storage I/O payload for the selected node snapshot.
+
+    Reads never create or alter schema. Historical pages must not silently overlay
+    current disk rates when the selected retained payload is unavailable.
+    """
+    if "storage_payload" not in table_columns(conn, "node_push_snapshots"):
+        return None, 0, 0
+    selected_bucket, latest_bucket = resolve_snapshot_bucket(conn, period, node=node)
+    if selected_bucket <= 0:
+        return None, 0, latest_bucket
+    row = conn.execute(
+        """
+        SELECT bucket, storage_payload
+        FROM node_push_snapshots
+        WHERE node=? AND bucket=? AND storage_payload IS NOT NULL
+        LIMIT 1
+        """,
+        (node, selected_bucket),
+    ).fetchone()
+    if not row:
+        return None, selected_bucket, latest_bucket
+    payload = _v48137_unpack_storage_payload(row[1])
+    return payload, safe_int(row[0], selected_bucket), latest_bucket
 
 
 _ingest_disk_io_current_v48137_base = ingest_disk_io_current
@@ -27521,22 +27548,8 @@ def ensure_v48140_performance_schema(conn):
     ) WITHOUT ROWID;
     CREATE INDEX IF NOT EXISTS idx_v48140_vmdisk_alloc
       ON vm_disk_summary_current(allocated_bytes DESC,node,vm_uuid);
-    CREATE INDEX IF NOT EXISTS idx_v48140_vmdisk_assigned
-      ON vm_disk_summary_current(assigned_bytes DESC,node,vm_uuid);
-    CREATE INDEX IF NOT EXISTS idx_v48140_vmdisk_ratio
-      ON vm_disk_summary_current(allocation_ratio DESC,node,vm_uuid);
-    CREATE INDEX IF NOT EXISTS idx_v48140_vmdisk_slots
-      ON vm_disk_summary_current(disk_count DESC,node,vm_uuid);
     CREATE INDEX IF NOT EXISTS idx_v48140_vmdisk_write_iops
       ON vm_disk_summary_current(write_iops DESC,node,vm_uuid);
-    CREATE INDEX IF NOT EXISTS idx_v48140_vmdisk_write
-      ON vm_disk_summary_current(write_bps DESC,node,vm_uuid);
-    CREATE INDEX IF NOT EXISTS idx_v48140_vmdisk_read_iops
-      ON vm_disk_summary_current(read_iops DESC,node,vm_uuid);
-    CREATE INDEX IF NOT EXISTS idx_v48140_vmdisk_read
-      ON vm_disk_summary_current(read_bps DESC,node,vm_uuid);
-    CREATE INDEX IF NOT EXISTS idx_v48140_vmdisk_seen
-      ON vm_disk_summary_current(last_seen DESC,node,vm_uuid);
 
     CREATE TABLE IF NOT EXISTS node_storage_mount_summary_current (
       node TEXT NOT NULL,
@@ -28313,7 +28326,7 @@ def api_v1_performance_v48140():
             try: redis_ok = bool(client.ping())
             except Exception: redis_ok = False
         return jsonify({
-            "version":"50.5.0-prod-r1-batched-ingest",
+            "version":"50.5.4-prod-r1-snapshot-detail-correctness",
             "database":{
                 "engine":"PostgreSQL + TimescaleDB",
                 "database":pg.get("database"),
@@ -28618,7 +28631,7 @@ def page(title, content):
 # protocol. Agents submit one compact node aggregate for each completed local
 # 2-hour bucket. VM UUIDs and per-VM history are deliberately not stored.
 
-V5030_RELEASE = "50.5.0-prod-r1-batched-ingest"
+V5030_RELEASE = "50.5.4-prod-r1-snapshot-detail-correctness"
 V5030_BW_TABLE = "node_bandwidth_consumption_2h"
 V5030_BW_BUCKET_SECONDS = 2 * 3600
 V5030_BW_RETENTION_SECONDS = 7 * 86400
@@ -31063,3 +31076,1021 @@ def _v48140_refresh_node_summaries(conn, node):
 # Activate optimized implementations after every legacy compatibility layer loaded.
 _v4810_current_writer = _v5050_current_writer
 refresh_fast_current_state = _v5050_refresh_fast_current_state
+
+# ---------------------------------------------------------------------------
+# v50.5.2 native PostgreSQL COPY ingest
+# ---------------------------------------------------------------------------
+V5052_VERSION = "50.5.2"
+V5052_IFACE_STAGE = "pg_temp.vi5052_iface_stage"
+V5052_VM_STAGE = "pg_temp.vi5052_vm_stage"
+V5052_SYNC_STAGE = "pg_temp.vi5052_sync_stage"
+
+
+def _v5052_create_iface_stage(conn):
+    conn.execute("""
+      CREATE TEMP TABLE IF NOT EXISTS vi5052_iface_stage (
+        ord BIGINT NOT NULL,
+        hour_start BIGINT NOT NULL,
+        day_start BIGINT NOT NULL,
+        bucket BIGINT NOT NULL,
+        node TEXT NOT NULL,
+        bridge TEXT NOT NULL,
+        iface TEXT NOT NULL,
+        vm_uuid TEXT NOT NULL,
+        mac TEXT,
+        last_push BIGINT NOT NULL,
+        interval_seconds INTEGER NOT NULL,
+        rx_delta BIGINT NOT NULL,
+        tx_delta BIGINT NOT NULL,
+        rx_packets_delta BIGINT NOT NULL,
+        tx_packets_delta BIGINT NOT NULL,
+        rx_drop_delta BIGINT NOT NULL,
+        tx_drop_delta BIGINT NOT NULL,
+        rx_error_delta BIGINT NOT NULL,
+        tx_error_delta BIGINT NOT NULL,
+        rx_mbps DOUBLE PRECISION NOT NULL,
+        tx_mbps DOUBLE PRECISION NOT NULL,
+        rx_pps DOUBLE PRECISION NOT NULL,
+        tx_pps DOUBLE PRECISION NOT NULL,
+        rx_mbps_peak DOUBLE PRECISION NOT NULL,
+        tx_mbps_peak DOUBLE PRECISION NOT NULL,
+        rx_pps_peak DOUBLE PRECISION NOT NULL,
+        tx_pps_peak DOUBLE PRECISION NOT NULL,
+        rx_packet_size_avg DOUBLE PRECISION NOT NULL,
+        tx_packet_size_avg DOUBLE PRECISION NOT NULL,
+        network_sample_count BIGINT NOT NULL,
+        network_sample_expected BIGINT NOT NULL,
+        network_sample_max_gap_seconds DOUBLE PRECISION NOT NULL,
+        seconds_over_pps BIGINT NOT NULL,
+        seconds_over_mbps BIGINT NOT NULL,
+        seconds_over_rx_pps BIGINT NOT NULL,
+        seconds_over_tx_pps BIGINT NOT NULL,
+        network_sample_quality TEXT NOT NULL,
+        quality_rank INTEGER NOT NULL,
+        alert_level TEXT NOT NULL,
+        alert_flags TEXT NOT NULL
+      ) ON COMMIT DELETE ROWS
+    """)
+
+
+def _v5052_create_vm_stage(conn):
+    conn.execute("""
+      CREATE TEMP TABLE IF NOT EXISTS vi5052_vm_stage (
+        ord BIGINT NOT NULL,
+        time BIGINT NOT NULL,
+        bucket BIGINT NOT NULL,
+        node TEXT NOT NULL,
+        vm_uuid TEXT NOT NULL,
+        interval_seconds INTEGER NOT NULL,
+        current_interval_seconds INTEGER NOT NULL,
+        vcpu_current INTEGER NOT NULL,
+        cpu_percent DOUBLE PRECISION NOT NULL,
+        cpu_full_percent DOUBLE PRECISION NOT NULL,
+        cpu_core_percent DOUBLE PRECISION NOT NULL,
+        ram_current_kib BIGINT NOT NULL,
+        ram_maximum_kib BIGINT NOT NULL,
+        ram_rss_kib BIGINT NOT NULL,
+        ram_available_kib BIGINT NOT NULL,
+        ram_unused_kib BIGINT NOT NULL,
+        ram_usable_kib BIGINT NOT NULL,
+        disk_read_delta BIGINT NOT NULL,
+        disk_write_delta BIGINT NOT NULL,
+        disk_read_reqs_delta BIGINT NOT NULL,
+        disk_write_reqs_delta BIGINT NOT NULL,
+        disk_read_bps DOUBLE PRECISION NOT NULL,
+        disk_write_bps DOUBLE PRECISION NOT NULL,
+        disk_read_iops DOUBLE PRECISION NOT NULL,
+        disk_write_iops DOUBLE PRECISION NOT NULL,
+        current_disk_read_bps DOUBLE PRECISION NOT NULL,
+        current_disk_write_bps DOUBLE PRECISION NOT NULL,
+        current_disk_read_iops DOUBLE PRECISION NOT NULL,
+        current_disk_write_iops DOUBLE PRECISION NOT NULL,
+        last_push BIGINT NOT NULL
+      ) ON COMMIT DELETE ROWS
+    """)
+
+
+def _v5052_iface_rows(node, data_time, bucket, interval_seconds, interfaces):
+    columns = (
+        "ord", "hour_start", "day_start", "bucket", "node", "bridge", "iface", "vm_uuid", "mac",
+        "last_push", "interval_seconds",
+        "rx_delta", "tx_delta", "rx_packets_delta", "tx_packets_delta",
+        "rx_drop_delta", "tx_drop_delta", "rx_error_delta", "tx_error_delta",
+        "rx_mbps", "tx_mbps", "rx_pps", "tx_pps",
+        "rx_mbps_peak", "tx_mbps_peak", "rx_pps_peak", "tx_pps_peak",
+        "rx_packet_size_avg", "tx_packet_size_avg",
+        "network_sample_count", "network_sample_expected",
+        "network_sample_max_gap_seconds", "seconds_over_pps", "seconds_over_mbps",
+        "seconds_over_rx_pps", "seconds_over_tx_pps",
+        "network_sample_quality", "quality_rank", "alert_level", "alert_flags",
+    )
+    rows = []
+    hour_start = local_hour_start(data_time)
+    day_start = local_day_start(data_time)
+    for ordinal, item in enumerate(interfaces or []):
+        if not isinstance(item, dict):
+            continue
+        vm_uuid = str(item.get("vm_uuid") or "").strip()
+        if not vm_uuid or vm_uuid == "-":
+            continue
+        bridge = str(item.get("bridge") or "-")
+        iface = str(item.get("iface") or "-")
+        sec = max(1, min(86400, safe_int(item.get("interval_seconds"), interval_seconds)))
+        rx_delta = max(0, safe_int(item.get("rx_delta"), 0))
+        tx_delta = max(0, safe_int(item.get("tx_delta"), 0))
+        rx_packets = max(0, safe_int(item.get("rx_packets_delta"), 0))
+        tx_packets = max(0, safe_int(item.get("tx_packets_delta"), 0))
+        rx_drop = max(0, safe_int(item.get("rx_drop_delta"), 0))
+        tx_drop = max(0, safe_int(item.get("tx_drop_delta"), 0))
+        rx_error = max(0, safe_int(item.get("rx_error_delta"), 0))
+        tx_error = max(0, safe_int(item.get("tx_error_delta"), 0))
+        rx_mbps = rx_delta * 8.0 / sec / 1000000.0
+        tx_mbps = tx_delta * 8.0 / sec / 1000000.0
+        rx_pps = rx_packets / float(sec)
+        tx_pps = tx_packets / float(sec)
+        rx_mbps_peak = max(rx_mbps, safe_float(item.get("rx_mbps_peak"), 0.0))
+        tx_mbps_peak = max(tx_mbps, safe_float(item.get("tx_mbps_peak"), 0.0))
+        rx_pps_peak = max(rx_pps, safe_float(item.get("rx_pps_peak"), 0.0))
+        tx_pps_peak = max(tx_pps, safe_float(item.get("tx_pps_peak"), 0.0))
+        quality = clean_network_sample_quality(item.get("network_sample_quality"))
+        over_rx = max(0, safe_int(item.get("seconds_over_rx_pps"), 0))
+        over_tx = max(0, safe_int(item.get("seconds_over_tx_pps"), 0))
+        combined = max(0, safe_int(item.get("seconds_over_pps"), 0))
+        if over_rx == 0 and over_tx == 0 and combined:
+            if max(rx_pps, rx_pps_peak) >= ABUSE_NETWORK_PPS:
+                over_rx = combined
+            if max(tx_pps, tx_pps_peak) >= ABUSE_NETWORK_PPS:
+                over_tx = combined
+        flags = []
+        peak_pps = max(rx_pps_peak, tx_pps_peak)
+        peak_mbps = max(rx_mbps_peak, tx_mbps_peak)
+        if peak_pps >= VM_NET_CRIT_PPS > 0:
+            flags.append("PPS_PEAK_CRITICAL")
+        elif peak_pps >= VM_NET_WARN_PPS > 0:
+            flags.append("PPS_PEAK_HIGH")
+        if peak_mbps >= VM_NET_CRIT_MBPS > 0:
+            flags.append("MBPS_PEAK_CRITICAL")
+        elif peak_mbps >= VM_NET_WARN_MBPS > 0:
+            flags.append("MBPS_PEAK_HIGH")
+        if quality == "POOR":
+            flags.append("SAMPLE_POOR")
+        rows.append((
+            ordinal, hour_start, day_start, bucket, node, bridge, iface, vm_uuid,
+            str(item.get("mac") or ""), data_time, sec,
+            rx_delta, tx_delta, rx_packets, tx_packets,
+            rx_drop, tx_drop, rx_error, tx_error,
+            rx_mbps, tx_mbps, rx_pps, tx_pps,
+            rx_mbps_peak, tx_mbps_peak, rx_pps_peak, tx_pps_peak,
+            max(0.0, safe_float(item.get("rx_packet_size_avg"), 0.0)),
+            max(0.0, safe_float(item.get("tx_packet_size_avg"), 0.0)),
+            max(0, safe_int(item.get("network_sample_count"), 0)),
+            max(0, safe_int(item.get("network_sample_expected"), 0)),
+            max(0.0, safe_float(item.get("network_sample_max_gap_seconds"), 0.0)),
+            combined,
+            max(0, safe_int(item.get("seconds_over_mbps"), 0)),
+            over_rx, over_tx, quality, network_sample_quality_rank(quality),
+            "warn" if flags else "ok", ",".join(flags),
+        ))
+    return columns, rows
+
+
+def _v5052_write_interface_copy_batch(conn, node, data_time, bucket, interval_seconds, interfaces):
+    _v5052_create_iface_stage(conn)
+    columns, rows = _v5052_iface_rows(node, data_time, bucket, interval_seconds, interfaces)
+    copy_started = time.perf_counter()
+    if rows:
+        conn.copy_rows(V5052_IFACE_STAGE, columns, rows)
+    copy_ms = (time.perf_counter() - copy_started) * 1000.0
+    merge_started = time.perf_counter()
+    if rows:
+        conn.execute("""
+          WITH grouped AS (
+            SELECT bucket,node,bridge,iface,vm_uuid,
+                   SUM(rx_delta)::bigint AS rx_delta,
+                   SUM(tx_delta)::bigint AS tx_delta,
+                   SUM(rx_packets_delta)::bigint AS rx_packets_delta,
+                   SUM(tx_packets_delta)::bigint AS tx_packets_delta,
+                   SUM(rx_drop_delta)::bigint AS rx_drop_delta,
+                   SUM(tx_drop_delta)::bigint AS tx_drop_delta,
+                   SUM(rx_error_delta)::bigint AS rx_error_delta,
+                   SUM(tx_error_delta)::bigint AS tx_error_delta,
+                   MAX(rx_mbps_peak) AS rx_mbps_peak,
+                   MAX(tx_mbps_peak) AS tx_mbps_peak,
+                   MAX(rx_pps_peak) AS rx_pps_peak,
+                   MAX(tx_pps_peak) AS tx_pps_peak,
+                   COALESCE((ARRAY_AGG(rx_packet_size_avg ORDER BY ord DESC)
+                     FILTER (WHERE rx_packet_size_avg>0))[1],0) AS rx_packet_size_avg,
+                   COALESCE((ARRAY_AGG(tx_packet_size_avg ORDER BY ord DESC)
+                     FILTER (WHERE tx_packet_size_avg>0))[1],0) AS tx_packet_size_avg,
+                   SUM(network_sample_count)::bigint AS network_sample_count,
+                   SUM(network_sample_expected)::bigint AS network_sample_expected,
+                   MAX(network_sample_max_gap_seconds) AS network_sample_max_gap_seconds,
+                   SUM(seconds_over_pps)::bigint AS seconds_over_pps,
+                   SUM(seconds_over_mbps)::bigint AS seconds_over_mbps,
+                   CASE MAX(quality_rank)
+                     WHEN 3 THEN 'POOR' WHEN 2 THEN 'DEGRADED'
+                     WHEN 1 THEN 'GOOD' ELSE 'LEGACY' END AS network_sample_quality,
+                   (ARRAY_AGG(interval_seconds ORDER BY ord DESC))[1] AS interval_seconds,
+                   MAX(last_push)::bigint AS last_push
+              FROM pg_temp.vi5052_iface_stage
+             GROUP BY bucket,node,bridge,iface,vm_uuid
+          )
+          INSERT INTO node_stats(
+            bucket,node,bridge,iface,vm_uuid,
+            rx_delta,tx_delta,rx_packets_delta,tx_packets_delta,
+            rx_drop_delta,tx_drop_delta,rx_error_delta,tx_error_delta,
+            rx_mbps_peak,tx_mbps_peak,rx_pps_peak,tx_pps_peak,
+            rx_packet_size_avg,tx_packet_size_avg,
+            network_sample_count,network_sample_expected,network_sample_max_gap_seconds,
+            seconds_over_pps,seconds_over_mbps,network_sample_quality,
+            interval_seconds,last_push
+          )
+          SELECT bucket,node,bridge,iface,vm_uuid,
+                 rx_delta,tx_delta,rx_packets_delta,tx_packets_delta,
+                 rx_drop_delta,tx_drop_delta,rx_error_delta,tx_error_delta,
+                 rx_mbps_peak,tx_mbps_peak,rx_pps_peak,tx_pps_peak,
+                 rx_packet_size_avg,tx_packet_size_avg,
+                 network_sample_count,network_sample_expected,network_sample_max_gap_seconds,
+                 seconds_over_pps,seconds_over_mbps,network_sample_quality,
+                 interval_seconds,last_push
+            FROM grouped
+          ON CONFLICT(bucket,node,bridge,iface,vm_uuid) DO UPDATE SET
+            rx_delta=node_stats.rx_delta+excluded.rx_delta,
+            tx_delta=node_stats.tx_delta+excluded.tx_delta,
+            rx_packets_delta=node_stats.rx_packets_delta+excluded.rx_packets_delta,
+            tx_packets_delta=node_stats.tx_packets_delta+excluded.tx_packets_delta,
+            rx_drop_delta=node_stats.rx_drop_delta+excluded.rx_drop_delta,
+            tx_drop_delta=node_stats.tx_drop_delta+excluded.tx_drop_delta,
+            rx_error_delta=node_stats.rx_error_delta+excluded.rx_error_delta,
+            tx_error_delta=node_stats.tx_error_delta+excluded.tx_error_delta,
+            rx_mbps_peak=GREATEST(node_stats.rx_mbps_peak,excluded.rx_mbps_peak),
+            tx_mbps_peak=GREATEST(node_stats.tx_mbps_peak,excluded.tx_mbps_peak),
+            rx_pps_peak=GREATEST(node_stats.rx_pps_peak,excluded.rx_pps_peak),
+            tx_pps_peak=GREATEST(node_stats.tx_pps_peak,excluded.tx_pps_peak),
+            rx_packet_size_avg=CASE WHEN excluded.rx_packet_size_avg>0 THEN excluded.rx_packet_size_avg ELSE node_stats.rx_packet_size_avg END,
+            tx_packet_size_avg=CASE WHEN excluded.tx_packet_size_avg>0 THEN excluded.tx_packet_size_avg ELSE node_stats.tx_packet_size_avg END,
+            network_sample_count=node_stats.network_sample_count+excluded.network_sample_count,
+            network_sample_expected=node_stats.network_sample_expected+excluded.network_sample_expected,
+            network_sample_max_gap_seconds=GREATEST(node_stats.network_sample_max_gap_seconds,excluded.network_sample_max_gap_seconds),
+            seconds_over_pps=node_stats.seconds_over_pps+excluded.seconds_over_pps,
+            seconds_over_mbps=node_stats.seconds_over_mbps+excluded.seconds_over_mbps,
+            network_sample_quality=CASE
+              WHEN node_stats.network_sample_quality='POOR' OR excluded.network_sample_quality='POOR' THEN 'POOR'
+              WHEN node_stats.network_sample_quality='DEGRADED' OR excluded.network_sample_quality='DEGRADED' THEN 'DEGRADED'
+              WHEN node_stats.network_sample_quality='GOOD' OR excluded.network_sample_quality='GOOD' THEN 'GOOD'
+              WHEN excluded.network_sample_quality='NO_DATA' THEN 'NO_DATA'
+              ELSE node_stats.network_sample_quality END,
+            interval_seconds=excluded.interval_seconds,
+            last_push=GREATEST(node_stats.last_push,excluded.last_push)
+        """)
+        if WRITE_LEGACY_USAGE:
+            conn.execute("""
+              INSERT INTO usage(
+                time,node,vm_uuid,iface,bridge,mac,rx_delta,tx_delta,
+                rx_packets_delta,tx_packets_delta,rx_drop_delta,tx_drop_delta,
+                rx_error_delta,tx_error_delta,interval_seconds
+              )
+              SELECT last_push,node,vm_uuid,iface,bridge,mac,rx_delta,tx_delta,
+                     rx_packets_delta,tx_packets_delta,rx_drop_delta,tx_drop_delta,
+                     rx_error_delta,tx_error_delta,interval_seconds
+                FROM pg_temp.vi5052_iface_stage
+               ORDER BY ord
+            """)
+        conn.execute("""
+          WITH grouped AS (
+            SELECT hour_start,node,vm_uuid,bridge,
+                   SUM(rx_delta)::bigint rx_bytes,SUM(tx_delta)::bigint tx_bytes,
+                   SUM(rx_packets_delta)::bigint rx_packets,SUM(tx_packets_delta)::bigint tx_packets,
+                   SUM(rx_drop_delta)::bigint rx_drops,SUM(tx_drop_delta)::bigint tx_drops,
+                   SUM(rx_error_delta)::bigint rx_errors,SUM(tx_error_delta)::bigint tx_errors,
+                   COUNT(*)::bigint sample_count,MAX(last_push)::bigint last_push
+              FROM pg_temp.vi5052_iface_stage
+             GROUP BY hour_start,node,vm_uuid,bridge
+          )
+          INSERT INTO bandwidth_hourly(
+            hour_start,node,vm_uuid,bridge,rx_bytes,tx_bytes,rx_packets,tx_packets,
+            rx_drops,tx_drops,rx_errors,tx_errors,sample_count,last_push
+          )
+          SELECT hour_start,node,vm_uuid,bridge,rx_bytes,tx_bytes,rx_packets,tx_packets,
+                 rx_drops,tx_drops,rx_errors,tx_errors,sample_count,last_push FROM grouped
+          ON CONFLICT(hour_start,node,vm_uuid,bridge) DO UPDATE SET
+            rx_bytes=bandwidth_hourly.rx_bytes+excluded.rx_bytes,
+            tx_bytes=bandwidth_hourly.tx_bytes+excluded.tx_bytes,
+            rx_packets=bandwidth_hourly.rx_packets+excluded.rx_packets,
+            tx_packets=bandwidth_hourly.tx_packets+excluded.tx_packets,
+            rx_drops=bandwidth_hourly.rx_drops+excluded.rx_drops,
+            tx_drops=bandwidth_hourly.tx_drops+excluded.tx_drops,
+            rx_errors=bandwidth_hourly.rx_errors+excluded.rx_errors,
+            tx_errors=bandwidth_hourly.tx_errors+excluded.tx_errors,
+            sample_count=bandwidth_hourly.sample_count+excluded.sample_count,
+            last_push=GREATEST(bandwidth_hourly.last_push,excluded.last_push)
+        """)
+        conn.execute("""
+          WITH grouped AS (
+            SELECT day_start,node,vm_uuid,bridge,
+                   SUM(rx_delta)::bigint rx_bytes,SUM(tx_delta)::bigint tx_bytes,
+                   SUM(rx_packets_delta)::bigint rx_packets,SUM(tx_packets_delta)::bigint tx_packets,
+                   SUM(rx_drop_delta)::bigint rx_drops,SUM(tx_drop_delta)::bigint tx_drops,
+                   SUM(rx_error_delta)::bigint rx_errors,SUM(tx_error_delta)::bigint tx_errors,
+                   COUNT(*)::bigint sample_count,MAX(last_push)::bigint last_push
+              FROM pg_temp.vi5052_iface_stage
+             GROUP BY day_start,node,vm_uuid,bridge
+          )
+          INSERT INTO bandwidth_daily(
+            day_start,node,vm_uuid,bridge,rx_bytes,tx_bytes,rx_packets,tx_packets,
+            rx_drops,tx_drops,rx_errors,tx_errors,sample_count,last_push
+          )
+          SELECT day_start,node,vm_uuid,bridge,rx_bytes,tx_bytes,rx_packets,tx_packets,
+                 rx_drops,tx_drops,rx_errors,tx_errors,sample_count,last_push FROM grouped
+          ON CONFLICT(day_start,node,vm_uuid,bridge) DO UPDATE SET
+            rx_bytes=bandwidth_daily.rx_bytes+excluded.rx_bytes,
+            tx_bytes=bandwidth_daily.tx_bytes+excluded.tx_bytes,
+            rx_packets=bandwidth_daily.rx_packets+excluded.rx_packets,
+            tx_packets=bandwidth_daily.tx_packets+excluded.tx_packets,
+            rx_drops=bandwidth_daily.rx_drops+excluded.rx_drops,
+            tx_drops=bandwidth_daily.tx_drops+excluded.tx_drops,
+            rx_errors=bandwidth_daily.rx_errors+excluded.rx_errors,
+            tx_errors=bandwidth_daily.tx_errors+excluded.tx_errors,
+            sample_count=bandwidth_daily.sample_count+excluded.sample_count,
+            last_push=GREATEST(bandwidth_daily.last_push,excluded.last_push)
+        """)
+    return {
+        "rows": len(rows),
+        "copy_ms": copy_ms,
+        "merge_ms": (time.perf_counter() - merge_started) * 1000.0,
+    }
+
+
+def _v5052_vm_rows(node, data_time, bucket, interval_seconds, vms):
+    columns = (
+        "ord", "time", "bucket", "node", "vm_uuid", "interval_seconds", "current_interval_seconds",
+        "vcpu_current", "cpu_percent", "cpu_full_percent", "cpu_core_percent",
+        "ram_current_kib", "ram_maximum_kib", "ram_rss_kib", "ram_available_kib",
+        "ram_unused_kib", "ram_usable_kib",
+        "disk_read_delta", "disk_write_delta", "disk_read_reqs_delta", "disk_write_reqs_delta",
+        "disk_read_bps", "disk_write_bps", "disk_read_iops", "disk_write_iops",
+        "current_disk_read_bps", "current_disk_write_bps",
+        "current_disk_read_iops", "current_disk_write_iops", "last_push",
+    )
+    rows = []
+    for ordinal, item in enumerate(vms or []):
+        if not isinstance(item, dict):
+            continue
+        vm_uuid = str(item.get("vm_uuid") or "").strip()
+        if not vm_uuid or vm_uuid == "-":
+            continue
+        history_sec = max(1, min(3600, safe_int(interval_seconds, CACHE_BUCKET_SECONDS)))
+        current_sec = max(1, min(3600, safe_int(item.get("interval_seconds"), history_sec)))
+        vcpu = max(0, safe_int(item.get("vcpu_current"), 0))
+        full_cpu, core_cpu, _ = _fast_cpu_values(item)
+        # Preserve the established history/latest value while keeping the bounded
+        # current-cache CPU normalization used by Top VM and Abuse.
+        if item.get("cpu_normalized_percent") is not None:
+            cpu_percent = max(0.0, min(100.0, safe_float(item.get("cpu_normalized_percent"), 0.0)))
+        else:
+            cpu_percent = max(0.0, safe_float(item.get("cpu_percent"), 0.0))
+        rd = max(0, safe_int(item.get("disk_read_delta"), 0))
+        wr = max(0, safe_int(item.get("disk_write_delta"), 0))
+        rr = max(0, safe_int(item.get("disk_read_reqs_delta"), 0))
+        ww = max(0, safe_int(item.get("disk_write_reqs_delta"), 0))
+        rows.append((
+            ordinal, data_time, bucket, node, vm_uuid, history_sec, current_sec,
+            vcpu, cpu_percent, full_cpu, core_cpu,
+            max(0, safe_int(item.get("ram_current_kib"), 0)),
+            max(0, safe_int(item.get("ram_maximum_kib"), 0)),
+            max(0, safe_int(item.get("ram_rss_kib"), 0)),
+            max(0, safe_int(item.get("ram_available_kib"), 0)),
+            max(0, safe_int(item.get("ram_unused_kib"), 0)),
+            max(0, safe_int(item.get("ram_usable_kib"), 0)),
+            rd, wr, rr, ww,
+            rd / float(history_sec), wr / float(history_sec),
+            rr / float(history_sec), ww / float(history_sec),
+            rd / float(current_sec), wr / float(current_sec),
+            rr / float(current_sec), ww / float(current_sec),
+            data_time,
+        ))
+    return columns, rows
+
+
+def _v5052_write_vm_copy_batch(conn, node, data_time, bucket, interval_seconds, vms):
+    _v5052_create_vm_stage(conn)
+    columns, rows = _v5052_vm_rows(node, data_time, bucket, interval_seconds, vms)
+    copy_started = time.perf_counter()
+    if rows:
+        conn.copy_rows(V5052_VM_STAGE, columns, rows)
+    copy_ms = (time.perf_counter() - copy_started) * 1000.0
+    merge_started = time.perf_counter()
+    if rows:
+        conn.execute("""
+          INSERT INTO vm_perf_stats(
+            time,bucket,node,vm_uuid,interval_seconds,vcpu_current,cpu_percent,
+            ram_current_kib,ram_maximum_kib,ram_rss_kib,ram_available_kib,ram_unused_kib,ram_usable_kib,
+            disk_read_delta,disk_write_delta,disk_read_reqs_delta,disk_write_reqs_delta,last_push
+          )
+          SELECT time,bucket,node,vm_uuid,interval_seconds,vcpu_current,cpu_percent,
+                 ram_current_kib,ram_maximum_kib,ram_rss_kib,ram_available_kib,ram_unused_kib,ram_usable_kib,
+                 disk_read_delta,disk_write_delta,disk_read_reqs_delta,disk_write_reqs_delta,last_push
+            FROM pg_temp.vi5052_vm_stage
+           ORDER BY ord
+        """)
+    return {
+        "rows": len(rows),
+        "copy_ms": copy_ms,
+        "merge_ms": (time.perf_counter() - merge_started) * 1000.0,
+    }
+
+
+def _v5052_merge_latest_metrics(conn, node, data_time):
+    """Merge network and VM performance exactly once per VM.
+
+    PostgreSQL MERGE keeps source-presence markers available in the matched
+    branch. A network-only push therefore preserves the last VM performance
+    fields, and a performance-only row preserves the last network fields,
+    without sentinel values or a second UPSERT.
+    """
+    conn.execute("""
+      WITH net AS (
+        SELECT DISTINCT ON (vm_uuid)
+               vm_uuid,iface,bridge,last_push,interval_seconds,
+               rx_mbps,tx_mbps,rx_pps,tx_pps,
+               rx_mbps_peak,tx_mbps_peak,rx_pps_peak,tx_pps_peak,
+               rx_packet_size_avg,tx_packet_size_avg,
+               network_sample_count,network_sample_expected,network_sample_max_gap_seconds,
+               seconds_over_pps,seconds_over_mbps,network_sample_quality,
+               rx_drop_delta,tx_drop_delta,rx_error_delta,tx_error_delta,
+               alert_level,alert_flags
+          FROM pg_temp.vi5052_iface_stage
+         ORDER BY vm_uuid,ord DESC
+      ), perf AS (
+        SELECT DISTINCT ON (vm_uuid) *
+          FROM pg_temp.vi5052_vm_stage
+         ORDER BY vm_uuid,ord DESC
+      ), src AS (
+        SELECT COALESCE(n.vm_uuid,p.vm_uuid) AS vm_uuid,
+               (n.vm_uuid IS NOT NULL) AS has_net,
+               (p.vm_uuid IS NOT NULL) AS has_perf,
+               n.iface,n.bridge,COALESCE(n.last_push,p.last_push,?) AS last_seen,
+               COALESCE(p.interval_seconds,n.interval_seconds,300) AS interval_seconds,
+               COALESCE(n.rx_mbps,0) rx_mbps,COALESCE(n.tx_mbps,0) tx_mbps,
+               COALESCE(n.rx_pps,0) rx_pps,COALESCE(n.tx_pps,0) tx_pps,
+               COALESCE(n.rx_mbps_peak,0) rx_mbps_peak,COALESCE(n.tx_mbps_peak,0) tx_mbps_peak,
+               COALESCE(n.rx_pps_peak,0) rx_pps_peak,COALESCE(n.tx_pps_peak,0) tx_pps_peak,
+               COALESCE(n.rx_packet_size_avg,0) rx_packet_size_avg,
+               COALESCE(n.tx_packet_size_avg,0) tx_packet_size_avg,
+               COALESCE(n.network_sample_count,0) network_sample_count,
+               COALESCE(n.network_sample_expected,0) network_sample_expected,
+               COALESCE(n.network_sample_max_gap_seconds,0) network_sample_max_gap_seconds,
+               COALESCE(n.seconds_over_pps,0) seconds_over_pps,
+               COALESCE(n.seconds_over_mbps,0) seconds_over_mbps,
+               COALESCE(n.network_sample_quality,'LEGACY') network_sample_quality,
+               COALESCE(n.rx_drop_delta,0) rx_drop_delta,COALESCE(n.tx_drop_delta,0) tx_drop_delta,
+               COALESCE(n.rx_error_delta,0) rx_error_delta,COALESCE(n.tx_error_delta,0) tx_error_delta,
+               COALESCE(p.cpu_percent,0) cpu_percent,COALESCE(p.vcpu_current,0) vcpu_current,
+               COALESCE(p.ram_current_kib,0) ram_current_kib,
+               COALESCE(p.ram_maximum_kib,0) ram_maximum_kib,
+               COALESCE(p.ram_rss_kib,0) ram_rss_kib,
+               COALESCE(p.ram_available_kib,0) ram_available_kib,
+               COALESCE(p.ram_unused_kib,0) ram_unused_kib,
+               COALESCE(p.ram_usable_kib,0) ram_usable_kib,
+               COALESCE(p.disk_read_bps,0) disk_read_bps,
+               COALESCE(p.disk_write_bps,0) disk_write_bps,
+               COALESCE(n.alert_level,'ok') alert_level,
+               COALESCE(n.alert_flags,'') alert_flags
+          FROM net n FULL OUTER JOIN perf p USING(vm_uuid)
+      )
+      MERGE INTO vm_latest_metrics AS dst
+      USING src
+         ON dst.node=? AND dst.vm_uuid=src.vm_uuid
+      WHEN MATCHED THEN UPDATE SET
+        iface=CASE WHEN src.has_net THEN src.iface ELSE dst.iface END,
+        bridge=CASE WHEN src.has_net THEN src.bridge ELSE dst.bridge END,
+        last_seen=GREATEST(dst.last_seen,src.last_seen),
+        interval_seconds=src.interval_seconds,
+        rx_mbps=CASE WHEN src.has_net THEN src.rx_mbps ELSE dst.rx_mbps END,
+        tx_mbps=CASE WHEN src.has_net THEN src.tx_mbps ELSE dst.tx_mbps END,
+        rx_pps=CASE WHEN src.has_net THEN src.rx_pps ELSE dst.rx_pps END,
+        tx_pps=CASE WHEN src.has_net THEN src.tx_pps ELSE dst.tx_pps END,
+        rx_mbps_peak=CASE WHEN src.has_net THEN src.rx_mbps_peak ELSE dst.rx_mbps_peak END,
+        tx_mbps_peak=CASE WHEN src.has_net THEN src.tx_mbps_peak ELSE dst.tx_mbps_peak END,
+        rx_pps_peak=CASE WHEN src.has_net THEN src.rx_pps_peak ELSE dst.rx_pps_peak END,
+        tx_pps_peak=CASE WHEN src.has_net THEN src.tx_pps_peak ELSE dst.tx_pps_peak END,
+        rx_packet_size_avg=CASE WHEN src.has_net THEN src.rx_packet_size_avg ELSE dst.rx_packet_size_avg END,
+        tx_packet_size_avg=CASE WHEN src.has_net THEN src.tx_packet_size_avg ELSE dst.tx_packet_size_avg END,
+        network_sample_count=CASE WHEN src.has_net THEN src.network_sample_count ELSE dst.network_sample_count END,
+        network_sample_expected=CASE WHEN src.has_net THEN src.network_sample_expected ELSE dst.network_sample_expected END,
+        network_sample_max_gap_seconds=CASE WHEN src.has_net THEN src.network_sample_max_gap_seconds ELSE dst.network_sample_max_gap_seconds END,
+        seconds_over_pps=CASE WHEN src.has_net THEN src.seconds_over_pps ELSE dst.seconds_over_pps END,
+        seconds_over_mbps=CASE WHEN src.has_net THEN src.seconds_over_mbps ELSE dst.seconds_over_mbps END,
+        network_sample_quality=CASE WHEN src.has_net THEN src.network_sample_quality ELSE dst.network_sample_quality END,
+        rx_drop_delta=CASE WHEN src.has_net THEN src.rx_drop_delta ELSE dst.rx_drop_delta END,
+        tx_drop_delta=CASE WHEN src.has_net THEN src.tx_drop_delta ELSE dst.tx_drop_delta END,
+        rx_error_delta=CASE WHEN src.has_net THEN src.rx_error_delta ELSE dst.rx_error_delta END,
+        tx_error_delta=CASE WHEN src.has_net THEN src.tx_error_delta ELSE dst.tx_error_delta END,
+        cpu_percent=CASE WHEN src.has_perf THEN src.cpu_percent ELSE dst.cpu_percent END,
+        vcpu_current=CASE WHEN src.has_perf THEN src.vcpu_current ELSE dst.vcpu_current END,
+        ram_current_kib=CASE WHEN src.has_perf THEN src.ram_current_kib ELSE dst.ram_current_kib END,
+        ram_maximum_kib=CASE WHEN src.has_perf THEN src.ram_maximum_kib ELSE dst.ram_maximum_kib END,
+        ram_rss_kib=CASE WHEN src.has_perf THEN src.ram_rss_kib ELSE dst.ram_rss_kib END,
+        ram_available_kib=CASE WHEN src.has_perf THEN src.ram_available_kib ELSE dst.ram_available_kib END,
+        ram_unused_kib=CASE WHEN src.has_perf THEN src.ram_unused_kib ELSE dst.ram_unused_kib END,
+        ram_usable_kib=CASE WHEN src.has_perf THEN src.ram_usable_kib ELSE dst.ram_usable_kib END,
+        disk_read_bps=CASE WHEN src.has_perf THEN src.disk_read_bps ELSE dst.disk_read_bps END,
+        disk_write_bps=CASE WHEN src.has_perf THEN src.disk_write_bps ELSE dst.disk_write_bps END,
+        alert_level=CASE WHEN src.has_net THEN src.alert_level ELSE dst.alert_level END,
+        alert_flags=CASE WHEN src.has_net THEN src.alert_flags ELSE dst.alert_flags END
+      WHEN NOT MATCHED THEN INSERT(
+        node,vm_uuid,iface,bridge,last_seen,interval_seconds,
+        rx_mbps,tx_mbps,rx_pps,tx_pps,rx_mbps_peak,tx_mbps_peak,rx_pps_peak,tx_pps_peak,
+        rx_packet_size_avg,tx_packet_size_avg,network_sample_count,network_sample_expected,
+        network_sample_max_gap_seconds,seconds_over_pps,seconds_over_mbps,network_sample_quality,
+        rx_drop_delta,tx_drop_delta,rx_error_delta,tx_error_delta,
+        cpu_percent,vcpu_current,ram_current_kib,ram_maximum_kib,ram_rss_kib,ram_available_kib,
+        ram_unused_kib,ram_usable_kib,disk_read_bps,disk_write_bps,alert_level,alert_flags
+      ) VALUES(
+        ?,src.vm_uuid,src.iface,src.bridge,src.last_seen,src.interval_seconds,
+        src.rx_mbps,src.tx_mbps,src.rx_pps,src.tx_pps,src.rx_mbps_peak,src.tx_mbps_peak,src.rx_pps_peak,src.tx_pps_peak,
+        src.rx_packet_size_avg,src.tx_packet_size_avg,src.network_sample_count,src.network_sample_expected,
+        src.network_sample_max_gap_seconds,src.seconds_over_pps,src.seconds_over_mbps,src.network_sample_quality,
+        src.rx_drop_delta,src.tx_drop_delta,src.rx_error_delta,src.tx_error_delta,
+        src.cpu_percent,src.vcpu_current,src.ram_current_kib,src.ram_maximum_kib,src.ram_rss_kib,src.ram_available_kib,
+        src.ram_unused_kib,src.ram_usable_kib,src.disk_read_bps,src.disk_write_bps,src.alert_level,src.alert_flags
+      )
+    """, (data_time, node, node))
+
+
+def _v5052_copy_upsert_rows(conn, table, key_columns, rows):
+    rows = [dict(row) for row in (rows or []) if row]
+    if not rows:
+        return 0
+    table = _v5050_ident(table)
+    columns = list(rows[0].keys())
+    if not columns or any(list(row.keys()) != columns for row in rows):
+        raise ValueError(f"heterogeneous batch for {table}")
+    columns = [_v5050_ident(column) for column in columns]
+    keys = [_v5050_ident(column) for column in key_columns]
+    stage = _v5050_ident(f"vi5052_up_{table}")
+    conn.execute(
+        f"CREATE TEMP TABLE IF NOT EXISTS {stage} "
+        f"(LIKE public.{table} INCLUDING DEFAULTS) ON COMMIT DELETE ROWS"
+    )
+    conn.copy_rows(
+        f"pg_temp.{stage}", columns,
+        ([row[column] for column in columns] for row in rows),
+    )
+    updates = [column for column in columns if column not in keys]
+    column_sql = ",".join(columns)
+    key_sql = ",".join(keys)
+    if updates:
+        update_sql = ",".join(f"{column}=excluded.{column}" for column in updates)
+        conflict_sql = f"ON CONFLICT({key_sql}) DO UPDATE SET {update_sql}"
+    else:
+        conflict_sql = f"ON CONFLICT({key_sql}) DO NOTHING"
+    cur = conn.execute(
+        f"INSERT INTO public.{table}({column_sql}) "
+        f"SELECT {column_sql} FROM pg_temp.{stage} {conflict_sql}"
+    )
+    return max(0, safe_int(cur.rowcount, 0))
+
+
+def _v5052_current_writer(conn, node, data_time, interval_seconds, interfaces, vms, node_host, inventory_complete=False):
+    """Build bounded current tables from the two already-COPYed request stages."""
+    interval_seconds = max(1, safe_int(interval_seconds, CACHE_BUCKET_SECONDS))
+    # The caller passes normalized interfaces after PPS policy sync. Re-copy only
+    # the directional timers into a tiny temp table instead of re-encoding all rows.
+    conn.execute("""
+      CREATE TEMP TABLE IF NOT EXISTS vi5052_sync_stage(
+        vm_uuid TEXT PRIMARY KEY,
+        seconds_over_rx_pps BIGINT NOT NULL,
+        seconds_over_tx_pps BIGINT NOT NULL
+      ) ON COMMIT DELETE ROWS
+    """)
+    sync_rows = {}
+    for item in interfaces or []:
+        if not isinstance(item, dict):
+            continue
+        vm_uuid = str(item.get("vm_uuid") or "").strip()
+        if not vm_uuid or vm_uuid == "-":
+            continue
+        current = sync_rows.setdefault(vm_uuid, [0, 0])
+        current[0] = max(current[0], max(0, safe_int(item.get("seconds_over_rx_pps"), 0)))
+        current[1] = max(current[1], max(0, safe_int(item.get("seconds_over_tx_pps"), 0)))
+    if sync_rows:
+        conn.copy_rows(
+            V5052_SYNC_STAGE,
+            ("vm_uuid", "seconds_over_rx_pps", "seconds_over_tx_pps"),
+            ((vm_uuid, values[0], values[1]) for vm_uuid, values in sync_rows.items()),
+        )
+
+    conn.execute("""
+      WITH picked AS (
+        SELECT DISTINCT ON (node,vm_uuid,bridge,iface) *
+          FROM pg_temp.vi5052_iface_stage
+         ORDER BY node,vm_uuid,bridge,iface,ord DESC
+      )
+      INSERT INTO vm_iface_current(
+        node,vm_uuid,bridge,iface,last_seen,interval_seconds,
+        rx_bytes,tx_bytes,rx_packets,tx_packets,
+        rx_mbps,tx_mbps,total_mbps,rx_peak_mbps,tx_peak_mbps,total_peak_mbps,
+        rx_pps,tx_pps,total_pps,rx_peak_pps,tx_peak_pps,total_peak_pps,
+        sample_count,sample_expected,sample_max_gap,sample_quality,
+        seconds_over_rx_pps,seconds_over_tx_pps,drops,errors
+      )
+      SELECT p.node,p.vm_uuid,p.bridge,p.iface,p.last_push,p.interval_seconds,
+             p.rx_delta,p.tx_delta,p.rx_packets_delta,p.tx_packets_delta,
+             p.rx_mbps,p.tx_mbps,p.rx_mbps+p.tx_mbps,
+             p.rx_mbps_peak,p.tx_mbps_peak,GREATEST(p.rx_mbps+p.tx_mbps,p.rx_mbps_peak+p.tx_mbps_peak),
+             p.rx_pps,p.tx_pps,p.rx_pps+p.tx_pps,
+             p.rx_pps_peak,p.tx_pps_peak,GREATEST(p.rx_pps+p.tx_pps,p.rx_pps_peak+p.tx_pps_peak),
+             p.network_sample_count,p.network_sample_expected,p.network_sample_max_gap_seconds,
+             p.network_sample_quality,COALESCE(s.seconds_over_rx_pps,0),COALESCE(s.seconds_over_tx_pps,0),
+             p.rx_drop_delta+p.tx_drop_delta,p.rx_error_delta+p.tx_error_delta
+        FROM picked p LEFT JOIN pg_temp.vi5052_sync_stage s USING(vm_uuid)
+      ON CONFLICT(node,vm_uuid,bridge,iface) DO UPDATE SET
+        last_seen=excluded.last_seen,interval_seconds=excluded.interval_seconds,
+        rx_bytes=excluded.rx_bytes,tx_bytes=excluded.tx_bytes,
+        rx_packets=excluded.rx_packets,tx_packets=excluded.tx_packets,
+        rx_mbps=excluded.rx_mbps,tx_mbps=excluded.tx_mbps,total_mbps=excluded.total_mbps,
+        rx_peak_mbps=excluded.rx_peak_mbps,tx_peak_mbps=excluded.tx_peak_mbps,total_peak_mbps=excluded.total_peak_mbps,
+        rx_pps=excluded.rx_pps,tx_pps=excluded.tx_pps,total_pps=excluded.total_pps,
+        rx_peak_pps=excluded.rx_peak_pps,tx_peak_pps=excluded.tx_peak_pps,total_peak_pps=excluded.total_peak_pps,
+        sample_count=excluded.sample_count,sample_expected=excluded.sample_expected,
+        sample_max_gap=excluded.sample_max_gap,sample_quality=excluded.sample_quality,
+        seconds_over_rx_pps=excluded.seconds_over_rx_pps,
+        seconds_over_tx_pps=excluded.seconds_over_tx_pps,
+        drops=excluded.drops,errors=excluded.errors
+    """)
+
+    conn.execute("""
+      WITH net AS (
+        SELECT i.node,i.vm_uuid,MAX(i.last_push)::bigint last_seen,
+               MAX(i.interval_seconds)::integer interval_seconds,
+               COUNT(DISTINCT (i.bridge,i.iface))::integer iface_count,
+               SUM(CASE WHEN i.bridge=? THEN i.rx_delta ELSE 0 END)::bigint public_rx_bytes,
+               SUM(CASE WHEN i.bridge=? THEN i.tx_delta ELSE 0 END)::bigint public_tx_bytes,
+               SUM(CASE WHEN i.bridge=? THEN i.rx_delta ELSE 0 END)::bigint private_rx_bytes,
+               SUM(CASE WHEN i.bridge=? THEN i.tx_delta ELSE 0 END)::bigint private_tx_bytes,
+               SUM(i.rx_delta)::bigint rx_bytes,SUM(i.tx_delta)::bigint tx_bytes,
+               SUM(i.rx_delta+i.tx_delta)::bigint total_bytes,
+               SUM(CASE WHEN i.bridge=? THEN i.rx_mbps+i.tx_mbps ELSE 0 END) public_mbps,
+               SUM(CASE WHEN i.bridge=? THEN i.rx_mbps+i.tx_mbps ELSE 0 END) private_mbps,
+               SUM(i.rx_mbps) rx_mbps,SUM(i.tx_mbps) tx_mbps,SUM(i.rx_mbps+i.tx_mbps) total_mbps,
+               SUM(CASE WHEN i.bridge=? THEN i.rx_pps+i.tx_pps ELSE 0 END) public_pps,
+               SUM(CASE WHEN i.bridge=? THEN i.rx_pps+i.tx_pps ELSE 0 END) private_pps,
+               SUM(i.rx_pps) rx_pps,SUM(i.tx_pps) tx_pps,SUM(i.rx_pps+i.tx_pps) total_pps,
+               SUM(CASE WHEN i.bridge=? THEN GREATEST(i.rx_mbps+i.tx_mbps,i.rx_mbps_peak+i.tx_mbps_peak) ELSE 0 END) public_peak_mbps,
+               SUM(CASE WHEN i.bridge=? THEN GREATEST(i.rx_mbps+i.tx_mbps,i.rx_mbps_peak+i.tx_mbps_peak) ELSE 0 END) private_peak_mbps,
+               SUM(i.rx_mbps_peak) rx_peak_mbps,SUM(i.tx_mbps_peak) tx_peak_mbps,
+               SUM(GREATEST(i.rx_mbps+i.tx_mbps,i.rx_mbps_peak+i.tx_mbps_peak)) total_peak_mbps,
+               SUM(CASE WHEN i.bridge=? THEN GREATEST(i.rx_pps+i.tx_pps,i.rx_pps_peak+i.tx_pps_peak) ELSE 0 END) public_peak_pps,
+               SUM(CASE WHEN i.bridge=? THEN GREATEST(i.rx_pps+i.tx_pps,i.rx_pps_peak+i.tx_pps_peak) ELSE 0 END) private_peak_pps,
+               SUM(i.rx_pps_peak) rx_peak_pps,SUM(i.tx_pps_peak) tx_peak_pps,
+               SUM(GREATEST(i.rx_pps+i.tx_pps,i.rx_pps_peak+i.tx_pps_peak)) total_peak_pps,
+               MAX(i.network_sample_count)::bigint sample_count,
+               MAX(i.network_sample_expected)::bigint sample_expected,
+               MAX(i.network_sample_max_gap_seconds) sample_max_gap,
+               CASE MAX(i.quality_rank) WHEN 3 THEN 'POOR' WHEN 2 THEN 'DEGRADED' WHEN 1 THEN 'GOOD' ELSE 'LEGACY' END sample_quality,
+               MAX(COALESCE(s.seconds_over_rx_pps,0))::bigint seconds_over_rx_pps,
+               MAX(COALESCE(s.seconds_over_tx_pps,0))::bigint seconds_over_tx_pps,
+               SUM(i.rx_drop_delta+i.tx_drop_delta)::bigint drops,
+               SUM(i.rx_error_delta+i.tx_error_delta)::bigint errors
+          FROM pg_temp.vi5052_iface_stage i
+          LEFT JOIN pg_temp.vi5052_sync_stage s USING(vm_uuid)
+         GROUP BY i.node,i.vm_uuid
+      ), perf AS (
+        SELECT DISTINCT ON (node,vm_uuid) *
+          FROM pg_temp.vi5052_vm_stage
+         ORDER BY node,vm_uuid,ord DESC
+      ), src AS (
+        SELECT COALESCE(n.node,p.node) node,COALESCE(n.vm_uuid,p.vm_uuid) vm_uuid,
+               COALESCE(n.last_seen,p.last_push,?) last_seen,
+               COALESCE(p.current_interval_seconds,n.interval_seconds,?) interval_seconds,
+               COALESCE(n.iface_count,0) iface_count,
+               COALESCE(n.public_rx_bytes,0) public_rx_bytes,COALESCE(n.public_tx_bytes,0) public_tx_bytes,
+               COALESCE(n.private_rx_bytes,0) private_rx_bytes,COALESCE(n.private_tx_bytes,0) private_tx_bytes,
+               COALESCE(n.rx_bytes,0) rx_bytes,COALESCE(n.tx_bytes,0) tx_bytes,COALESCE(n.total_bytes,0) total_bytes,
+               COALESCE(n.public_mbps,0) public_mbps,COALESCE(n.private_mbps,0) private_mbps,
+               COALESCE(n.rx_mbps,0) rx_mbps,COALESCE(n.tx_mbps,0) tx_mbps,COALESCE(n.total_mbps,0) total_mbps,
+               COALESCE(n.public_pps,0) public_pps,COALESCE(n.private_pps,0) private_pps,
+               COALESCE(n.rx_pps,0) rx_pps,COALESCE(n.tx_pps,0) tx_pps,COALESCE(n.total_pps,0) total_pps,
+               COALESCE(n.public_peak_mbps,0) public_peak_mbps,COALESCE(n.private_peak_mbps,0) private_peak_mbps,
+               COALESCE(n.rx_peak_mbps,0) rx_peak_mbps,COALESCE(n.tx_peak_mbps,0) tx_peak_mbps,
+               GREATEST(COALESCE(n.total_mbps,0),COALESCE(n.total_peak_mbps,0)) total_peak_mbps,
+               COALESCE(n.public_peak_pps,0) public_peak_pps,COALESCE(n.private_peak_pps,0) private_peak_pps,
+               COALESCE(n.rx_peak_pps,0) rx_peak_pps,COALESCE(n.tx_peak_pps,0) tx_peak_pps,
+               GREATEST(COALESCE(n.total_pps,0),COALESCE(n.total_peak_pps,0)) total_peak_pps,
+               COALESCE(n.sample_count,0) sample_count,COALESCE(n.sample_expected,0) sample_expected,
+               COALESCE(n.sample_max_gap,0) sample_max_gap,COALESCE(n.sample_quality,'LEGACY') sample_quality,
+               COALESCE(n.seconds_over_rx_pps,0) seconds_over_rx_pps,
+               COALESCE(n.seconds_over_tx_pps,0) seconds_over_tx_pps,
+               COALESCE(n.drops,0) drops,COALESCE(n.errors,0) errors,
+               COALESCE(p.cpu_full_percent,0) cpu_full_percent,COALESCE(p.cpu_core_percent,0) cpu_core_percent,
+               COALESCE(p.vcpu_current,0) vcpu_current,
+               COALESCE(p.ram_current_kib,0) ram_current_kib,COALESCE(p.ram_rss_kib,0) ram_rss_kib,
+               COALESCE(p.ram_available_kib,0) ram_available_kib,
+               COALESCE(p.ram_unused_kib,0) ram_unused_kib,COALESCE(p.ram_usable_kib,0) ram_usable_kib,
+               COALESCE(p.current_disk_read_bps,0) disk_read_bps,
+               COALESCE(p.current_disk_write_bps,0) disk_write_bps,
+               COALESCE(p.current_disk_read_iops,0) disk_read_iops,
+               COALESCE(p.current_disk_write_iops,0) disk_write_iops
+          FROM net n FULL OUTER JOIN perf p ON p.node=n.node AND p.vm_uuid=n.vm_uuid
+      )
+      INSERT INTO vm_current_fast(
+        node,vm_uuid,last_seen,interval_seconds,iface_count,
+        public_rx_bytes,public_tx_bytes,private_rx_bytes,private_tx_bytes,
+        rx_bytes,tx_bytes,total_bytes,public_mbps,private_mbps,rx_mbps,tx_mbps,total_mbps,
+        public_pps,private_pps,rx_pps,tx_pps,total_pps,
+        public_peak_mbps,private_peak_mbps,rx_peak_mbps,tx_peak_mbps,total_peak_mbps,
+        public_peak_pps,private_peak_pps,rx_peak_pps,tx_peak_pps,total_peak_pps,
+        sample_count,sample_expected,sample_max_gap,sample_quality,
+        seconds_over_rx_pps,seconds_over_tx_pps,drops,errors,
+        cpu_full_percent,cpu_core_percent,vcpu_current,
+        ram_current_kib,ram_rss_kib,ram_available_kib,ram_unused_kib,ram_usable_kib,
+        disk_read_bps,disk_write_bps,disk_read_iops,disk_write_iops
+      ) SELECT * FROM src
+      ON CONFLICT(node,vm_uuid) DO UPDATE SET
+        last_seen=excluded.last_seen,interval_seconds=excluded.interval_seconds,iface_count=excluded.iface_count,
+        public_rx_bytes=excluded.public_rx_bytes,public_tx_bytes=excluded.public_tx_bytes,
+        private_rx_bytes=excluded.private_rx_bytes,private_tx_bytes=excluded.private_tx_bytes,
+        rx_bytes=excluded.rx_bytes,tx_bytes=excluded.tx_bytes,total_bytes=excluded.total_bytes,
+        public_mbps=excluded.public_mbps,private_mbps=excluded.private_mbps,
+        rx_mbps=excluded.rx_mbps,tx_mbps=excluded.tx_mbps,total_mbps=excluded.total_mbps,
+        public_pps=excluded.public_pps,private_pps=excluded.private_pps,
+        rx_pps=excluded.rx_pps,tx_pps=excluded.tx_pps,total_pps=excluded.total_pps,
+        public_peak_mbps=excluded.public_peak_mbps,private_peak_mbps=excluded.private_peak_mbps,
+        rx_peak_mbps=excluded.rx_peak_mbps,tx_peak_mbps=excluded.tx_peak_mbps,total_peak_mbps=excluded.total_peak_mbps,
+        public_peak_pps=excluded.public_peak_pps,private_peak_pps=excluded.private_peak_pps,
+        rx_peak_pps=excluded.rx_peak_pps,tx_peak_pps=excluded.tx_peak_pps,total_peak_pps=excluded.total_peak_pps,
+        sample_count=excluded.sample_count,sample_expected=excluded.sample_expected,
+        sample_max_gap=excluded.sample_max_gap,sample_quality=excluded.sample_quality,
+        seconds_over_rx_pps=excluded.seconds_over_rx_pps,seconds_over_tx_pps=excluded.seconds_over_tx_pps,
+        drops=excluded.drops,errors=excluded.errors,
+        cpu_full_percent=excluded.cpu_full_percent,cpu_core_percent=excluded.cpu_core_percent,
+        vcpu_current=excluded.vcpu_current,ram_current_kib=excluded.ram_current_kib,
+        ram_rss_kib=excluded.ram_rss_kib,ram_available_kib=excluded.ram_available_kib,
+        ram_unused_kib=excluded.ram_unused_kib,ram_usable_kib=excluded.ram_usable_kib,
+        disk_read_bps=excluded.disk_read_bps,disk_write_bps=excluded.disk_write_bps,
+        disk_read_iops=excluded.disk_read_iops,disk_write_iops=excluded.disk_write_iops
+    """, (
+        PUBLIC_BRIDGE, PUBLIC_BRIDGE, PRIVATE_BRIDGE, PRIVATE_BRIDGE,
+        PUBLIC_BRIDGE, PRIVATE_BRIDGE, PUBLIC_BRIDGE, PRIVATE_BRIDGE,
+        PUBLIC_BRIDGE, PRIVATE_BRIDGE, PUBLIC_BRIDGE, PRIVATE_BRIDGE,
+        data_time, interval_seconds,
+    ))
+
+    nh = node_host if isinstance(node_host, dict) else {}
+    mem_total = max(0, safe_int(nh.get("mem_total"), 0))
+    mem_used = max(0, safe_int(nh.get("mem_used"), 0))
+    if mem_used <= 0 and mem_total > 0:
+        mem_used = max(0, mem_total - max(0, safe_int(nh.get("mem_available"), 0)))
+    conn.execute("""
+      INSERT INTO node_current_fast(
+        node,last_seen,interval_seconds,vm_count,iface_count,
+        public_bytes,private_bytes,total_bytes,public_packets,private_packets,total_packets,
+        drops,errors,load1,load5,load15,cpu_count,cpu_percent,
+        mem_total,mem_used,disk_read_bps,disk_write_bps,uptime_seconds
+      )
+      SELECT ?,?,?,COUNT(*),COALESCE(SUM(iface_count),0),
+             COALESCE(SUM(public_rx_bytes+public_tx_bytes),0),
+             COALESCE(SUM(private_rx_bytes+private_tx_bytes),0),
+             COALESCE(SUM(total_bytes),0),
+             COALESCE(SUM(public_pps*interval_seconds),0)::bigint,
+             COALESCE(SUM(private_pps*interval_seconds),0)::bigint,
+             COALESCE(SUM(total_pps*interval_seconds),0)::bigint,
+             COALESCE(SUM(drops),0),COALESCE(SUM(errors),0),?,?,?,?,?,?,?,?,?,?
+        FROM vm_current_fast WHERE node=? AND last_seen=?
+      ON CONFLICT(node) DO UPDATE SET
+        last_seen=excluded.last_seen,interval_seconds=excluded.interval_seconds,
+        vm_count=excluded.vm_count,iface_count=excluded.iface_count,
+        public_bytes=excluded.public_bytes,private_bytes=excluded.private_bytes,total_bytes=excluded.total_bytes,
+        public_packets=excluded.public_packets,private_packets=excluded.private_packets,total_packets=excluded.total_packets,
+        drops=excluded.drops,errors=excluded.errors,load1=excluded.load1,load5=excluded.load5,load15=excluded.load15,
+        cpu_count=excluded.cpu_count,cpu_percent=excluded.cpu_percent,
+        mem_total=excluded.mem_total,mem_used=excluded.mem_used,
+        disk_read_bps=excluded.disk_read_bps,disk_write_bps=excluded.disk_write_bps,
+        uptime_seconds=excluded.uptime_seconds
+    """, (
+        node, data_time, interval_seconds,
+        safe_float(nh.get("load1"), 0), safe_float(nh.get("load5"), 0), safe_float(nh.get("load15"), 0),
+        safe_int(nh.get("cpu_count") or nh.get("cpu_cores"), 0), safe_float(nh.get("cpu_percent"), 0),
+        mem_total, mem_used, safe_float(nh.get("disk_read_bps"), 0),
+        safe_float(nh.get("disk_write_bps"), 0), safe_int(nh.get("uptime_seconds"), 0),
+        node, data_time,
+    ))
+    if inventory_complete:
+        conn.execute("DELETE FROM vm_iface_current WHERE node=? AND last_seen<?", (node, data_time))
+        conn.execute("DELETE FROM vm_current_fast WHERE node=? AND last_seen<?", (node, data_time))
+        conn.execute("DELETE FROM vm_abuse_state WHERE node=? AND last_seen<?", (node, data_time))
+
+
+def _v5052_ingest_disk_io_current(conn, node, data_time, interval_seconds, vms, node_host):
+    ensure_disk_io_schema(conn)
+    disk_rows = []
+    for vm in vms or []:
+        if not isinstance(vm, dict):
+            continue
+        vm_uuid = str(vm.get("vm_uuid") or "").strip()
+        if not vm_uuid:
+            continue
+        for disk in vm.get("disks") or []:
+            if not isinstance(disk, dict):
+                continue
+            target = str(disk.get("target") or "").strip()
+            if not target:
+                continue
+            sec = max(1, safe_int(disk.get("interval_seconds"), interval_seconds))
+            rd = max(0, safe_int(disk.get("read_delta"), 0))
+            wr = max(0, safe_int(disk.get("write_delta"), 0))
+            rr = max(0, safe_int(disk.get("read_reqs_delta"), 0))
+            ww = max(0, safe_int(disk.get("write_reqs_delta"), 0))
+            disk_rows.append({
+                "node": node, "vm_uuid": vm_uuid, "target": target,
+                "source": str(disk.get("source") or "").strip(),
+                "role": str(disk.get("role") or "unknown").strip().lower()[:32],
+                "mount": str(disk.get("mount") or ""),
+                "storage_device": str(disk.get("storage_device") or ""),
+                "storage_block": str(disk.get("storage_block") or ""),
+                "storage_fstype": str(disk.get("storage_fstype") or ""),
+                "capacity_bytes": max(0, safe_int(disk.get("capacity_bytes"), 0)),
+                "allocation_bytes": max(0, safe_int(disk.get("allocation_bytes"), 0)),
+                "physical_bytes": max(0, safe_int(disk.get("physical_bytes"), 0)),
+                "interval_seconds": sec,
+                "read_bps": rd / float(sec), "write_bps": wr / float(sec),
+                "read_iops": rr / float(sec), "write_iops": ww / float(sec),
+                "last_seen": data_time,
+            })
+    _v5052_copy_upsert_rows(conn, "vm_disk_current", ["node", "vm_uuid", "target", "source"], disk_rows)
+    conn.execute("DELETE FROM vm_disk_current WHERE node=? AND last_seen<?", (node, data_time))
+
+    storage_rows = []
+    for storage in (node_host or {}).get("storage_devices") or []:
+        if not isinstance(storage, dict):
+            continue
+        mount = str(storage.get("mount") or "").strip()
+        if not mount:
+            continue
+        storage_rows.append({
+            "node": node, "mount": mount,
+            "device": str(storage.get("device") or ""),
+            "block": str(storage.get("block") or ""),
+            "raid_level": str(storage.get("raid_level") or ""),
+            "fstype": str(storage.get("fstype") or ""),
+            "size": max(0, safe_int(storage.get("size"), 0)),
+            "used": max(0, safe_int(storage.get("used"), 0)),
+            "avail": max(0, safe_int(storage.get("avail"), 0)),
+            "use_percent": max(0.0, safe_float(storage.get("use_percent"), 0.0)),
+            "read_bps": max(0.0, safe_float(storage.get("read_bps"), 0.0)),
+            "write_bps": max(0.0, safe_float(storage.get("write_bps"), 0.0)),
+            "read_iops": max(0.0, safe_float(storage.get("read_iops"), 0.0)),
+            "write_iops": max(0.0, safe_float(storage.get("write_iops"), 0.0)),
+            "util_percent": max(0.0, safe_float(storage.get("util_percent"), 0.0)),
+            "last_seen": data_time,
+        })
+    _v5052_copy_upsert_rows(conn, "node_storage_current", ["node", "mount"], storage_rows)
+    conn.execute("DELETE FROM node_storage_current WHERE node=? AND last_seen<?", (node, data_time))
+    ensure_storage_snapshot_schema(conn)
+    try:
+        packed = _v48137_pack_storage_payload(vms, node_host, data_time, interval_seconds)
+        conn.execute(
+            "UPDATE node_push_snapshots SET storage_payload=?,storage_payload_version=? WHERE node=? AND bucket=?",
+            (packed, V48137_STORAGE_PAYLOAD_VERSION, node, bucket_for(data_time)),
+        )
+    except Exception:
+        app.logger.exception("Could not retain Storage I/O snapshot for %s", node)
+    _v48140_refresh_node_summaries(conn, node)
+
+
+V5052_PRESENCE_STAGE = "pg_temp.vi5052_presence_stage"
+
+
+def _v5052_process_node_vm_presence(conn, node, seen_vm_locations, seen_ts, inventory_complete=False):
+    """Apply VM presence/inventory/location updates from one native COPY stage."""
+    conn.execute("""
+      CREATE TEMP TABLE IF NOT EXISTS vi5052_presence_stage(
+        vm_uuid TEXT PRIMARY KEY,
+        iface TEXT NOT NULL,
+        bridge TEXT NOT NULL
+      ) ON COMMIT DELETE ROWS
+    """)
+    rows = []
+    for vm_uuid, loc in (seen_vm_locations or {}).items():
+        vm_uuid = str(vm_uuid or "").strip()
+        if not vm_uuid or vm_uuid == "-":
+            continue
+        loc = loc if isinstance(loc, dict) else {}
+        rows.append((
+            vm_uuid,
+            str(loc.get("iface") or "-"),
+            str(loc.get("bridge") or "-"),
+        ))
+    copy_started = time.perf_counter()
+    if rows:
+        conn.copy_rows(
+            V5052_PRESENCE_STAGE,
+            ("vm_uuid", "iface", "bridge"),
+            rows,
+        )
+    copy_ms = (time.perf_counter() - copy_started) * 1000.0
+    merge_started = time.perf_counter()
+
+    if rows:
+        conn.execute("""
+          INSERT INTO vm_node_presence(
+            vm_uuid,node,first_seen,last_seen,last_push,missing_since,
+            missing_count,present_count,status,pending_node,migrated_to,
+            migrated_at,purged_at,last_iface,last_bridge,alert_flags
+          )
+          SELECT vm_uuid,?,?,?, ?,NULL,0,1,'active',NULL,NULL,NULL,NULL,iface,bridge,''
+            FROM pg_temp.vi5052_presence_stage
+          ON CONFLICT(vm_uuid,node) DO UPDATE SET
+            last_seen=GREATEST(vm_node_presence.last_seen,excluded.last_seen),
+            last_push=excluded.last_push,missing_since=NULL,missing_count=0,
+            present_count=vm_node_presence.present_count+1,status='active',
+            pending_node=NULL,migrated_to=NULL,migrated_at=NULL,purged_at=NULL,
+            last_iface=excluded.last_iface,last_bridge=excluded.last_bridge,alert_flags=''
+        """, (node, seen_ts, seen_ts, seen_ts))
+        conn.execute("""
+          INSERT INTO vm_inventory(
+            node,vm_uuid,first_seen,last_seen,last_iface,last_bridge,status,hidden_at,deleted_at
+          )
+          SELECT ?,vm_uuid,?,?,iface,bridge,'active',NULL,NULL
+            FROM pg_temp.vi5052_presence_stage
+          ON CONFLICT(node,vm_uuid) DO UPDATE SET
+            last_seen=GREATEST(vm_inventory.last_seen,excluded.last_seen),
+            last_iface=excluded.last_iface,last_bridge=excluded.last_bridge,
+            status=CASE WHEN vm_inventory.status='hidden' THEN 'hidden' ELSE 'active' END,
+            hidden_at=CASE WHEN vm_inventory.status='hidden' THEN vm_inventory.hidden_at ELSE NULL END,
+            deleted_at=CASE WHEN vm_inventory.status='hidden' THEN vm_inventory.deleted_at ELSE NULL END
+        """, (node, seen_ts, seen_ts))
+
+    if inventory_complete:
+        conn.execute("""
+          WITH missing AS (
+            UPDATE vm_node_presence p
+               SET status='missing',
+                   missing_since=COALESCE(p.missing_since,?),
+                   missing_count=p.missing_count+1,
+                   last_push=?,
+                   alert_flags='MISSING:'||(p.missing_count+1)::text
+             WHERE p.node=?
+               AND p.status IN ('active','pending_migration')
+               AND NOT EXISTS (
+                 SELECT 1 FROM pg_temp.vi5052_presence_stage src
+                  WHERE src.vm_uuid=p.vm_uuid
+               )
+            RETURNING p.vm_uuid
+          )
+          UPDATE vm_inventory i
+             SET status='missing',hidden_at=NULL,deleted_at=NULL
+           WHERE i.node=?
+             AND COALESCE(i.status,'active')!='hidden'
+             AND EXISTS (SELECT 1 FROM missing m WHERE m.vm_uuid=i.vm_uuid)
+        """, (seen_ts, seen_ts, node, node))
+
+    moved_rows = []
+    if rows:
+        moved_rows = conn.execute("""
+          SELECT src.vm_uuid,src.iface,src.bridge
+            FROM pg_temp.vi5052_presence_stage src
+            JOIN vm_location_latest old ON old.vm_uuid=src.vm_uuid
+           WHERE old.node<>?
+           ORDER BY src.vm_uuid
+        """, (node,)).fetchall()
+        conn.execute("""
+          INSERT INTO vm_location_latest(
+            vm_uuid,node,first_seen,last_seen,previous_node,moved_at,move_count,
+            last_iface,last_bridge,alert_level,alert_flags
+          )
+          SELECT src.vm_uuid,?,?,?,NULL,NULL,0,src.iface,src.bridge,'ok',''
+            FROM pg_temp.vi5052_presence_stage src
+           WHERE NOT EXISTS (
+             SELECT 1 FROM vm_location_latest old WHERE old.vm_uuid=src.vm_uuid
+           )
+          ON CONFLICT(vm_uuid) DO NOTHING
+        """, (node, seen_ts, seen_ts))
+        conn.execute("""
+          UPDATE vm_location_latest dst
+             SET last_seen=GREATEST(dst.last_seen,?),
+                 last_iface=src.iface,last_bridge=src.bridge,
+                 alert_level='ok',alert_flags=''
+            FROM pg_temp.vi5052_presence_stage src
+           WHERE dst.vm_uuid=src.vm_uuid AND dst.node=?
+        """, (seen_ts, node))
+
+    # Cross-node transitions need the established confirmation/event workflow.
+    for vm_uuid, iface, bridge in moved_rows:
+        _v5050_legacy_location_transition(
+            conn, str(vm_uuid), node, seen_ts, str(iface), str(bridge)
+        )
+    return {
+        "rows": len(rows),
+        "copy_ms": copy_ms,
+        "merge_ms": (time.perf_counter() - merge_started) * 1000.0,
+    }
+
+
+# Late binding is intentional: all existing callers now use native COPY while
+# the public API, Agent payload, schemas, dashboard and abuse semantics stay intact.
+process_node_vm_presence = _v5052_process_node_vm_presence
+_v5050_bulk_upsert_rows = _v5052_copy_upsert_rows
+_v4810_current_writer = _v5052_current_writer
+ingest_disk_io_current = _v5052_ingest_disk_io_current

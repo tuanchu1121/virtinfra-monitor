@@ -32,7 +32,7 @@ def load_normalizer():
 
 
 def test_release_identity():
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.8-prod-r1-low-io-compatible"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.8-prod-r2-friendly-agent-logs"
 
 
 def test_existing_agent_already_reports_vm_and_physical_mac():

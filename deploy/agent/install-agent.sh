@@ -18,6 +18,7 @@ SKIP_HEAVY="${BW_AGENT_SKIP_HEAVY_ON_OVERLOAD:-0}"
 PPS_WARN="${BW_AGENT_PPS_WARN:-200000}"
 MBPS_WARN="${BW_AGENT_MBPS_WARN:-800}"
 BRIDGE_ROLES="${BW_AGENT_BRIDGE_ROLES:-public:br0,private:br1}"
+REQUIRED_BRIDGE_ROLES="${BW_AGENT_REQUIRED_BRIDGE_ROLES:-}"
 HTTP_GZIP="${BW_AGENT_HTTP_GZIP:-1}"
 RESET_STATE=0; SKIP_CHECK=0
 log(){ printf '\n==> %s\n' "$*"; }
@@ -31,6 +32,7 @@ Options:
   --sample-seconds NUMBER   Local sample interval, default 15
   --push-seconds NUMBER     HTTP push interval, default 300
   --bridge-roles VALUE      Default public:br0,private:br1
+  --required-bridge-roles VALUE  Comma-separated roles that must exist; default none
   --max-load NUMBER         High-load reference, default 160
   --skip-heavy-on-overload  Permit heavy collection to be skipped
   --reset-state             Remove old counters/runtime
@@ -43,7 +45,7 @@ USAGE
 while (($#)); do case "$1" in
   --api) API="${2:?missing value}"; shift 2;; --token) TOKEN="${2:?missing value}"; shift 2;;
   --sample-seconds) SAMPLE_SECONDS="${2:?missing value}"; shift 2;; --push-seconds) PUSH_SECONDS="${2:?missing value}"; shift 2;;
-  --bridge-roles) BRIDGE_ROLES="${2:?missing value}"; shift 2;; --max-load) MAX_LOAD="${2:?missing value}"; shift 2;;
+  --bridge-roles) BRIDGE_ROLES="${2:?missing value}"; shift 2;; --required-bridge-roles) REQUIRED_BRIDGE_ROLES="${2-}"; shift 2;; --max-load) MAX_LOAD="${2:?missing value}"; shift 2;;
   --skip-heavy-on-overload) SKIP_HEAVY=1; shift;; --reset-state) RESET_STATE=1; shift;;
   --skip-connectivity-check) SKIP_CHECK=1; shift;; -h|--help) usage; exit 0;; *) die "Unknown option: $1";; esac
 done
@@ -88,6 +90,7 @@ BW_AGENT_COLLECT_VM_PERF='1'
 BW_AGENT_COLLECT_NODE_HOST='1'
 BW_AGENT_COLLECT_PHYSICAL_NET='1'
 BW_AGENT_BRIDGE_ROLES='$BRIDGE_ROLES'
+BW_AGENT_REQUIRED_BRIDGE_ROLES='$REQUIRED_BRIDGE_ROLES'
 BW_AGENT_BANDWIDTH_CONSUMPTION_ENABLED='1'
 BW_AGENT_BANDWIDTH_CONSUMPTION_JITTER_SECONDS='240'
 BW_AGENT_API_TIMEOUT='30'

@@ -15,6 +15,7 @@
     bwagent_pps_warn: 200000
     bwagent_mbps_warn: 800
     bwagent_bridge_roles: "public:br0,private:br1"
+    bwagent_required_bridge_roles: ""
     bwagent_install_dir: /usr/local/lib/virtinfra-agent
     bwagent_state_dir: /var/lib/virtinfra-agent
     bwagent_env_file: /etc/virtinfra-agent.env
@@ -135,6 +136,7 @@
           BW_AGENT_COLLECT_NODE_HOST="1"
           BW_AGENT_COLLECT_PHYSICAL_NET="1"
           BW_AGENT_BRIDGE_ROLES={{ bwagent_bridge_roles | to_json }}
+          BW_AGENT_REQUIRED_BRIDGE_ROLES={{ bwagent_required_bridge_roles | to_json }}
           BW_AGENT_BANDWIDTH_CONSUMPTION_ENABLED="1"
           BW_AGENT_BANDWIDTH_CONSUMPTION_JITTER_SECONDS="240"
           BW_AGENT_API_TIMEOUT="30"

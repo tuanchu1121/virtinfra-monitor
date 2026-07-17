@@ -52,6 +52,10 @@ COLLECT_PHYSICAL_NET = os.environ.get("BW_AGENT_COLLECT_PHYSICAL_NET", "1") == "
 #   BW_AGENT_BRIDGE_ROLES="public:br0,private:br1"
 #   BW_AGENT_BRIDGE_ROLES="public:br-public,private:br-private"
 BRIDGE_ROLES = os.environ.get("BW_AGENT_BRIDGE_ROLES", "public:br0,private:br1")
+# Bridge collection is optional by default because valid nodes may expose only
+# one bridge or use a different topology. Operators can explicitly require roles
+# with BW_AGENT_REQUIRED_BRIDGE_ROLES="public,private".
+REQUIRED_BRIDGE_ROLES = os.environ.get("BW_AGENT_REQUIRED_BRIDGE_ROLES", "")
 
 API_TIMEOUT = int(os.environ.get("BW_AGENT_API_TIMEOUT", "15"))
 DOMSTATS_TIMEOUT = int(os.environ.get("BW_AGENT_DOMSTATS_TIMEOUT", "60"))
@@ -84,13 +88,22 @@ def ms_since(start):
     return int((time.monotonic() - start) * 1000)
 
 
-def add_error(health, message):
+def _append_health_item(health, field, message):
     try:
-        errors = health.setdefault("errors", [])
-        if len(errors) < 50:
-            errors.append(str(message)[:300])
+        items = health.setdefault(field, [])
+        message = str(message)[:300]
+        if message not in items and len(items) < 50:
+            items.append(message)
     except Exception:
         pass
+
+
+def add_error(health, message):
+    _append_health_item(health, "errors", message)
+
+
+def add_note(health, message):
+    _append_health_item(health, "notes", message)
 
 
 def run(cmd, timeout=30):
@@ -175,6 +188,38 @@ def parse_bridge_roles(value):
     return roles
 
 
+def parse_required_bridge_roles(value):
+    return {
+        item.strip().lower()
+        for item in (value or "").replace(";", ",").split(",")
+        if item.strip()
+    }
+
+
+def bridge_role_is_required(role):
+    return str(role or "").strip().lower() in parse_required_bridge_roles(
+        REQUIRED_BRIDGE_ROLES
+    )
+
+
+def record_bridge_unavailable(health, role, bridge, status):
+    role = str(role or "").strip().lower()
+    bridge = str(bridge or "").strip()
+    status = str(status or "not_configured").strip().lower()
+    if bridge_role_is_required(role):
+        add_error(
+            health,
+            "required bridge unavailable role=%s bridge=%s status=%s"
+            % (role, bridge, status),
+        )
+    else:
+        add_note(
+            health,
+            "optional bridge omitted role=%s bridge=%s status=%s"
+            % (role, bridge, status),
+        )
+
+
 def parse_ip_addr_json(text):
     """Parse `ip -j address show` output into a stable IPv4 CIDR list."""
     try:
@@ -245,7 +290,7 @@ def collect_bridge_addresses(health=None):
     for role, bridge in parse_bridge_roles(BRIDGE_ROLES):
         base = Path("/sys/class/net") / bridge
         if not base.exists():
-            add_error(health, "bridge does not exist: %s:%s" % (role, bridge))
+            record_bridge_unavailable(health, role, bridge, "not_configured")
             continue
 
         try:
@@ -1074,12 +1119,14 @@ def collect_physical_network(state, now_ts, interval, health=None, bridge_addres
     for role, bridge in parse_bridge_roles(BRIDGE_ROLES):
         members = bridge_member_ifaces(bridge)
         if not members:
-            add_error(health, "bridge has no members or does not exist: %s:%s" % (role, bridge))
+            bridge_path = Path("/sys/class/net") / bridge
+            status = "no_members" if bridge_path.exists() else "not_configured"
+            record_bridge_unavailable(health, role, bridge, status)
             continue
 
         uplinks = [iface for iface in members if is_bridge_member_candidate_uplink(iface)]
         if not uplinks:
-            add_error(health, "no physical/uplink member found for %s:%s" % (role, bridge))
+            record_bridge_unavailable(health, role, bridge, "no_uplink")
             continue
 
         for iface in uplinks:
@@ -1608,6 +1655,7 @@ def collect_cycle_payload(committed_state, runtime, network_window):
         "timings": {},
         "counts": {},
         "errors": [],
+        "notes": [],
         "network_sampler": {
             "sample_seconds": SAMPLE_SECONDS,
             "window_started_at": safe_int((network_window or {}).get("started_at"), 0),
@@ -1624,7 +1672,7 @@ def collect_cycle_payload(committed_state, runtime, network_window):
     cached_map = runtime.get("iface_map") if isinstance(runtime.get("iface_map"), dict) else {}
 
     if heavy_collection_skipped:
-        add_error(health, "heavy collection skipped by explicit setting: load1=%.2f is above limit=%.2f" % (load1, MAX_LOAD))
+        add_note(health, "heavy collection limited by explicit setting: load1=%.2f limit=%.2f" % (load1, MAX_LOAD))
         vm_names = sorted({str(x.get("vm_uuid")) for x in cached_map.values() if isinstance(x, dict) and x.get("vm_uuid")})
         inventory_complete = False
         t = time.monotonic()
@@ -1635,7 +1683,7 @@ def collect_cycle_payload(committed_state, runtime, network_window):
         health["timings"]["vm_perf_ms"] = 0
     else:
         if load_high:
-            add_error(health, "high load detected but full metrics preserved: load1=%.2f limit=%.2f" % (load1, MAX_LOAD))
+            add_note(health, "high load observed with full metrics preserved: load1=%.2f limit=%.2f" % (load1, MAX_LOAD))
         t = time.monotonic()
         vm_names, inventory_complete = get_vm_names(health=health)
         health["timings"]["virsh_list_ms"] = ms_since(t)
@@ -1741,7 +1789,11 @@ def run_push_cycle(sampler, runtime, committed_state):
                 committed_state = new_state
         except Exception as exc:
             if not QUIET:
-                print("virtinfra-agent pending push failed: %s" % exc, flush=True)
+                print(
+                    "virtinfra-agent ERROR delivery=unavailable stage=retry "
+                    "payload_retained=1 detail=%s" % exc,
+                    flush=True,
+                )
             return committed_state
 
     payload, state_after = collect_cycle_payload(committed_state, runtime, runtime.get("carry"))
@@ -1758,7 +1810,11 @@ def run_push_cycle(sampler, runtime, committed_state):
         account_bandwidth_consumption(runtime, payload)
     except Exception as exc:
         if not QUIET:
-            print("virtinfra-agent bandwidth accounting skipped after error: %s" % exc, flush=True)
+            print(
+                "virtinfra-agent detail consumption_accounting=deferred "
+                "payload_delivery=continuing",
+                flush=True,
+            )
 
     # One atomic runtime update moves carry into a durable pending payload and
     # persists the 2-hour accumulator in the same fsync-backed runtime file.
@@ -1781,25 +1837,43 @@ def run_push_cycle(sampler, runtime, committed_state):
             for item in payload.get("interfaces") or []:
                 quality = clean_quality(item.get("network_sample_quality"))
                 quality_counts[quality] = quality_counts.get(quality, 0) + 1
+
+            health = payload.get("agent_health", {}) or {}
+            health_details = len(health.get("errors") or [])
+            if health.get("heavy_collection_skipped"):
+                collection_state = "limited"
+            elif health_details:
+                collection_state = "partial"
+            else:
+                collection_state = "complete"
+
+            sample_text = ",".join(
+                "%s:%s" % (str(name).lower(), quality_counts[name])
+                for name in sorted(quality_counts)
+            ) or "none"
+
             print(
-                "virtinfra-agent push ok node=%s interfaces=%s vms=%s host=%s overloaded=%s skipped=%s errors=%s samples=%s" % (
+                "virtinfra-agent cycle complete node=%s delivery=ok "
+                "interfaces=%s vms=%s host=%s load=%s collection=%s "
+                "details=%s samples=%s" % (
                     NODE_NAME,
                     len(payload.get("interfaces") or []),
                     len(payload.get("vms") or []),
                     1 if bool(payload.get("node_host")) else 0,
-                    1 if payload.get("agent_health", {}).get("overloaded") else 0,
-                    1 if payload.get("agent_health", {}).get("heavy_collection_skipped") else 0,
-                    len(payload.get("agent_health", {}).get("errors") or []),
-                    quality_counts,
+                    "high" if health.get("overloaded") else "normal",
+                    collection_state,
+                    health_details,
+                    sample_text,
                 ),
                 flush=True,
             )
-            health_errors = payload.get("agent_health", {}).get("errors") or []
-            if health_errors:
-                print("virtinfra-agent health warnings: %s" % " | ".join(str(x) for x in health_errors[:10]), flush=True)
     except Exception as exc:
         if not QUIET:
-            print("virtinfra-agent push failed, payload kept for retry: %s" % exc, flush=True)
+            print(
+                "virtinfra-agent ERROR delivery=unavailable stage=current "
+                "payload_retained=1 detail=%s" % exc,
+                flush=True,
+            )
 
     # Preserve the old operational push path. The compact accounting request is
     # attempted only after the normal push succeeds, and only when a completed
@@ -1811,7 +1885,8 @@ def run_push_cycle(sampler, runtime, committed_state):
         except Exception as exc:
             if not QUIET:
                 print(
-                    "virtinfra-agent bandwidth consumption push failed, bucket kept for retry: %s" % exc,
+                    "virtinfra-agent ERROR delivery=unavailable stage=consumption "
+                    "bucket_retained=1 detail=%s" % exc,
                     flush=True,
                 )
     return committed_state
@@ -2171,7 +2246,7 @@ def send_bandwidth_consumption_pending(runtime, allow_wait=False):
     save_runtime(runtime)
     if not QUIET:
         print(
-            "virtinfra-agent bandwidth consumption ok node=%s bucket=%s..%s coverage=%ss pending=%s" % (
+            "virtinfra-agent consumption complete node=%s delivery=ok bucket=%s..%s coverage=%ss pending=%s" % (
                 NODE_NAME,
                 payload.get("bucket_start"),
                 payload.get("bucket_end"),

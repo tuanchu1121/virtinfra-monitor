@@ -1,3 +1,11 @@
+# 50.5.8-prod-r2-friendly-agent-logs
+
+- Agent success logging is now a single neutral `cycle complete ... delivery=ok` line.
+- Missing bridges are optional by default and no longer increase `agent_health.errors`.
+- Added `BW_AGENT_REQUIRED_BRIDGE_ROLES` for installations that intentionally require specific bridge roles.
+- Actual delivery failures retain payload/bucket state and are the only normal path that emits `ERROR`.
+- No changes to metrics, Consumption, gzip, API payload, database, UI, state files, or five-minute scheduling.
+
 # 50.5.8-prod-r1-low-io-compatible
 
 - In-place upgrade from 50.5.7; no UI, API, metric formula, 5-minute schedule, retention or queue behavior changes.

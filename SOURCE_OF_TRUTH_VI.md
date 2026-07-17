@@ -1,8 +1,8 @@
 # SOURCE OF TRUTH VẬN HÀNH
 
-> Release: `50.5.8-prod-r1-low-io-compatible`
+> Release: `50.5.8-prod-r2-friendly-agent-logs`
 
-> Release: `50.5.8-prod-r1-low-io-compatible`
+> Release: `50.5.8-prod-r2-friendly-agent-logs`
 >
 > Tài liệu này được đối chiếu trực tiếp với `install.sh`, `deploy/postgres/*`, `deploy/agent/*`, `postgres/docker-compose.yml`, `app/app.py` và các test contract hiện tại.
 

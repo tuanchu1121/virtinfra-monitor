@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.8-prod-r1-low-io-compatible`
+Release: `50.5.8-prod-r2-friendly-agent-logs`
 
 ## Final data path
 

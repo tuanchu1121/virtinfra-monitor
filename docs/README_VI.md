@@ -1,6 +1,6 @@
 # VIRTINFRA MONITOR: TÀI LIỆU VẬN HÀNH
 
-> Release `50.5.8-prod-r1-low-io-compatible`
+> Release `50.5.8-prod-r2-friendly-agent-logs`
 
 Runtime hiện tại dùng PostgreSQL 17 + TimescaleDB làm nguồn dữ liệu duy nhất.
 

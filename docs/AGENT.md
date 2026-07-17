@@ -90,3 +90,29 @@ systemctl restart bw-monitor.service
 ```
 
 `/push` và `/push/bandwidth-consumption` cùng chấp nhận token chính và token legacy.
+
+
+## Friendly operational logs
+
+The Agent emits one neutral line after a successful five-minute delivery:
+
+```text
+virtinfra-agent cycle complete node=NODE delivery=ok interfaces=215 vms=215 host=1 load=normal collection=complete details=0 samples=good:215
+```
+
+Words such as `ERROR` and `unavailable` are reserved for delivery failures where the payload or Consumption bucket remains queued for retry. A successful delivery never prints `errors=N` or a `health warnings` line.
+
+Bridge discovery is optional by default. Valid nodes may expose only one bridge, no `br1`, or a different topology. Missing configured bridge names are recorded as neutral Agent health notes and do not make the successful cycle partial.
+
+```bash
+BW_AGENT_BRIDGE_ROLES='public:br0,private:br1'
+BW_AGENT_REQUIRED_BRIDGE_ROLES=''
+```
+
+To explicitly require bridge roles on a particular group of nodes:
+
+```bash
+BW_AGENT_REQUIRED_BRIDGE_ROLES='public,private'
+```
+
+This setting changes only bridge-health classification. It does not change VM metrics, bandwidth Consumption, the five-minute schedule, state files, gzip transport, or monitor payload compatibility.

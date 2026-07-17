@@ -37,7 +37,7 @@ def last_function(source: str, name: str) -> str:
 
 
 def test_release_identity():
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.7-prod-r1-safe-queue-canonical-vm"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.7-prod-r2-mac-identity-search"
 
 
 def test_fifo_queue_allows_waiting_rows_but_only_one_worker():

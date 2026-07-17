@@ -1,3 +1,12 @@
+## 50.5.7-prod-r2-mac-identity-search
+
+- Persisted each VM virtual NIC MAC from the existing libvirt Agent payload in `vm_iface_current` without enabling legacy raw `usage` writes.
+- Persisted the physical uplink MAC associated with the public/private `br0` and `br1` roles in `node_physical_net_latest`; the existing bridge-device MAC remains available separately in `node_bridge_addresses_latest`.
+- Added normalized MAC search across Dashboard, Node Health, Top VM direct lookup and Admin inventory. Colon, hyphen, Cisco dotted and compact MAC forms resolve to the same canonical address.
+- Added a VM Network Identity card showing Interface, MAC, VM UUID, Node, Bridge and last-seen time for every current NIC.
+- Added physical-uplink MAC badges to Node detail and additive migration `008_mac_identity_search.sql`.
+- Existing Agents require no reinstall. Empty MAC fields populate on the next accepted Agent push.
+
 ## 50.5.7-prod-r1-safe-queue-canonical-vm
 
 - Replaced the one-row Maintenance gate with a PostgreSQL FIFO queue. Multiple routine jobs can wait; one dispatcher atomically claims one `starting/running` worker with `FOR UPDATE SKIP LOCKED`.

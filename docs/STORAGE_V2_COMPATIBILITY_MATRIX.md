@@ -1,6 +1,6 @@
 # Storage V2 compatibility matrix
 
-Release: `50.5.7-prod-r1-safe-queue-canonical-vm`
+Release: `50.5.7-prod-r2-mac-identity-search`
 
 Status values: **UNCHANGED**, **V2 READ**, **V2 WRITE**, **ADDITIVE**, **FALLBACK AVAILABLE**.
 

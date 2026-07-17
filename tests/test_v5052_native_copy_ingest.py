@@ -19,7 +19,7 @@ def _v5052_block() -> str:
 
 
 def test_release_and_native_copy_contract() -> None:
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.7-prod-r1-safe-queue-canonical-vm"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.7-prod-r2-mac-identity-search"
     assert "def copy_rows(" in PG
     assert "cursor.copy(statement)" in PG
     assert "copy.write_row(values)" in PG

@@ -30,6 +30,7 @@ app = Flask(__name__)
 # v48.5.2: Fast Node Health query; no history backfill inside web requests
 
 # v48.4.7: unified node/IP/UUID/interface search across dashboard pages
+# 50.5.7-prod-r2: retain VM/uplink MAC identity, search by MAC, show MAC on VM/Node detail
 
 TOKEN = os.environ.get("BW_MONITOR_TOKEN", "123456")
 DB = os.environ.get("BW_MONITOR_DB", "/var/lib/bw-monitor/postgresql")
@@ -203,6 +204,15 @@ def ensure_column(conn, table, column, ddl):
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
 
 
+def normalize_mac_address(value):
+    """Return a canonical lower-case colon MAC or an empty string."""
+    raw = str(value or "").strip().lower()
+    compact = "".join(ch for ch in raw if ch in "0123456789abcdef")
+    if len(compact) != 12:
+        return ""
+    return ":".join(compact[pos:pos + 2] for pos in range(0, 12, 2))
+
+
 def db():
     db_dir = os.path.dirname(DB)
     if db_dir:
@@ -213,7 +223,7 @@ def db():
     conn.execute("PRAGMA busy_timeout=30000")
 
     # Keep the old usage schema compatible with the current agent.
-    # UI and API output do not expose MAC anymore.
+    # MAC is retained as searchable interface identity metadata.
     conn.execute("""
     CREATE TABLE IF NOT EXISTS usage (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -532,6 +542,7 @@ def db():
         tx_error_delta INTEGER NOT NULL DEFAULT 0,
         alert_level TEXT NOT NULL DEFAULT 'ok',
         alert_flags TEXT NOT NULL DEFAULT '',
+        mac TEXT NOT NULL DEFAULT '',
         PRIMARY KEY (node, role)
     )
     """)
@@ -926,6 +937,7 @@ def db():
     );
     CREATE TABLE IF NOT EXISTS vm_iface_current (
       node TEXT NOT NULL, vm_uuid TEXT NOT NULL, bridge TEXT NOT NULL, iface TEXT NOT NULL,
+      mac TEXT NOT NULL DEFAULT '',
       last_seen INTEGER NOT NULL, interval_seconds INTEGER NOT NULL DEFAULT 300,
       rx_bytes INTEGER NOT NULL DEFAULT 0, tx_bytes INTEGER NOT NULL DEFAULT 0,
       rx_packets INTEGER NOT NULL DEFAULT 0, tx_packets INTEGER NOT NULL DEFAULT 0,
@@ -999,6 +1011,10 @@ def db():
     CREATE UNIQUE INDEX IF NOT EXISTS idx_vm_abuse_events_dedupe
       ON vm_abuse_events(node,vm_uuid,event_time,event_type,abuse_flags);
     """)
+    ensure_column(conn, "vm_iface_current", "mac", "TEXT NOT NULL DEFAULT ''")
+    ensure_column(conn, "node_physical_net_latest", "mac", "TEXT NOT NULL DEFAULT ''")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_vm_iface_current_mac ON vm_iface_current(LOWER(mac))")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_node_physical_net_latest_mac ON node_physical_net_latest(LOWER(mac))")
     conn.commit()
     return conn
 
@@ -2684,7 +2700,7 @@ def range_card(period, start, end, q="", endpoint="index", node=None, vm_status=
         <div class="table-hint">{escape(note)}</div>
         <form class="search" method="get" action="{action}">
             <input type="hidden" name="period" value="{escape(period)}">
-            <input name="q" value="{q_html}" placeholder="Search Node / IP / VM UUID / Interface">
+            <input name="q" value="{q_html}" placeholder="Search Node / IP / MAC / VM UUID / Interface">
             <button type="submit">Search</button>
             {f'<a class="clear" href="{url_for("index", period=period)}">Clear</a>' if search_q else ''}
         </form>
@@ -2717,6 +2733,7 @@ def get_node_rows(period, q="", sort_by="node", order="asc", target_ts=None):
     visible_after = now - NODE_AUTO_DELETE_SECONDS
     q = (q or "").strip()
     like = like_pattern(q) if q else ""
+    normalized_mac = normalize_mac_address(q) if q else ""
 
     order_map = {
         "node": "x.node COLLATE NOCASE",
@@ -2791,6 +2808,8 @@ def get_node_rows(period, q="", sort_by="node", order="asc", target_ts=None):
                             OR COALESCE(bai.primary_ipv6, '') LIKE ?
                             OR COALESCE(bai.ipv6_json, '[]') LIKE ?
                             OR COALESCE(bai.bridge, '') LIKE ?
+                            OR COALESCE(bai.mac, '') LIKE ?
+                            OR (?<>'' AND LOWER(COALESCE(bai.mac,''))=LOWER(?))
                           )
                 )
                 OR EXISTS (
@@ -2839,6 +2858,22 @@ def get_node_rows(period, q="", sort_by="node", order="asc", target_ts=None):
                 )
                 OR EXISTS (
                     SELECT 1
+                    FROM vm_iface_current svi_mac
+                    WHERE svi_mac.node=l.node
+                      AND EXISTS (
+                            SELECT 1 FROM vm_inventory svi_mac_inv
+                            WHERE svi_mac_inv.node=svi_mac.node AND svi_mac_inv.vm_uuid=svi_mac.vm_uuid
+                              AND COALESCE(svi_mac_inv.status,'active')!='hidden'
+                              AND svi_mac_inv.deleted_at IS NULL
+                          )
+                      AND (
+                            COALESCE(svi_mac.iface,'') LIKE ?
+                            OR COALESCE(svi_mac.mac,'') LIKE ?
+                            OR (?<>'' AND LOWER(COALESCE(svi_mac.mac,''))=LOWER(?))
+                          )
+                )
+                OR EXISTS (
+                    SELECT 1
                     FROM vm_latest_metrics svm
                     WHERE svm.node=l.node
                       AND EXISTS (
@@ -2861,6 +2896,8 @@ def get_node_rows(period, q="", sort_by="node", order="asc", target_ts=None):
                             COALESCE(snp.iface, '') LIKE ?
                             OR COALESCE(snp.bridge, '') LIKE ?
                             OR COALESCE(snp.role, '') LIKE ?
+                            OR COALESCE(snp.mac, '') LIKE ?
+                            OR (?<>'' AND LOWER(COALESCE(snp.mac,''))=LOWER(?))
                           )
                 )
               )
@@ -3019,12 +3056,13 @@ def get_node_rows(period, q="", sort_by="node", order="asc", target_ts=None):
         search_params = [
             q,
             like,  # node name
-            like, like, like, like, like,  # node bridge IP/address/bridge
+            like, like, like, like, like, like, normalized_mac, normalized_mac,  # node bridge address/bridge/MAC
             like, like, like,  # vm_inventory
             like, like, like,  # vm_location_latest
             like, like, like,  # vm_node_presence
+            like, like, normalized_mac, normalized_mac,  # vm_iface_current iface/MAC
             like, like, like,  # vm_latest_metrics
-            like, like, like,  # physical interface/bridge/role
+            like, like, like, like, normalized_mac, normalized_mac,  # physical iface/bridge/role/MAC
         ]
         selection_limit = requested if target_ts is not None else 0
         rows = conn.execute(sql, [visible_after] + search_params + [selection_limit, selection_limit, offset]).fetchall()
@@ -3567,8 +3605,31 @@ def get_node_physical_nic_period(node, period):
                 "operstate": operstate or "-",
                 "carrier": int(carrier or 0),
                 "mtu": int(mtu or 0),
-                "mac": mac or "",
+                "bridge_mac": normalize_mac_address(mac),
+                "mac": "",
             }
+
+        physical_identity_rows = conn.execute("""
+            SELECT role,bridge,iface,mac,last_seen
+              FROM node_physical_net_latest
+             WHERE node=?
+             ORDER BY CASE role WHEN 'public' THEN 1 WHEN 'private' THEN 2 ELSE 9 END,role
+        """, (node,)).fetchall()
+        for role, bridge, iface, mac, identity_seen in physical_identity_rows:
+            key = str(role or "").lower()
+            current = result.setdefault(key, {
+                "role": key,
+                "ipv4": [],
+                "primary_ipv4": "",
+                "operstate": "-",
+                "carrier": 0,
+                "mtu": 0,
+                "bridge_mac": "",
+            })
+            current["bridge"] = bridge or current.get("bridge") or "-"
+            current["iface"] = iface or current.get("iface") or "-"
+            current["mac"] = normalize_mac_address(mac)
+            current["identity_seen"] = int(identity_seen or 0)
 
         selected_bucket, _latest_bucket = resolve_snapshot_bucket(conn, period, node=node)
         nic_bucket = resolve_table_snapshot_bucket(conn, "node_physical_net_stats", node, selected_bucket)
@@ -3602,6 +3663,7 @@ def get_node_physical_nic_period(node, period):
                 "operstate": "-",
                 "carrier": 0,
                 "mtu": 0,
+                "bridge_mac": "",
                 "mac": "",
             })
             current.update({
@@ -3639,9 +3701,11 @@ def node_nic_badges(node, period):
                 f"snapshot {fmt_push(r.get('last_seen'))}"
             )
             address_detail = f"Current IPv4 {ipv4}"
+            physical_mac = normalize_mac_address(r.get("mac")) or "not reported"
             return (
                 f'<span class="nic-badge"><b>{role.title()}</b> '
                 f'{escape(label)}<small class="nic-address">{escape(address_detail)}</small>'
+                f'<small class="nic-address">Physical MAC {escape(physical_mac)}</small>'
                 f'<small>{escape(traffic)}</small></span>'
             )
         return (
@@ -5201,6 +5265,7 @@ def get_node_health_rows(q="", sort_by="status", order="asc"):
     search_sql = ""
     if q:
         p = like_pattern(q)
+        normalized_mac = normalize_mac_address(q)
         search_sql = """
           AND (
                 n.node LIKE ?
@@ -5214,6 +5279,8 @@ def get_node_health_rows(q="", sort_by="status", order="asc"):
                             OR COALESCE(bai.primary_ipv6, '') LIKE ?
                             OR COALESCE(bai.ipv6_json, '[]') LIKE ?
                             OR COALESCE(bai.bridge, '') LIKE ?
+                            OR COALESCE(bai.mac, '') LIKE ?
+                            OR (?<>'' AND LOWER(COALESCE(bai.mac,''))=LOWER(?))
                           )
                 )
                 OR EXISTS (
@@ -5248,6 +5315,17 @@ def get_node_health_rows(q="", sort_by="status", order="asc"):
                 )
                 OR EXISTS (
                     SELECT 1
+                    FROM vm_iface_current svi_mac
+                    WHERE svi_mac.node=n.node
+                      AND (
+                            svi_mac.vm_uuid LIKE ?
+                            OR COALESCE(svi_mac.iface,'') LIKE ?
+                            OR COALESCE(svi_mac.mac,'') LIKE ?
+                            OR (?<>'' AND LOWER(COALESCE(svi_mac.mac,''))=LOWER(?))
+                          )
+                )
+                OR EXISTS (
+                    SELECT 1
                     FROM vm_latest_metrics svm
                     WHERE svm.node=n.node
                       AND (
@@ -5264,18 +5342,21 @@ def get_node_health_rows(q="", sort_by="status", order="asc"):
                             COALESCE(snp.iface, '') LIKE ?
                             OR COALESCE(snp.bridge, '') LIKE ?
                             OR COALESCE(snp.role, '') LIKE ?
+                            OR COALESCE(snp.mac, '') LIKE ?
+                            OR (?<>'' AND LOWER(COALESCE(snp.mac,''))=LOWER(?))
                           )
                 )
               )
         """
         params.extend([
             p,
-            p, p, p, p, p,
+            p, p, p, p, p, p, normalized_mac, normalized_mac,
             p, p, p,
             p, p, p,
             p, p, p,
+            p, p, p, normalized_mac, normalized_mac,
             p, p, p,
-            p, p, p,
+            p, p, p, p, normalized_mac, normalized_mac,
         ])
     params.append(node_visible_after)
 
@@ -7190,7 +7271,7 @@ def node_health_page():
         <form class="search" method="get" action="{search_action}">
             <input type="hidden" name="sort" value="{escape(sort_by)}">
             <input type="hidden" name="order" value="{escape(sort_order)}">
-            <input name="q" value="{escape(q)}" placeholder="Search node / IP / VM UUID / interface">
+            <input name="q" value="{escape(q)}" placeholder="Search node / IP / MAC / VM UUID / interface">
             <button type="submit">Search</button>
             {f'<a class="clear" href="{url_for("node_health_page", sort=sort_by, order=sort_order)}">Clear</a>' if q else ''}
         </form>
@@ -7325,7 +7406,7 @@ def top_node_page():
             <input type="hidden" name="period" value="{escape(period)}">
             <input type="hidden" name="sort" value="{escape(sort_by)}">
             <input type="hidden" name="order" value="{escape(sort_order)}">
-            <input name="q" value="{escape(q)}" placeholder="Search node / IP / VM UUID / interface">
+            <input name="q" value="{escape(q)}" placeholder="Search node / IP / MAC / VM UUID / interface">
             <input name="limit" value="{limit}" style="max-width:100px; min-width:80px" placeholder="Limit">
             <button type="submit">Search</button>
             {f'<a class="clear" href="{url_for("top_node_page", period=period, sort=sort_by, order=sort_order, limit=limit)}">Clear</a>' if q else ''}
@@ -7684,7 +7765,7 @@ def top_page():
             <input type="hidden" name="sort" value="{escape(sort_by)}">
             <input type="hidden" name="order" value="{escape(sort_order)}">
             <input type="hidden" name="scope" value="{escape(scope)}">
-            <input name="q" value="{escape(q)}" placeholder="Search node / IPv4 / VM UUID / interface">
+            <input name="q" value="{escape(q)}" placeholder="Search node / IPv4 / MAC / VM UUID / interface">
             <input name="limit" value="{limit}" style="max-width:100px; min-width:80px" placeholder="Limit">
             <button type="submit">Search</button>
             {f'<a class="clear" href="{url_for("top_page", period=period, sort=sort_by, order=sort_order, scope=scope, limit=limit)}">Clear</a>' if q else ''}
@@ -9227,7 +9308,7 @@ def admin_page():
         </div>
         <div class="admin-note bulk-queue-note"><b>Purge queue:</b> destructive node/VM purges are processed outside the web request. Bulk selections are stored in one job and processed internally in batches of at most {MAX_PURGE_ITEMS_PER_JOB} items.</div>
         <form class="search" method="get" action="{url_for('admin_page')}">
-            <input name="q" value="{escape(q)}" placeholder="Search node / IPv4 / VM UUID / bridge / interface">
+            <input name="q" value="{escape(q)}" placeholder="Search node / IPv4 / MAC / VM UUID / bridge / interface">
             <button type="submit">Search</button>
             <a class="clear" href="{url_for('admin_page')}">Clear</a>
         </form>
@@ -10690,7 +10771,10 @@ def push():
                     operstate=excluded.operstate,
                     carrier=excluded.carrier,
                     mtu=excluded.mtu,
-                    mac=excluded.mac
+                    mac=CASE
+                        WHEN excluded.mac<>'' THEN excluded.mac
+                        ELSE node_physical_net_latest.mac
+                    END
             """, (
                 node, role, bridge, data_time,
                 primary_ipv4, primary_ipv6,
@@ -10760,9 +10844,9 @@ def push():
                     rx_mbps, tx_mbps, rx_pps, tx_pps,
                     rx_delta, tx_delta, rx_packets_delta, tx_packets_delta,
                     rx_drop_delta, tx_drop_delta, rx_error_delta, tx_error_delta,
-                    alert_level, alert_flags
+                    alert_level, alert_flags, mac
                 )
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(node, role)
                 DO UPDATE SET
                     bridge=excluded.bridge,
@@ -10782,13 +10866,15 @@ def push():
                     rx_error_delta=excluded.rx_error_delta,
                     tx_error_delta=excluded.tx_error_delta,
                     alert_level=excluded.alert_level,
-                    alert_flags=excluded.alert_flags
+                    alert_flags=excluded.alert_flags,
+                    mac=excluded.mac
             """, (
                 node, role, bridge, iface, data_time, interval_seconds,
                 rx_mbps, tx_mbps, rx_pps, tx_pps,
                 rx_delta, tx_delta, rx_packets_delta, tx_packets_delta,
                 rx_drop_delta, tx_drop_delta, rx_error_delta, tx_error_delta,
                 alert_level, alert_flags,
+                normalize_mac_address(item.get("mac")),
             ))
 
         for vm_item in vms:
@@ -11205,6 +11291,7 @@ def refresh_fast_current_state(conn, node, data_time, interval_seconds, interfac
 
         iface_row = {
             "node": node, "vm_uuid": vm_uuid, "bridge": bridge, "iface": iface,
+            "mac": normalize_mac_address(item.get("mac")),
             "last_seen": data_time, "interval_seconds": sec,
             "rx_bytes": rx_b, "tx_bytes": tx_b,
             "rx_packets": rx_packets, "tx_packets": tx_packets,
@@ -14075,7 +14162,7 @@ def top_node_page_v484():
     content=f"""
     <div class="card top-card"><div class="top-grid"><div><div class="label">Updated</div><div class="value">{fmt_full(end)}</div></div><div><div class="label">Timezone</div><div class="value">{display_timezone_name()}</div></div><div><div class="label">Selected Snapshot</div><div class="value">{fmt_full(start)}</div></div></div>
     <div class="label period-label">Period</div><div class="periods">{top_node_period_links(period,q=q,sort_by=sort_by,order=sort_order,limit=limit)}</div>
-    <form class="search" method="get" action="{url_for('top_node_page')}"><input type="hidden" name="period" value="{escape(period)}"><input type="hidden" name="sort" value="{escape(sort_by)}"><input type="hidden" name="order" value="{escape(sort_order)}">{f'<input type="hidden" name="at" value="{escape(_datetime_local_value(at),quote=True)}">' if at else ''}<input name="q" value="{escape(q)}" placeholder="Search node / IP / VM UUID / interface"><input name="limit" value="{limit}" style="max-width:100px;min-width:80px"><button type="submit">Search</button></form></div>
+    <form class="search" method="get" action="{url_for('top_node_page')}"><input type="hidden" name="period" value="{escape(period)}"><input type="hidden" name="sort" value="{escape(sort_by)}"><input type="hidden" name="order" value="{escape(sort_order)}">{f'<input type="hidden" name="at" value="{escape(_datetime_local_value(at),quote=True)}">' if at else ''}<input name="q" value="{escape(q)}" placeholder="Search node / IP / MAC / VM UUID / interface"><input name="limit" value="{limit}" style="max-width:100px;min-width:80px"><button type="submit">Search</button></form></div>
     {_custom_snapshot_control('top_node_page',at,period=period,q=q or None,sort=sort_by,order=sort_order,limit=limit)}
     {top_node_table(rows,period,q,sort_by,sort_order,limit)}"""
     return page("Top Node",content)
@@ -14083,11 +14170,21 @@ def top_node_page_v484():
 
 def top_page_v484():
     period=clean_period(request.args.get("period","5m")); q=(request.args.get("q") or "").strip(); sort_by=clean_top_sort(request.args.get("sort","total")); sort_order=clean_sort_order(request.args.get("order","desc")); scope=clean_top_scope(request.args.get("scope","all")); limit=max(10,min(1000,safe_int(request.args.get("limit"),100)))
+    direct_vm=resolve_direct_vm_search(q) if q else None
+    if direct_vm:
+        return redirect(url_for(
+            "vm_page",
+            node=direct_vm["node"],
+            vm_uuid=direct_vm["vm_uuid"],
+            bridge="",
+            iface="",
+            period=period,
+        ))
     rows,start,end,limit=get_top_vm_rows(period,q=q,sort_by=sort_by,order=sort_order,scope=scope,limit=limit); at=_request_target_ts()
     content=f"""
     <div class="card top-card"><div class="top-grid"><div><div class="label">Latest Available</div><div class="value">{fmt_full(end)}</div></div><div><div class="label">Timezone</div><div class="value">{display_timezone_name()}</div></div><div><div class="label">Selected Snapshot</div><div class="value">{fmt_full(start)}</div></div></div>
     <div class="label period-label">Snapshot lookback</div><div class="periods">{top_period_links(period,q=q,sort_by=sort_by,order=sort_order,scope=scope,limit=limit)}</div><div class="label period-label">Scope</div><div class="scope-links">{top_scope_links(period,q,sort_by,sort_order,scope,limit)}</div>
-    <form class="search" method="get" action="{url_for('top_page')}"><input type="hidden" name="period" value="{escape(period)}"><input type="hidden" name="sort" value="{escape(sort_by)}"><input type="hidden" name="order" value="{escape(sort_order)}"><input type="hidden" name="scope" value="{escape(scope)}">{f'<input type="hidden" name="at" value="{escape(_datetime_local_value(at),quote=True)}">' if at else ''}<input name="q" value="{escape(q)}" placeholder="Search node / IPv4 / VM UUID / interface"><select name="limit" aria-label="Row limit"><option value="100" {'selected' if limit==100 else ''}>100 rows</option><option value="200" {'selected' if limit==200 else ''}>200 rows</option><option value="500" {'selected' if limit==500 else ''}>500 rows</option><option value="1000" {'selected' if limit==1000 else ''}>1000 rows</option></select><button type="submit">Search</button></form></div>
+    <form class="search" method="get" action="{url_for('top_page')}"><input type="hidden" name="period" value="{escape(period)}"><input type="hidden" name="sort" value="{escape(sort_by)}"><input type="hidden" name="order" value="{escape(sort_order)}"><input type="hidden" name="scope" value="{escape(scope)}">{f'<input type="hidden" name="at" value="{escape(_datetime_local_value(at),quote=True)}">' if at else ''}<input name="q" value="{escape(q)}" placeholder="Search node / IPv4 / MAC / VM UUID / interface"><select name="limit" aria-label="Row limit"><option value="100" {'selected' if limit==100 else ''}>100 rows</option><option value="200" {'selected' if limit==200 else ''}>200 rows</option><option value="500" {'selected' if limit==500 else ''}>500 rows</option><option value="1000" {'selected' if limit==1000 else ''}>1000 rows</option></select><button type="submit">Search</button></form></div>
     {_custom_snapshot_control('top_page',at,period=period,q=q or None,sort=sort_by,order=sort_order,scope=scope,limit=limit)}
     {top_vm_table(rows,period,q,sort_by,sort_order,scope,limit)}"""
     return page("Top VM",content)
@@ -14629,7 +14726,7 @@ def _v490_admin_nodes_section(q, page_no, per_page):
     if not body: body='<tr><td colspan="7" class="empty">No nodes match this filter</td></tr>'
     return f"""
     <div class="card"><div class="section-head"><div><h3>Node management</h3><p>{total:,} matching node(s). Bulk purge uses one exclusive job with internal batches of {MAX_PURGE_ITEMS_PER_JOB}.</p></div></div>
-    <form class="search" method="get"><input type="hidden" name="section" value="nodes"><input name="q" value="{escape(q,quote=True)}" placeholder="Search node, IP, VM, bridge or interface"><select name="per_page"><option value="100" {'selected' if per_page==100 else ''}>100 rows</option><option value="200" {'selected' if per_page==200 else ''}>200 rows</option></select><button>Search</button>{f'<a class="clear" href="{url_for("admin_page",section="nodes")}">Reset</a>' if q else ''}</form>
+    <form class="search" method="get"><input type="hidden" name="section" value="nodes"><input name="q" value="{escape(q,quote=True)}" placeholder="Search node, IP, MAC, VM, bridge or interface"><select name="per_page"><option value="100" {'selected' if per_page==100 else ''}>100 rows</option><option value="200" {'selected' if per_page==200 else ''}>200 rows</option></select><button>Search</button>{f'<a class="clear" href="{url_for("admin_page",section="nodes")}">Reset</a>' if q else ''}</form>
     <form id="bulk-nodes-form" method="post" action="{url_for('admin_bulk_nodes')}" onsubmit="return confirm('Apply selected node action?')"><input type="hidden" name="csrf_token" value="{escape(csrf_token(),quote=True)}"><div class="bulk-bar compact-bulk"><label><input type="checkbox" onclick="document.querySelectorAll('.node-select').forEach(cb=>cb.checked=this.checked)"> Select page</label><select name="action"><option value="hide">Hide</option><option value="restore">Restore</option><option value="purge_vms">Purge all VMs</option><option value="purge">Purge node</option></select><button class="btn-danger">Apply</button></div></form>
     <div class="table-wrap"><table class="admin-clean-table"><thead><tr><th></th><th>NODE / STATUS</th><th>PUBLIC IP</th><th>PRIVATE IP</th><th>VM</th><th>LAST PUSH</th><th>ACTION</th></tr></thead><tbody>{body}</tbody></table></div>{_v490_pager('nodes',q,page_no,max_page,per_page)}</div>"""
 
@@ -14647,7 +14744,7 @@ def _v490_admin_vms_section(q,page_no,per_page):
     if not body: body='<tr><td colspan="6" class="empty">No VMs match this filter</td></tr>'
     return f"""
     <div class="card"><div class="section-head"><div><h3>VM management</h3><p>{total:,} matching VM(s). Results are paginated so Admin stays responsive with tens of thousands of VMs.</p></div></div>
-    <form class="search" method="get"><input type="hidden" name="section" value="vms"><input name="q" value="{escape(q,quote=True)}" placeholder="Search node, IP, VM UUID, bridge or interface"><select name="per_page"><option value="100" {'selected' if per_page==100 else ''}>100 rows</option><option value="200" {'selected' if per_page==200 else ''}>200 rows</option><option value="500" {'selected' if per_page==500 else ''}>500 rows</option></select><button>Search</button>{f'<a class="clear" href="{url_for("admin_page",section="vms")}">Reset</a>' if q else ''}</form>
+    <form class="search" method="get"><input type="hidden" name="section" value="vms"><input name="q" value="{escape(q,quote=True)}" placeholder="Search node, IP, MAC, VM UUID, bridge or interface"><select name="per_page"><option value="100" {'selected' if per_page==100 else ''}>100 rows</option><option value="200" {'selected' if per_page==200 else ''}>200 rows</option><option value="500" {'selected' if per_page==500 else ''}>500 rows</option></select><button>Search</button>{f'<a class="clear" href="{url_for("admin_page",section="vms")}">Reset</a>' if q else ''}</form>
     <form id="bulk-vms-form" method="post" action="{url_for('admin_bulk_vms')}" onsubmit="return confirm('Apply selected VM action?')"><input type="hidden" name="csrf_token" value="{escape(csrf_token(),quote=True)}"><div class="bulk-bar compact-bulk"><label><input type="checkbox" onclick="document.querySelectorAll('.vm-select').forEach(cb=>cb.checked=this.checked)"> Select page</label><select name="action"><option value="hide">Hide</option><option value="restore">Restore</option><option value="purge">Purge</option></select><button class="btn-danger">Apply</button></div></form>
     <div class="table-wrap"><table class="admin-clean-table"><thead><tr><th></th><th>NODE</th><th>VM UUID</th><th>STATUS / LAST SEEN</th><th>BRIDGE / IFACE</th><th>ACTION</th></tr></thead><tbody>{body}</tbody></table></div>{_v490_pager('vms',q,page_no,max_page,per_page)}</div>"""
 
@@ -25547,8 +25644,57 @@ def _v48134_admin_nodes(q, status, page_no, per_page):
     where = [status_sql]
     if q:
         p = like_pattern(q)
-        where.append("""(ni.node LIKE ? OR EXISTS (SELECT 1 FROM node_bridge_addresses_latest b WHERE b.node=ni.node AND (COALESCE(b.primary_ipv4,'') LIKE ? OR COALESCE(b.ipv4_json,'[]') LIKE ?)) OR EXISTS (SELECT 1 FROM vm_inventory v WHERE v.node=ni.node AND (v.vm_uuid LIKE ? OR COALESCE(v.last_iface,'') LIKE ? OR COALESCE(v.last_bridge,'') LIKE ?)))""")
-        params.extend([p, p, p, p, p, p])
+        normalized_mac = normalize_mac_address(q)
+        where.append("""(
+            ni.node LIKE ?
+            OR EXISTS (
+                SELECT 1 FROM node_bridge_addresses_latest b
+                 WHERE b.node=ni.node
+                   AND (
+                        COALESCE(b.primary_ipv4,'') LIKE ?
+                        OR COALESCE(b.ipv4_json,'[]') LIKE ?
+                        OR COALESCE(b.mac,'') LIKE ?
+                        OR (?<>'' AND LOWER(COALESCE(b.mac,''))=LOWER(?))
+                   )
+            )
+            OR EXISTS (
+                SELECT 1 FROM vm_inventory v
+                 WHERE v.node=ni.node
+                   AND (
+                        v.vm_uuid LIKE ?
+                        OR COALESCE(v.last_iface,'') LIKE ?
+                        OR COALESCE(v.last_bridge,'') LIKE ?
+                   )
+            )
+            OR EXISTS (
+                SELECT 1 FROM vm_iface_current i
+                 WHERE i.node=ni.node
+                   AND (
+                        i.vm_uuid LIKE ?
+                        OR COALESCE(i.iface,'') LIKE ?
+                        OR COALESCE(i.bridge,'') LIKE ?
+                        OR COALESCE(i.mac,'') LIKE ?
+                        OR (?<>'' AND LOWER(COALESCE(i.mac,''))=LOWER(?))
+                   )
+            )
+            OR EXISTS (
+                SELECT 1 FROM node_physical_net_latest pn
+                 WHERE pn.node=ni.node
+                   AND (
+                        COALESCE(pn.iface,'') LIKE ?
+                        OR COALESCE(pn.bridge,'') LIKE ?
+                        OR COALESCE(pn.mac,'') LIKE ?
+                        OR (?<>'' AND LOWER(COALESCE(pn.mac,''))=LOWER(?))
+                   )
+            )
+        )""")
+        params.extend([
+            p,
+            p, p, p, normalized_mac, normalized_mac,
+            p, p, p,
+            p, p, p, p, normalized_mac, normalized_mac,
+            p, p, p, normalized_mac, normalized_mac,
+        ])
     where_sql = "WHERE " + " AND ".join(where)
     conn = db()
     try:
@@ -25582,8 +25728,38 @@ def _v48134_admin_vms(q, status, page_no, per_page):
     where = [status_sql]
     if q:
         p = like_pattern(q)
-        where.append("""(vi.node LIKE ? OR vi.vm_uuid LIKE ? OR COALESCE(vi.last_iface,'') LIKE ? OR COALESCE(vi.last_bridge,'') LIKE ? OR EXISTS (SELECT 1 FROM node_bridge_addresses_latest b WHERE b.node=vi.node AND (COALESCE(b.primary_ipv4,'') LIKE ? OR COALESCE(b.ipv4_json,'[]') LIKE ?)))""")
-        params.extend([p, p, p, p, p, p])
+        normalized_mac = normalize_mac_address(q)
+        where.append("""(
+            vi.node LIKE ?
+            OR vi.vm_uuid LIKE ?
+            OR COALESCE(vi.last_iface,'') LIKE ?
+            OR COALESCE(vi.last_bridge,'') LIKE ?
+            OR EXISTS (
+                SELECT 1 FROM node_bridge_addresses_latest b
+                 WHERE b.node=vi.node
+                   AND (
+                        COALESCE(b.primary_ipv4,'') LIKE ?
+                        OR COALESCE(b.ipv4_json,'[]') LIKE ?
+                        OR COALESCE(b.mac,'') LIKE ?
+                        OR (?<>'' AND LOWER(COALESCE(b.mac,''))=LOWER(?))
+                   )
+            )
+            OR EXISTS (
+                SELECT 1 FROM vm_iface_current i
+                 WHERE i.node=vi.node AND i.vm_uuid=vi.vm_uuid
+                   AND (
+                        COALESCE(i.iface,'') LIKE ?
+                        OR COALESCE(i.bridge,'') LIKE ?
+                        OR COALESCE(i.mac,'') LIKE ?
+                        OR (?<>'' AND LOWER(COALESCE(i.mac,''))=LOWER(?))
+                   )
+            )
+        )""")
+        params.extend([
+            p, p, p, p,
+            p, p, p, normalized_mac, normalized_mac,
+            p, p, p, normalized_mac, normalized_mac,
+        ])
     where_sql = "WHERE " + " AND ".join(where)
     conn = db()
     try:
@@ -25630,7 +25806,7 @@ def _v48134_admin_nodes_section(q, status, page_no, per_page):
         body = '<tr><td colspan="7" class="empty">No nodes match this filter</td></tr>'
     return f'''
     <div class="card"><div class="section-head"><div><h3>Node management</h3><p>{total:,} matching node(s). Filter active, hidden or stale inventory without loading everything.</p></div></div>
-    <form class="search" method="get"><input type="hidden" name="section" value="nodes"><input name="q" value="{escape(q,quote=True)}" placeholder="Search node, IP, VM, bridge or interface"><select name="status">{_v48134_status_options(status)}</select><select name="per_page"><option value="100" {'selected' if per_page==100 else ''}>100 rows</option><option value="200" {'selected' if per_page==200 else ''}>200 rows</option><option value="500" {'selected' if per_page==500 else ''}>500 rows</option></select><button>Filter</button><a class="clear" href="{url_for('admin_page',section='nodes')}">Reset</a></form>
+    <form class="search" method="get"><input type="hidden" name="section" value="nodes"><input name="q" value="{escape(q,quote=True)}" placeholder="Search node, IP, MAC, VM, bridge or interface"><select name="status">{_v48134_status_options(status)}</select><select name="per_page"><option value="100" {'selected' if per_page==100 else ''}>100 rows</option><option value="200" {'selected' if per_page==200 else ''}>200 rows</option><option value="500" {'selected' if per_page==500 else ''}>500 rows</option></select><button>Filter</button><a class="clear" href="{url_for('admin_page',section='nodes')}">Reset</a></form>
     <form id="bulk-nodes-form" method="post" action="{url_for('admin_bulk_nodes')}" onsubmit="return confirm('Apply selected node action?')"><input type="hidden" name="csrf_token" value="{escape(csrf_token(),quote=True)}"><div class="bulk-bar compact-bulk"><label><input type="checkbox" onclick="document.querySelectorAll('.node-select').forEach(cb=>cb.checked=this.checked)"> Select page</label><select name="action"><option value="hide">Hide</option><option value="restore">Restore</option><option value="purge_vms">Purge all VMs</option><option value="purge">Purge node</option></select><button class="btn-danger">Apply</button></div></form>
     <div class="table-wrap"><table class="admin-clean-table"><thead><tr><th></th><th>NODE / STATUS</th><th>PUBLIC IP</th><th>PRIVATE IP</th><th>VM</th><th>LAST PUSH</th><th>ACTION</th></tr></thead><tbody>{body}</tbody></table></div>{_v48134_admin_pager('nodes',q,status,page_no,max_page,per_page)}</div>'''
 
@@ -25652,7 +25828,7 @@ def _v48134_admin_vms_section(q, status, page_no, per_page):
         body = '<tr><td colspan="6" class="empty">No VMs match this filter</td></tr>'
     return f'''
     <div class="card"><div class="section-head"><div><h3>VM management</h3><p>{total:,} matching VM(s). Status filter separates active, hidden and stale inventory.</p></div></div>
-    <form class="search" method="get"><input type="hidden" name="section" value="vms"><input name="q" value="{escape(q,quote=True)}" placeholder="Search node, IP, VM UUID, bridge or interface"><select name="status">{_v48134_status_options(status)}</select><select name="per_page"><option value="100" {'selected' if per_page==100 else ''}>100 rows</option><option value="200" {'selected' if per_page==200 else ''}>200 rows</option><option value="500" {'selected' if per_page==500 else ''}>500 rows</option></select><button>Filter</button><a class="clear" href="{url_for('admin_page',section='vms')}">Reset</a></form>
+    <form class="search" method="get"><input type="hidden" name="section" value="vms"><input name="q" value="{escape(q,quote=True)}" placeholder="Search node, IP, MAC, VM UUID, bridge or interface"><select name="status">{_v48134_status_options(status)}</select><select name="per_page"><option value="100" {'selected' if per_page==100 else ''}>100 rows</option><option value="200" {'selected' if per_page==200 else ''}>200 rows</option><option value="500" {'selected' if per_page==500 else ''}>500 rows</option></select><button>Filter</button><a class="clear" href="{url_for('admin_page',section='vms')}">Reset</a></form>
     <form id="bulk-vms-form" method="post" action="{url_for('admin_bulk_vms')}" onsubmit="return confirm('Apply selected VM action?')"><input type="hidden" name="csrf_token" value="{escape(csrf_token(),quote=True)}"><div class="bulk-bar compact-bulk"><label><input type="checkbox" onclick="document.querySelectorAll('.vm-select').forEach(cb=>cb.checked=this.checked)"> Select page</label><select name="action"><option value="hide">Hide</option><option value="restore">Restore</option><option value="purge">Purge</option></select><button class="btn-danger">Apply</button></div></form>
     <div class="table-wrap"><table class="admin-clean-table"><thead><tr><th></th><th>NODE / IP</th><th>VM UUID</th><th>STATUS / SEEN</th><th>BRIDGE / IFACE</th><th>ACTION</th></tr></thead><tbody>{body}</tbody></table></div>{_v48134_admin_pager('vms',q,status,page_no,max_page,per_page)}</div>'''
 
@@ -28598,7 +28774,7 @@ def api_v1_performance_v48140():
             try: redis_ok = bool(client.ping())
             except Exception: redis_ok = False
         return jsonify({
-            "version":"50.5.7-prod-r1-safe-queue-canonical-vm",
+            "version":"50.5.7-prod-r2-mac-identity-search",
             "database":{
                 "engine":"PostgreSQL + TimescaleDB",
                 "database":pg.get("database"),
@@ -28903,7 +29079,7 @@ def page(title, content):
 # protocol. Agents submit one compact node aggregate for each completed local
 # 2-hour bucket. VM UUIDs and per-VM history are deliberately not stored.
 
-V5030_RELEASE = "50.5.7-prod-r1-safe-queue-canonical-vm"
+V5030_RELEASE = "50.5.7-prod-r2-mac-identity-search"
 V5030_BW_TABLE = "node_bandwidth_consumption_2h"
 V5030_BW_BUCKET_SECONDS = 2 * 3600
 V5030_BW_RETENTION_SECONDS = 7 * 86400
@@ -31508,7 +31684,7 @@ def _v5052_iface_rows(node, data_time, bucket, interval_seconds, interfaces):
             flags.append("SAMPLE_POOR")
         rows.append((
             ordinal, hour_start, day_start, bucket, node, bridge, iface, vm_uuid,
-            str(item.get("mac") or ""), data_time, sec,
+            normalize_mac_address(item.get("mac")), data_time, sec,
             rx_delta, tx_delta, rx_packets, tx_packets,
             rx_drop, tx_drop, rx_error, tx_error,
             rx_mbps, tx_mbps, rx_pps, tx_pps,
@@ -31960,14 +32136,14 @@ def _v5052_current_writer(conn, node, data_time, interval_seconds, interfaces, v
          ORDER BY node,vm_uuid,bridge,iface,ord DESC
       )
       INSERT INTO vm_iface_current(
-        node,vm_uuid,bridge,iface,last_seen,interval_seconds,
+        node,vm_uuid,bridge,iface,mac,last_seen,interval_seconds,
         rx_bytes,tx_bytes,rx_packets,tx_packets,
         rx_mbps,tx_mbps,total_mbps,rx_peak_mbps,tx_peak_mbps,total_peak_mbps,
         rx_pps,tx_pps,total_pps,rx_peak_pps,tx_peak_pps,total_peak_pps,
         sample_count,sample_expected,sample_max_gap,sample_quality,
         seconds_over_rx_pps,seconds_over_tx_pps,drops,errors
       )
-      SELECT p.node,p.vm_uuid,p.bridge,p.iface,p.last_push,p.interval_seconds,
+      SELECT p.node,p.vm_uuid,p.bridge,p.iface,COALESCE(p.mac,''),p.last_push,p.interval_seconds,
              p.rx_delta,p.tx_delta,p.rx_packets_delta,p.tx_packets_delta,
              p.rx_mbps,p.tx_mbps,p.rx_mbps+p.tx_mbps,
              p.rx_mbps_peak,p.tx_mbps_peak,GREATEST(p.rx_mbps+p.tx_mbps,p.rx_mbps_peak+p.tx_mbps_peak),
@@ -31978,6 +32154,7 @@ def _v5052_current_writer(conn, node, data_time, interval_seconds, interfaces, v
              p.rx_drop_delta+p.tx_drop_delta,p.rx_error_delta+p.tx_error_delta
         FROM picked p LEFT JOIN pg_temp.vi5052_sync_stage s USING(vm_uuid)
       ON CONFLICT(node,vm_uuid,bridge,iface) DO UPDATE SET
+        mac=CASE WHEN excluded.mac<>'' THEN excluded.mac ELSE vm_iface_current.mac END,
         last_seen=excluded.last_seen,interval_seconds=excluded.interval_seconds,
         rx_bytes=excluded.rx_bytes,tx_bytes=excluded.tx_bytes,
         rx_packets=excluded.rx_packets,tx_packets=excluded.tx_packets,
@@ -32392,7 +32569,7 @@ def valid_agent_token(value):
 # ---------------------------------------------------------------------------
 # 50.5.7 safe FIFO maintenance + canonical VM detail correctness
 # ---------------------------------------------------------------------------
-V5057_VERSION = "50.5.7-prod-r1-safe-queue-canonical-vm"
+V5057_VERSION = "50.5.7-prod-r2-mac-identity-search"
 
 
 def enqueue_maintenance_job(action, parameters, actor):
@@ -32640,6 +32817,7 @@ def resolve_direct_vm_search(q):
     if not q:
         return None
     like = like_pattern(q)
+    normalized_mac = normalize_mac_address(q)
     conn = db()
     try:
         rows = conn.execute("""
@@ -32665,10 +32843,24 @@ def resolve_direct_vm_search(q):
               FROM vm_inventory
              WHERE deleted_at IS NULL AND COALESCE(status,'active')!='hidden'
                AND (vm_uuid LIKE ? OR COALESCE(last_iface,'')=? COLLATE NOCASE)
+            UNION ALL
+            SELECT i.node,i.vm_uuid,i.last_seen,4 source_rank,
+                   CASE WHEN LOWER(COALESCE(i.mac,''))=LOWER(?) THEN 1 ELSE 0 END exact_uuid
+              FROM vm_iface_current i
+              LEFT JOIN vm_inventory vi ON vi.node=i.node AND vi.vm_uuid=i.vm_uuid
+             WHERE COALESCE(vi.status,'active')!='hidden' AND vi.deleted_at IS NULL
+               AND (
+                    COALESCE(i.iface,'')=? COLLATE NOCASE
+                    OR COALESCE(i.mac,'') LIKE ?
+                    OR (?<>'' AND LOWER(COALESCE(i.mac,''))=LOWER(?))
+               )
           ) candidates
           ORDER BY exact_uuid DESC,last_seen DESC,source_rank ASC
           LIMIT 300
-        """, (q,like,q,like,q,q,like,q,q,like,q)).fetchall()
+        """, (
+            q,like,q,like,q,q,like,q,q,like,q,
+            normalized_mac,q,like,normalized_mac,normalized_mac,
+        )).fetchall()
     finally:
         conn.close()
     if not rows:
@@ -32933,6 +33125,107 @@ def vm_page_v5057():
     return _v5057_vm_page_route_base()
 
 app.view_functions["vm_page"] = vm_page_v5057
+
+def get_vm_interface_identities(node, vm_uuid, bridge="", iface=""):
+    """Return all current virtual NIC identities for one VM.
+
+    MAC is interface inventory metadata. It is read from the bounded current
+    table even when an older retained metrics snapshot is selected.
+    """
+    params = [node, vm_uuid]
+    where = "WHERE node=? AND vm_uuid=?"
+    if bridge:
+        where += " AND bridge=?"
+        params.append(bridge)
+    if iface:
+        where += " AND iface=?"
+        params.append(iface)
+    conn = db()
+    try:
+        return conn.execute(f"""
+            SELECT iface,bridge,mac,last_seen
+              FROM vm_iface_current
+              {where}
+             ORDER BY CASE bridge WHEN ? THEN 0 WHEN ? THEN 1 ELSE 2 END,
+                      iface COLLATE NOCASE
+        """, params + [PUBLIC_BRIDGE, PRIVATE_BRIDGE]).fetchall()
+    finally:
+        conn.close()
+
+
+def vm_network_identity_card(node, vm_uuid, bridge="", iface=""):
+    rows = get_vm_interface_identities(node, vm_uuid, bridge=bridge, iface=iface)
+    if not rows:
+        return '<div class="card vm-network-identity-card"><h3>VM Network Identity</h3><div class="empty">MAC has not been reported yet. Existing agents will populate it on the next accepted push.</div></div>'
+    cards = []
+    for nic_iface, nic_bridge, nic_mac, seen in rows:
+        cards.append(f'''
+          <div class="vm-network-identity-row">
+            <div class="stat"><span>Interface</span><b class="mono">{escape(nic_iface or '-')}</b></div>
+            <div class="stat"><span>MAC</span><b class="mono">{escape(normalize_mac_address(nic_mac) or '-')}</b></div>
+            <div class="stat"><span>VM UUID</span><b class="mono">{escape(vm_uuid)}</b></div>
+            <div class="stat"><span>Node</span><b class="mono">{escape(node)}</b></div>
+            <div class="stat"><span>Bridge</span><b class="mono">{escape(nic_bridge or '-')}</b></div>
+            <div class="stat"><span>Seen</span><b>{fmt_push(seen)}</b></div>
+          </div>''')
+    return f'''
+    <div class="card vm-network-identity-card">
+      <div class="table-title-row">
+        <div><h3>VM Network Identity</h3><div class="table-hint">Virtual NIC identity reported by libvirt. A unique MAC search opens this VM directly.</div></div>
+        <div class="count-badges"><span>NICs <b>{len(rows)}</b></span></div>
+      </div>
+      <div class="vm-network-identity-list">{"".join(cards)}</div>
+    </div>'''
+
+
+V5057_MAC_IDENTITY_CSS = r'''
+<style id="v5057-mac-identity">
+.vm-network-identity-list{display:flex;flex-direction:column;gap:10px}
+.vm-network-identity-row{display:grid;grid-template-columns:minmax(150px,1fr) minmax(180px,1.15fr) minmax(230px,1.5fr) minmax(150px,1fr) minmax(120px,.8fr) minmax(130px,.85fr);gap:10px}
+.vm-network-identity-row .stat{min-width:0}
+.vm-network-identity-row .stat span{display:block;font-size:10px;font-weight:900;letter-spacing:.055em;color:#667085}
+.vm-network-identity-row .stat b{display:block;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nic-badge .nic-address{display:block}
+html[data-theme=dark] .vm-network-identity-row .stat span{color:#9fb0c4}
+@media(max-width:1200px){.vm-network-identity-row{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:700px){.vm-network-identity-row{grid-template-columns:1fr}}
+</style>
+'''
+
+
+_v5057_mac_vm_page_base = app.view_functions.get("vm_page")
+
+
+def vm_page_v5057_mac_identity():
+    response = _v5057_mac_vm_page_base()
+    try:
+        if not hasattr(response, "get_data"):
+            return response
+        node = (request.args.get("node") or "").strip()
+        vm_uuid = (request.args.get("vm_uuid") or "").strip()
+        bridge = (request.args.get("bridge") or "").strip()
+        iface = (request.args.get("iface") or "").strip()
+        if not node or not vm_uuid:
+            return response
+        html = response.get_data(as_text=True)
+        if 'id="v5057-mac-identity"' not in html:
+            html = html.replace("</head>", V5057_MAC_IDENTITY_CSS + "</head>", 1)
+        if "vm-network-identity-card" not in html:
+            card = vm_network_identity_card(node, vm_uuid)
+            marker = '<div class="card top-card">'
+            pos = html.find(marker)
+            if pos >= 0:
+                html = html[:pos] + card + html[pos:]
+            else:
+                html += card
+        response.set_data(html)
+    except Exception:
+        app.logger.exception("Could not apply VM MAC identity UI")
+    return response
+
+
+if _v5057_mac_vm_page_base is not None:
+    app.view_functions["vm_page"] = vm_page_v5057_mac_identity
 
 # 50.5.7 canonical live Node detail. The 5m page now reads the same bounded
 # current rows as Dashboard/Top VM. Historical/custom-time views keep the exact

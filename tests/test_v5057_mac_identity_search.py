@@ -32,7 +32,7 @@ def load_normalizer():
 
 
 def test_release_identity():
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.7-prod-r2-mac-identity-search"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.7-prod-r3-mac-push-hotfix"
 
 
 def test_existing_agent_already_reports_vm_and_physical_mac():
@@ -115,3 +115,15 @@ def test_vm_and_node_detail_show_requested_identity():
     assert "Physical MAC" in node_badges
     assert "FROM node_physical_net_latest" in physical_period
     assert '"bridge_mac"' in physical_period
+
+
+def test_bridge_and_physical_mac_upserts_reference_their_own_target_tables():
+    push = last_function(APP, "push")
+    bridge_start = push.index("INSERT INTO node_bridge_addresses_latest")
+    physical_start = push.index("INSERT INTO node_physical_net_latest", bridge_start)
+    bridge_upsert = push[bridge_start:physical_start]
+    physical_upsert = push[physical_start:]
+
+    assert "ELSE node_bridge_addresses_latest.mac" in bridge_upsert
+    assert "ELSE node_physical_net_latest.mac" not in bridge_upsert
+    assert "ELSE node_physical_net_latest.mac" in physical_upsert

@@ -1,4 +1,4 @@
-## 50.5.7-prod-r2-mac-identity-search
+## 50.5.7-prod-r3-mac-push-hotfix
 
 - Persisted each VM virtual NIC MAC from the existing libvirt Agent payload in `vm_iface_current` without enabling legacy raw `usage` writes.
 - Persisted the physical uplink MAC associated with the public/private `br0` and `br1` roles in `node_physical_net_latest`; the existing bridge-device MAC remains available separately in `node_bridge_addresses_latest`.
@@ -7,7 +7,7 @@
 - Added physical-uplink MAC badges to Node detail and additive migration `008_mac_identity_search.sql`.
 - Existing Agents require no reinstall. Empty MAC fields populate on the next accepted Agent push.
 
-## 50.5.7-prod-r1-safe-queue-canonical-vm
+## 50.5.7-prod-r3-mac-push-hotfix
 
 - Replaced the one-row Maintenance gate with a PostgreSQL FIFO queue. Multiple routine jobs can wait; one dispatcher atomically claims one `starting/running` worker with `FOR UPDATE SKIP LOCKED`.
 - Added 30-second worker heartbeats, a one-minute systemd watchdog, stale-unit recovery, queued-job cancellation and automatic dispatch of the next job.

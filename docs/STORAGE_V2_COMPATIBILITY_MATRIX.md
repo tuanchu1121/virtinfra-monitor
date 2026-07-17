@@ -1,6 +1,6 @@
 # Storage V2 compatibility matrix
 
-Release: `50.5.7-prod-r2-mac-identity-search`
+Release: `50.5.7-prod-r3-mac-push-hotfix`
 
 Status values: **UNCHANGED**, **V2 READ**, **V2 WRITE**, **ADDITIVE**, **FALLBACK AVAILABLE**.
 

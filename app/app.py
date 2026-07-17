@@ -10773,7 +10773,7 @@ def push():
                     mtu=excluded.mtu,
                     mac=CASE
                         WHEN excluded.mac<>'' THEN excluded.mac
-                        ELSE node_physical_net_latest.mac
+                        ELSE node_bridge_addresses_latest.mac
                     END
             """, (
                 node, role, bridge, data_time,
@@ -10867,7 +10867,10 @@ def push():
                     tx_error_delta=excluded.tx_error_delta,
                     alert_level=excluded.alert_level,
                     alert_flags=excluded.alert_flags,
-                    mac=excluded.mac
+                    mac=CASE
+                        WHEN excluded.mac<>'' THEN excluded.mac
+                        ELSE node_physical_net_latest.mac
+                    END
             """, (
                 node, role, bridge, iface, data_time, interval_seconds,
                 rx_mbps, tx_mbps, rx_pps, tx_pps,
@@ -28774,7 +28777,7 @@ def api_v1_performance_v48140():
             try: redis_ok = bool(client.ping())
             except Exception: redis_ok = False
         return jsonify({
-            "version":"50.5.7-prod-r2-mac-identity-search",
+            "version":"50.5.7-prod-r3-mac-push-hotfix",
             "database":{
                 "engine":"PostgreSQL + TimescaleDB",
                 "database":pg.get("database"),
@@ -29079,7 +29082,7 @@ def page(title, content):
 # protocol. Agents submit one compact node aggregate for each completed local
 # 2-hour bucket. VM UUIDs and per-VM history are deliberately not stored.
 
-V5030_RELEASE = "50.5.7-prod-r2-mac-identity-search"
+V5030_RELEASE = "50.5.7-prod-r3-mac-push-hotfix"
 V5030_BW_TABLE = "node_bandwidth_consumption_2h"
 V5030_BW_BUCKET_SECONDS = 2 * 3600
 V5030_BW_RETENTION_SECONDS = 7 * 86400
@@ -32569,7 +32572,7 @@ def valid_agent_token(value):
 # ---------------------------------------------------------------------------
 # 50.5.7 safe FIFO maintenance + canonical VM detail correctness
 # ---------------------------------------------------------------------------
-V5057_VERSION = "50.5.7-prod-r2-mac-identity-search"
+V5057_VERSION = "50.5.7-prod-r3-mac-push-hotfix"
 
 
 def enqueue_maintenance_job(action, parameters, actor):

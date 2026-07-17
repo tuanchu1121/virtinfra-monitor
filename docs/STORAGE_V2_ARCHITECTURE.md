@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.7-prod-r2-mac-identity-search`
+Release: `50.5.7-prod-r3-mac-push-hotfix`
 
 ## Final data path
 

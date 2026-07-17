@@ -1,8 +1,8 @@
 # SOURCE OF TRUTH VẬN HÀNH
 
-> Release: `50.5.7-prod-r2-mac-identity-search`
+> Release: `50.5.7-prod-r3-mac-push-hotfix`
 
-> Release: `50.5.7-prod-r2-mac-identity-search`
+> Release: `50.5.7-prod-r3-mac-push-hotfix`
 >
 > Tài liệu này được đối chiếu trực tiếp với `install.sh`, `deploy/postgres/*`, `deploy/agent/*`, `postgres/docker-compose.yml`, `app/app.py` và các test contract hiện tại.
 

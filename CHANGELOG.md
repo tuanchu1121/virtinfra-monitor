@@ -1,3 +1,14 @@
+# 50.5.8-prod-r3-consumption-vm-node
+
+- Replaced only the effective Consumption page with separate **VM Consumption** and **Node Consumption** tabs.
+- Added the fixed ranges `1H`, `2H`, `6H`, `12H`, `24H`, `2D`, and `7D`; the default is `24H` and the page uses the monitor's existing timezone without adding a timezone selector.
+- Added four range-aware overview cards: Physical Public, Physical Private, VM Public, and VM Private, each with RX, TX, and Total.
+- VM rows reuse existing `bandwidth_hourly` and `bandwidth_daily` data, normalize tap direction to the guest perspective, aggregate across migrations by UUID, and do not create a second VM history table.
+- VM search supports UUID, current node, node public IP, and VM MAC while displaying only UUID and Node / Node IP.
+- Node rows show aggregate Physical Public and Physical Private RX/TX/Total from existing physical history and compact 2-hour accounting; no Difference or fixed Card 1/Card 2 columns are shown.
+- Added server-side sorting, pagination, Coverage filtering, and `100 / 200 / 500` row limits above the table. Default sorting is VM Public Total descending or Node Physical Public Total descending.
+- Agent collection, `/push`, `/push/bandwidth-consumption`, Abuse, Dashboard, Top VM, Storage I/O, Node Health, retention, maintenance, database write paths, and five-minute scheduling are unchanged.
+
 # 50.5.8-prod-r2-friendly-agent-logs
 
 - Agent success logging is now a single neutral `cycle complete ... delivery=ok` line.

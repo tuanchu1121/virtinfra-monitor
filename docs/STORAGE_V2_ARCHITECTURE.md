@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.8-prod-r2-friendly-agent-logs`
+Release: `50.5.8-prod-r3-consumption-vm-node`
 
 ## Final data path
 

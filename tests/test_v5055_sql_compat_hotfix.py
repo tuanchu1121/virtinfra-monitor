@@ -17,7 +17,7 @@ def _load_bw_pg():
 
 
 def test_release_identity_and_native_copy_clone_contract() -> None:
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.8-prod-r2-friendly-agent-logs"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.8-prod-r3-consumption-vm-node"
     app = APP_PATH.read_text(encoding="utf-8")
     pg = PG_PATH.read_text(encoding="utf-8")
     assert "(LIKE public.{table} INCLUDING DEFAULTS) ON COMMIT DELETE ROWS" in app

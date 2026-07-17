@@ -74,7 +74,7 @@ def main() -> int:
         result = module.run_retention(dry_run=False)
         print(json.dumps({
             "ok": True,
-            "version": "50.5.8-prod-r2-friendly-agent-logs",
+            "version": "50.5.8-prod-r3-consumption-vm-node",
             "started_at": started,
             "finished_at": int(time.time()),
             "result": result,

@@ -1,6 +1,6 @@
 # Storage V2 compatibility matrix
 
-Release: `50.5.8-prod-r2-friendly-agent-logs`
+Release: `50.5.8-prod-r3-consumption-vm-node`
 
 Status values: **UNCHANGED**, **V2 READ**, **V2 WRITE**, **ADDITIVE**, **FALLBACK AVAILABLE**.
 

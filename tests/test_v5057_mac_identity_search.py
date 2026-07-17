@@ -32,7 +32,7 @@ def load_normalizer():
 
 
 def test_release_identity():
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.7-prod-r3-mac-push-hotfix"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.8-prod-r1-low-io-compatible"
 
 
 def test_existing_agent_already_reports_vm_and_physical_mac():
@@ -66,8 +66,10 @@ def test_additive_schema_and_indexes_exist():
 def test_application_schema_can_self_heal_existing_installations():
     assert 'ensure_column(conn, "vm_iface_current", "mac"' in APP
     assert 'ensure_column(conn, "node_physical_net_latest", "mac"' in APP
-    assert "idx_vm_iface_current_mac" in APP
-    assert "idx_node_physical_net_latest_mac" in APP
+    assert "vm_nic_identity_lookup" in APP
+    assert "node_nic_identity_lookup" in APP
+    assert "idx_vm_iface_current_mac ON vm_iface_current" not in APP
+    assert "idx_node_physical_net_latest_mac ON node_physical_net_latest" not in APP
 
 
 def test_vm_mac_survives_native_copy_and_current_merge():
@@ -94,9 +96,10 @@ def test_search_accepts_mac_and_opens_unique_vm_directly():
     top = last_function(APP, "top_page_v484")
     nodes = last_function(APP, "_v48134_admin_nodes")
     vms = last_function(APP, "_v48134_admin_vms")
-    assert "FROM vm_iface_current" in resolver
+    assert "FROM vm_nic_identity_lookup" in resolver
+    assert "JOIN vm_iface_current" in resolver
     assert "normalize_mac_address(q)" in resolver
-    assert "COALESCE(i.mac,'') LIKE ?" in resolver
+    assert "l.mac LIKE ?" in resolver
     assert 'result.update({"iface":"","bridge":""})' in resolver
     assert "resolve_direct_vm_search(q)" in top
     assert "node_physical_net_latest" in nodes

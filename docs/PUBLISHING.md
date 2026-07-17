@@ -17,13 +17,13 @@ Assume:
 
 ```text
 checkout: /.data/agent
-archive:  /root/virtinfra-monitor-50.5.7-prod-r3-mac-push-hotfix-github-production.zip
+archive:  /root/virtinfra-monitor-50.5.8-prod-r1-low-io-compatible-github-production.zip
 ```
 
 ```bash
 set -euo pipefail
 
-ZIP=/root/virtinfra-monitor-50.5.7-prod-r3-mac-push-hotfix-github-production.zip
+ZIP=/root/virtinfra-monitor-50.5.8-prod-r1-low-io-compatible-github-production.zip
 REPO=/.data/agent
 TMP=/tmp/virtinfra-monitor-v50-publish
 
@@ -64,7 +64,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Expected:
 
 ```text
-50.5.7-prod-r3-mac-push-hotfix
+50.5.8-prod-r1-low-io-compatible
 ```
 
 ## Secret review

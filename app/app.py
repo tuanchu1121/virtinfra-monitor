@@ -10,6 +10,8 @@ import math
 import shutil
 import platform
 import json
+import gzip
+import io
 import subprocess
 import sys
 from datetime import datetime
@@ -18,6 +20,13 @@ from html import escape
 from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
+
+# 50.5.8 low-I/O transport guardrails. The Flask body limit applies to the
+# compressed request body; a separate post-decompression limit prevents gzip
+# expansion from consuming unbounded memory. Plain JSON agents remain valid.
+MAX_COMPRESSED_PUSH_BYTES = max(1024 * 1024, int(os.environ.get("BW_MAX_COMPRESSED_PUSH_BYTES", str(16 * 1024 * 1024))))
+MAX_UNCOMPRESSED_PUSH_BYTES = max(MAX_COMPRESSED_PUSH_BYTES, int(os.environ.get("BW_MAX_UNCOMPRESSED_PUSH_BYTES", str(64 * 1024 * 1024))))
+app.config["MAX_CONTENT_LENGTH"] = MAX_COMPRESSED_PUSH_BYTES
 
 # v48.6.2: VM Abuse page, fixed node VM perf join, aligned tables, queued purge batches
 # v48.8.4: AVG Mbps abuse, custom snapshot across metric pages, physical-NIC SRC fix
@@ -211,6 +220,33 @@ def normalize_mac_address(value):
     if len(compact) != 12:
         return ""
     return ":".join(compact[pos:pos + 2] for pos in range(0, 12, 2))
+
+
+def read_agent_json_request():
+    """Read a plain or gzip-compressed Agent JSON object with hard limits."""
+    raw = request.get_data(cache=False, as_text=False)
+    if not raw:
+        return {}
+    encoding = str(request.headers.get("Content-Encoding") or "").strip().lower()
+    if encoding in ("", "identity"):
+        decoded = raw
+    elif encoding == "gzip":
+        try:
+            with gzip.GzipFile(fileobj=io.BytesIO(raw), mode="rb") as stream:
+                decoded = stream.read(MAX_UNCOMPRESSED_PUSH_BYTES + 1)
+        except (OSError, EOFError) as exc:
+            raise ValueError("invalid gzip payload") from exc
+    else:
+        raise ValueError("unsupported content encoding")
+    if len(decoded) > MAX_UNCOMPRESSED_PUSH_BYTES:
+        raise ValueError("uncompressed payload too large")
+    try:
+        data = json.loads(decoded.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("invalid json payload") from exc
+    if not isinstance(data, dict):
+        raise ValueError("payload is not a JSON object")
+    return data
 
 
 def db():
@@ -866,7 +902,8 @@ def db():
     conn.execute("CREATE INDEX IF NOT EXISTS idx_node_stats_packets ON node_stats(node, last_push, rx_packets_delta, tx_packets_delta)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_vm_perf_node_vm_time ON vm_perf_stats(node, vm_uuid, time)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_vm_perf_bucket_node ON vm_perf_stats(bucket, node)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_vm_latest_node_seen ON vm_latest_metrics(node, last_seen)")
+    # The primary key (node, vm_uuid) already supports node-scoped current reads.
+    # Avoid a last_seen index that would be rewritten for every VM every push.
     conn.execute("CREATE INDEX IF NOT EXISTS idx_vm_location_node_seen ON vm_location_latest(node, last_seen)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_vm_migration_events_time ON vm_migration_events(time)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_vm_migration_events_vm_time ON vm_migration_events(vm_uuid, time)")
@@ -881,7 +918,8 @@ def db():
     conn.execute("CREATE INDEX IF NOT EXISTS idx_node_physical_net_stats_node_time ON node_physical_net_stats(node, time)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_node_physical_net_stats_bucket_node ON node_physical_net_stats(bucket, node)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_node_physical_net_stats_role ON node_physical_net_stats(node, role, bucket)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_node_physical_net_latest_seen ON node_physical_net_latest(last_seen)")
+    # node_physical_net_latest has only public/private rows per node; a
+    # volatile last_seen index costs more to maintain than it saves.
     conn.execute("CREATE INDEX IF NOT EXISTS idx_node_bridge_addresses_seen ON node_bridge_addresses_latest(last_seen)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_agent_health_stats_node_time ON agent_health_stats(node, time)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_agent_health_stats_bucket_node ON agent_health_stats(bucket, node)")
@@ -974,11 +1012,10 @@ def db():
       disk_read_iops REAL NOT NULL DEFAULT 0, disk_write_iops REAL NOT NULL DEFAULT 0,
       PRIMARY KEY(node, vm_uuid)
     );
-    CREATE INDEX IF NOT EXISTS idx_vm_current_fast_seen ON vm_current_fast(last_seen DESC);
-    CREATE INDEX IF NOT EXISTS idx_vm_current_fast_node_seen ON vm_current_fast(node,last_seen DESC);
-    CREATE INDEX IF NOT EXISTS idx_vm_iface_current_node_bridge ON vm_iface_current(node,bridge,last_seen DESC);
-    CREATE INDEX IF NOT EXISTS idx_node_current_fast_seen ON node_current_fast(last_seen DESC);
-    CREATE INDEX IF NOT EXISTS idx_vm_abuse_active ON vm_abuse_state(is_abuse,severity DESC,last_seen DESC);
+    CREATE INDEX IF NOT EXISTS idx_vm_iface_current_node_bridge ON vm_iface_current(node,bridge);
+    CREATE INDEX IF NOT EXISTS idx_vm_abuse_active
+      ON vm_abuse_state(severity DESC,last_seen DESC,node,vm_uuid)
+      WHERE is_abuse=1;
     CREATE TABLE IF NOT EXISTS vm_abuse_events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       event_time INTEGER NOT NULL,
@@ -1013,8 +1050,23 @@ def db():
     """)
     ensure_column(conn, "vm_iface_current", "mac", "TEXT NOT NULL DEFAULT ''")
     ensure_column(conn, "node_physical_net_latest", "mac", "TEXT NOT NULL DEFAULT ''")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_vm_iface_current_mac ON vm_iface_current(LOWER(mac))")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_node_physical_net_latest_mac ON node_physical_net_latest(LOWER(mac))")
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS vm_nic_identity_lookup (
+      node TEXT NOT NULL, vm_uuid TEXT NOT NULL, bridge TEXT NOT NULL, iface TEXT NOT NULL,
+      mac TEXT NOT NULL DEFAULT '', first_seen INTEGER NOT NULL, changed_at INTEGER NOT NULL,
+      PRIMARY KEY(node,vm_uuid,bridge,iface)
+    );
+    CREATE INDEX IF NOT EXISTS idx_vm_nic_identity_lookup_mac
+      ON vm_nic_identity_lookup(mac) WHERE mac<>'';
+    CREATE TABLE IF NOT EXISTS node_nic_identity_lookup (
+      node TEXT NOT NULL, role TEXT NOT NULL, bridge TEXT NOT NULL DEFAULT '',
+      iface TEXT NOT NULL DEFAULT '', mac TEXT NOT NULL DEFAULT '',
+      first_seen INTEGER NOT NULL, changed_at INTEGER NOT NULL,
+      PRIMARY KEY(node,role)
+    );
+    CREATE INDEX IF NOT EXISTS idx_node_nic_identity_lookup_mac
+      ON node_nic_identity_lookup(mac) WHERE mac<>'';
+    """)
     conn.commit()
     return conn
 
@@ -10564,10 +10616,11 @@ def push():
         log_node_event("bad_token", node="", status_code=401, detail="invalid X-Token")
         return {"error": "unauthorized"}, 401
 
-    data = request.get_json(silent=True) or {}
-    if not isinstance(data, dict):
-        log_node_event("bad_payload", node="", status_code=400, detail="payload is not a JSON object")
-        return {"error": "bad_payload"}, 400
+    try:
+        data = read_agent_json_request()
+    except ValueError as exc:
+        log_node_event("bad_payload", node="", status_code=400, detail=str(exc))
+        return {"error": "bad_payload", "detail": str(exc)}, 400
 
     data_time = safe_int(data.get("time"), now_ts())
     node = str(data.get("node") or "").strip()
@@ -10879,6 +10932,20 @@ def push():
                 alert_level, alert_flags,
                 normalize_mac_address(item.get("mac")),
             ))
+            physical_mac = normalize_mac_address(item.get("mac"))
+            if physical_mac:
+                conn.execute("""
+                    INSERT INTO node_nic_identity_lookup(
+                        node,role,bridge,iface,mac,first_seen,changed_at
+                    ) VALUES (?,?,?,?,?,?,?)
+                    ON CONFLICT(node,role) DO UPDATE SET
+                        bridge=excluded.bridge,iface=excluded.iface,mac=excluded.mac,
+                        changed_at=excluded.changed_at
+                    WHERE (node_nic_identity_lookup.bridge,
+                           node_nic_identity_lookup.iface,
+                           node_nic_identity_lookup.mac)
+                      IS DISTINCT FROM (excluded.bridge,excluded.iface,excluded.mac)
+                """, (node, role, bridge, iface, physical_mac, data_time, data_time))
 
         for vm_item in vms:
             if not isinstance(vm_item, dict):
@@ -13849,11 +13916,45 @@ def get_node_rows(period, q="", sort_by="node", order="asc", target_ts=None):
     search_sql = ""
     if q:
         p = like_pattern(q)
+        normalized_mac = normalize_mac_address(q)
         search_sql = """ AND (
-          n.node LIKE ? OR EXISTS(SELECT 1 FROM vm_current_fast v WHERE v.node=n.node AND v.vm_uuid LIKE ?)
-          OR EXISTS(SELECT 1 FROM node_bridge_addresses_latest b WHERE b.node=n.node AND (b.primary_ipv4 LIKE ? OR b.ipv4_json LIKE ?))
+          n.node LIKE ?
+          OR EXISTS(SELECT 1 FROM vm_current_fast v WHERE v.node=n.node AND v.vm_uuid LIKE ?)
+          OR EXISTS(
+               SELECT 1 FROM node_bridge_addresses_latest b
+                WHERE b.node=n.node AND (
+                     b.primary_ipv4 LIKE ? OR b.ipv4_json LIKE ?
+                     OR b.primary_ipv6 LIKE ? OR b.ipv6_json LIKE ?
+                     OR b.bridge LIKE ? OR b.mac LIKE ?
+                     OR (?<>'' AND b.mac=?)
+                )
+          )
+          OR EXISTS(
+               SELECT 1 FROM vm_nic_identity_lookup l
+               JOIN vm_iface_current i
+                 ON i.node=l.node AND i.vm_uuid=l.vm_uuid
+                AND i.bridge=l.bridge AND i.iface=l.iface AND i.mac=l.mac
+                WHERE l.node=n.node AND (
+                     i.vm_uuid LIKE ? OR i.iface LIKE ? OR i.bridge LIKE ?
+                     OR l.mac LIKE ? OR (?<>'' AND l.mac=?)
+                )
+          )
+          OR EXISTS(
+               SELECT 1 FROM node_nic_identity_lookup l
+               JOIN node_physical_net_latest pn
+                 ON pn.node=l.node AND pn.role=l.role AND pn.mac=l.mac
+                WHERE l.node=n.node AND (
+                     pn.iface LIKE ? OR pn.bridge LIKE ? OR pn.role LIKE ?
+                     OR l.mac LIKE ? OR (?<>'' AND l.mac=?)
+                )
+          )
         )"""
-        params.extend([p,p,p,p])
+        params.extend([
+            p,p,
+            p,p,p,p,p,p,normalized_mac,normalized_mac,
+            p,p,p,p,normalized_mac,normalized_mac,
+            p,p,p,p,normalized_mac,normalized_mac,
+        ])
     conn = db()
     try:
         rows = conn.execute(f"""
@@ -14879,12 +14980,6 @@ def _v4810_migrate_schema():
         );
         CREATE INDEX IF NOT EXISTS idx_abuse_policy_versions_time
           ON abuse_policy_versions(changed_at DESC, revision DESC);
-        CREATE INDEX IF NOT EXISTS idx_vm_abuse_policy_revision
-          ON vm_abuse_state(policy_revision, last_seen DESC);
-        CREATE INDEX IF NOT EXISTS idx_vm_abuse_progress
-          ON vm_abuse_state(is_abuse, cpu_streak_cycles, disk_streak_cycles,
-                            network_rx_mbps_streak_cycles, network_tx_mbps_streak_cycles,
-                            last_seen DESC);
         """)
 
         now = now_ts()
@@ -24302,12 +24397,10 @@ def ensure_disk_io_schema(conn):
       last_seen INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY(node, vm_uuid, target, source)
     );
-    CREATE INDEX IF NOT EXISTS idx_vm_disk_current_seen
-      ON vm_disk_current(last_seen DESC);
-    CREATE INDEX IF NOT EXISTS idx_vm_disk_current_storage
-      ON vm_disk_current(node, mount, write_iops DESC, write_bps DESC);
     CREATE INDEX IF NOT EXISTS idx_vm_disk_current_vm
       ON vm_disk_current(node, vm_uuid, role, target);
+    CREATE INDEX IF NOT EXISTS idx_vm_disk_current_mount
+      ON vm_disk_current(role, mount, node, vm_uuid);
 
     CREATE TABLE IF NOT EXISTS node_storage_current (
       node TEXT NOT NULL,
@@ -24328,10 +24421,6 @@ def ensure_disk_io_schema(conn):
       last_seen INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY(node, mount)
     );
-    CREATE INDEX IF NOT EXISTS idx_node_storage_current_seen
-      ON node_storage_current(last_seen DESC);
-    CREATE INDEX IF NOT EXISTS idx_node_storage_current_load
-      ON node_storage_current(write_iops DESC, write_bps DESC);
     """)
 
 
@@ -25676,9 +25765,15 @@ def _v48134_admin_nodes(q, status, page_no, per_page):
                         i.vm_uuid LIKE ?
                         OR COALESCE(i.iface,'') LIKE ?
                         OR COALESCE(i.bridge,'') LIKE ?
-                        OR COALESCE(i.mac,'') LIKE ?
-                        OR (?<>'' AND LOWER(COALESCE(i.mac,''))=LOWER(?))
                    )
+            )
+            OR EXISTS (
+                SELECT 1 FROM vm_nic_identity_lookup l
+                JOIN vm_iface_current i
+                  ON i.node=l.node AND i.vm_uuid=l.vm_uuid
+                 AND i.bridge=l.bridge AND i.iface=l.iface AND i.mac=l.mac
+                 WHERE l.node=ni.node
+                   AND (l.mac LIKE ? OR (?<>'' AND l.mac=?))
             )
             OR EXISTS (
                 SELECT 1 FROM node_physical_net_latest pn
@@ -25686,17 +25781,24 @@ def _v48134_admin_nodes(q, status, page_no, per_page):
                    AND (
                         COALESCE(pn.iface,'') LIKE ?
                         OR COALESCE(pn.bridge,'') LIKE ?
-                        OR COALESCE(pn.mac,'') LIKE ?
-                        OR (?<>'' AND LOWER(COALESCE(pn.mac,''))=LOWER(?))
                    )
+            )
+            OR EXISTS (
+                SELECT 1 FROM node_nic_identity_lookup l
+                JOIN node_physical_net_latest pn
+                  ON pn.node=l.node AND pn.role=l.role AND pn.mac=l.mac
+                 WHERE l.node=ni.node
+                   AND (l.mac LIKE ? OR (?<>'' AND l.mac=?))
             )
         )""")
         params.extend([
             p,
             p, p, p, normalized_mac, normalized_mac,
             p, p, p,
-            p, p, p, p, normalized_mac, normalized_mac,
-            p, p, p, normalized_mac, normalized_mac,
+            p, p, p,
+            p, normalized_mac, normalized_mac,
+            p, p,
+            p, normalized_mac, normalized_mac,
         ])
     where_sql = "WHERE " + " AND ".join(where)
     conn = db()
@@ -25753,15 +25855,22 @@ def _v48134_admin_vms(q, status, page_no, per_page):
                    AND (
                         COALESCE(i.iface,'') LIKE ?
                         OR COALESCE(i.bridge,'') LIKE ?
-                        OR COALESCE(i.mac,'') LIKE ?
-                        OR (?<>'' AND LOWER(COALESCE(i.mac,''))=LOWER(?))
                    )
+            )
+            OR EXISTS (
+                SELECT 1 FROM vm_nic_identity_lookup l
+                JOIN vm_iface_current i
+                  ON i.node=l.node AND i.vm_uuid=l.vm_uuid
+                 AND i.bridge=l.bridge AND i.iface=l.iface AND i.mac=l.mac
+                 WHERE l.node=vi.node AND l.vm_uuid=vi.vm_uuid
+                   AND (l.mac LIKE ? OR (?<>'' AND l.mac=?))
             )
         )""")
         params.extend([
             p, p, p, p,
             p, p, p, normalized_mac, normalized_mac,
-            p, p, p, normalized_mac, normalized_mac,
+            p, p,
+            p, normalized_mac, normalized_mac,
         ])
     where_sql = "WHERE " + " AND ".join(where)
     conn = db()
@@ -27997,10 +28106,6 @@ def ensure_v48140_performance_schema(conn):
       last_seen INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY(node,vm_uuid)
     ) WITHOUT ROWID;
-    CREATE INDEX IF NOT EXISTS idx_v48140_vmdisk_alloc
-      ON vm_disk_summary_current(allocated_bytes DESC,node,vm_uuid);
-    CREATE INDEX IF NOT EXISTS idx_v48140_vmdisk_write_iops
-      ON vm_disk_summary_current(write_iops DESC,node,vm_uuid);
 
     CREATE TABLE IF NOT EXISTS node_storage_mount_summary_current (
       node TEXT NOT NULL,
@@ -28023,25 +28128,10 @@ def ensure_v48140_performance_schema(conn):
       last_seen INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY(node,mount)
     ) WITHOUT ROWID;
-    CREATE INDEX IF NOT EXISTS idx_v48140_mount_write_iops
-      ON node_storage_mount_summary_current(write_iops DESC,node,mount);
-    CREATE INDEX IF NOT EXISTS idx_v48140_mount_write
-      ON node_storage_mount_summary_current(write_bps DESC,node,mount);
-    CREATE INDEX IF NOT EXISTS idx_v48140_mount_util
-      ON node_storage_mount_summary_current(util_percent DESC,node,mount);
-    CREATE INDEX IF NOT EXISTS idx_v48140_mount_used
-      ON node_storage_mount_summary_current(used DESC,node,mount);
-    CREATE INDEX IF NOT EXISTS idx_v48140_mount_seen
-      ON node_storage_mount_summary_current(last_seen DESC,node,mount);
-
-    CREATE INDEX IF NOT EXISTS idx_v48140_disk_role_seen_vm
-      ON vm_disk_current(role,last_seen DESC,node,vm_uuid);
     CREATE INDEX IF NOT EXISTS idx_v48140_disk_role_mount_node
       ON vm_disk_current(role,mount,node,vm_uuid);
     CREATE INDEX IF NOT EXISTS idx_v48140_disk_role_vm_target
       ON vm_disk_current(role,node,vm_uuid,target);
-    CREATE INDEX IF NOT EXISTS idx_v48140_storage_node_mount_seen
-      ON node_storage_current(node,mount,last_seen DESC);
     """)
 
 
@@ -28777,7 +28867,7 @@ def api_v1_performance_v48140():
             try: redis_ok = bool(client.ping())
             except Exception: redis_ok = False
         return jsonify({
-            "version":"50.5.7-prod-r3-mac-push-hotfix",
+            "version":"50.5.8-prod-r1-low-io-compatible",
             "database":{
                 "engine":"PostgreSQL + TimescaleDB",
                 "database":pg.get("database"),
@@ -29082,7 +29172,7 @@ def page(title, content):
 # protocol. Agents submit one compact node aggregate for each completed local
 # 2-hour bucket. VM UUIDs and per-VM history are deliberately not stored.
 
-V5030_RELEASE = "50.5.7-prod-r3-mac-push-hotfix"
+V5030_RELEASE = "50.5.8-prod-r1-low-io-compatible"
 V5030_BW_TABLE = "node_bandwidth_consumption_2h"
 V5030_BW_BUCKET_SECONDS = 2 * 3600
 V5030_BW_RETENTION_SECONDS = 7 * 86400
@@ -29238,9 +29328,10 @@ def push_bandwidth_consumption():
     if not valid_agent_token(request.headers.get("X-Token", "")):
         return jsonify({"ok": False, "error": "unauthorized"}), 401
 
-    payload = request.get_json(silent=True)
-    if not isinstance(payload, dict):
-        return jsonify({"ok": False, "error": "invalid json"}), 400
+    try:
+        payload = read_agent_json_request()
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
 
     node = str(payload.get("node") or "").strip()[:255]
     bucket_start = safe_int(payload.get("bucket_start"), 0)
@@ -32173,6 +32264,23 @@ def _v5052_current_writer(conn, node, data_time, interval_seconds, interfaces, v
     """)
 
     conn.execute("""
+      WITH picked AS (
+        SELECT DISTINCT ON (node,vm_uuid,bridge,iface)
+               node,vm_uuid,bridge,iface,mac,last_push
+          FROM pg_temp.vi5052_iface_stage
+         WHERE COALESCE(mac,'')<>''
+         ORDER BY node,vm_uuid,bridge,iface,ord DESC
+      )
+      INSERT INTO vm_nic_identity_lookup(
+        node,vm_uuid,bridge,iface,mac,first_seen,changed_at
+      )
+      SELECT node,vm_uuid,bridge,iface,mac,last_push,last_push FROM picked
+      ON CONFLICT(node,vm_uuid,bridge,iface) DO UPDATE SET
+        mac=excluded.mac,changed_at=excluded.changed_at
+      WHERE vm_nic_identity_lookup.mac IS DISTINCT FROM excluded.mac
+    """)
+
+    conn.execute("""
       WITH net AS (
         SELECT i.node,i.vm_uuid,MAX(i.last_push)::bigint last_seen,
                MAX(i.interval_seconds)::integer interval_seconds,
@@ -32572,7 +32680,7 @@ def valid_agent_token(value):
 # ---------------------------------------------------------------------------
 # 50.5.7 safe FIFO maintenance + canonical VM detail correctness
 # ---------------------------------------------------------------------------
-V5057_VERSION = "50.5.7-prod-r3-mac-push-hotfix"
+V5057_VERSION = "50.5.8-prod-r1-low-io-compatible"
 
 
 def enqueue_maintenance_job(action, parameters, actor):
@@ -32848,14 +32956,17 @@ def resolve_direct_vm_search(q):
                AND (vm_uuid LIKE ? OR COALESCE(last_iface,'')=? COLLATE NOCASE)
             UNION ALL
             SELECT i.node,i.vm_uuid,i.last_seen,4 source_rank,
-                   CASE WHEN LOWER(COALESCE(i.mac,''))=LOWER(?) THEN 1 ELSE 0 END exact_uuid
-              FROM vm_iface_current i
+                   CASE WHEN l.mac=? THEN 1 ELSE 0 END exact_uuid
+              FROM vm_nic_identity_lookup l
+              JOIN vm_iface_current i
+                ON i.node=l.node AND i.vm_uuid=l.vm_uuid
+               AND i.bridge=l.bridge AND i.iface=l.iface AND i.mac=l.mac
               LEFT JOIN vm_inventory vi ON vi.node=i.node AND vi.vm_uuid=i.vm_uuid
              WHERE COALESCE(vi.status,'active')!='hidden' AND vi.deleted_at IS NULL
                AND (
                     COALESCE(i.iface,'')=? COLLATE NOCASE
-                    OR COALESCE(i.mac,'') LIKE ?
-                    OR (?<>'' AND LOWER(COALESCE(i.mac,''))=LOWER(?))
+                    OR l.mac LIKE ?
+                    OR (?<>'' AND l.mac=?)
                )
           ) candidates
           ORDER BY exact_uuid DESC,last_seen DESC,source_rank ASC
@@ -33389,3 +33500,42 @@ def get_node_filesystems_snapshot(node, period):
         return _v48135_real_filesystem_rows(rows)
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# 50.5.8 low-I/O identity cleanup. Lookup rows are not historical data and
+# follow the same VM/node purge lifecycle as the bounded current tables.
+# ---------------------------------------------------------------------------
+_v5058_purge_vm_data_base = purge_vm_data
+
+def purge_vm_data(conn, node, vm_uuid, refresh_snapshots=True):
+    result = _v5058_purge_vm_data_base(
+        conn, node, vm_uuid, refresh_snapshots=refresh_snapshots
+    )
+    deleted = _delete_count(
+        conn,
+        "DELETE FROM vm_nic_identity_lookup WHERE node=? AND vm_uuid=?",
+        (node, vm_uuid),
+    )
+    if isinstance(result, dict):
+        result["vm_nic_identity_lookup"] = deleted
+    return result
+
+_v5058_purge_node_data_base = purge_node_data
+
+def purge_node_data(conn, node):
+    result = dict(_v5058_purge_node_data_base(conn, node) or {})
+    result["vm_nic_identity_lookup"] = _delete_count(
+        conn, "DELETE FROM vm_nic_identity_lookup WHERE node=?", (node,)
+    )
+    result["node_nic_identity_lookup"] = _delete_count(
+        conn, "DELETE FROM node_nic_identity_lookup WHERE node=?", (node,)
+    )
+    return result
+
+MONITORING_DATA_TABLES = tuple(dict.fromkeys(tuple(MONITORING_DATA_TABLES) + (
+    "vm_nic_identity_lookup", "node_nic_identity_lookup",
+)))
+V48102_RESET_APP_TABLES = tuple(dict.fromkeys(tuple(V48102_RESET_APP_TABLES) + (
+    "vm_nic_identity_lookup", "node_nic_identity_lookup",
+)))

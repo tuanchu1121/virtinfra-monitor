@@ -19,7 +19,7 @@ def _v5052_block() -> str:
 
 
 def test_release_and_native_copy_contract() -> None:
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.7-prod-r3-mac-push-hotfix"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.8-prod-r1-low-io-compatible"
     assert "def copy_rows(" in PG
     assert "cursor.copy(statement)" in PG
     assert "copy.write_row(values)" in PG
@@ -88,15 +88,16 @@ def test_lean_write_index_profile_is_installed() -> None:
     ):
         assert f"DROP INDEX CONCURRENTLY IF EXISTS {name};" in INDEX_PROFILE
 
-    # Lookup/default-rank indexes are deliberately retained.
+    # Lookup/default-rank indexes are retained. Volatile disk metric-sort
+    # indexes move to the 009 low-I/O profile and must not be recreated.
     for retained in (
         "idx_v50_abuse_current_rank",
         "idx_v50_vm_inventory_uuid_status",
-        "idx_v48140_vmdisk_alloc",
-        "idx_v48140_vmdisk_write_iops",
     ):
         assert retained in APP or retained in (ROOT / "postgres" / "sql" / "003_native_indexes.sql").read_text()
         assert f"DROP INDEX CONCURRENTLY IF EXISTS {retained};" not in INDEX_PROFILE
+    assert "idx_v48140_vmdisk_alloc" not in APP
+    assert "idx_v48140_vmdisk_write_iops" not in APP
 
 
 def test_copy_stage_row_widths_and_legacy_interval_semantics() -> None:

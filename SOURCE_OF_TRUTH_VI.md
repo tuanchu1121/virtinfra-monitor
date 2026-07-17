@@ -1,8 +1,8 @@
 # SOURCE OF TRUTH VẬN HÀNH
 
-> Release: `50.5.7-prod-r3-mac-push-hotfix`
+> Release: `50.5.8-prod-r1-low-io-compatible`
 
-> Release: `50.5.7-prod-r3-mac-push-hotfix`
+> Release: `50.5.8-prod-r1-low-io-compatible`
 >
 > Tài liệu này được đối chiếu trực tiếp với `install.sh`, `deploy/postgres/*`, `deploy/agent/*`, `postgres/docker-compose.yml`, `app/app.py` và các test contract hiện tại.
 

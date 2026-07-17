@@ -40,6 +40,10 @@ services:
       - -c
       - checkpoint_completion_target=0.9
       - -c
+      - max_wal_size=${BW_PG_MAX_WAL_SIZE:-8GB}
+      - -c
+      - min_wal_size=${BW_PG_MIN_WAL_SIZE:-2GB}
+      - -c
       - random_page_cost=1.1
       - -c
       - effective_io_concurrency=200

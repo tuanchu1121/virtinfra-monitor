@@ -1,8 +1,8 @@
 # Đưa VirtInfra Monitor lên GitHub bằng GitHub Desktop
 
-> Release: `50.5.7-prod-r3-mac-push-hotfix`
+> Release: `50.5.8-prod-r1-low-io-compatible`
 
-> Dùng cho release `50.5.7-prod-r3-mac-push-hotfix`.
+> Dùng cho release `50.5.8-prod-r1-low-io-compatible`.
 
 > Source of truth vận hành: [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md).
 >
@@ -78,7 +78,7 @@ update.sh
 Giải nén file ZIP release ra một thư mục riêng, ví dụ:
 
 ```text
-D:\Downloads\virtinfra-monitor-50.5.7-prod-r3-mac-push-hotfix\
+D:\Downloads\virtinfra-monitor-50.5.8-prod-r1-low-io-compatible\
 ```
 
 Mở thư mục đó. Bên trong phải thấy trực tiếp:
@@ -214,7 +214,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Phải trả về:
 
 ```text
-50.5.7-prod-r3-mac-push-hotfix
+50.5.8-prod-r1-low-io-compatible
 ```
 
 Kiểm tra file installer:
@@ -250,7 +250,7 @@ virtinfra-monitorctl version
 Phải ra:
 
 ```text
-50.5.7-prod-r3-mac-push-hotfix
+50.5.8-prod-r1-low-io-compatible
 ```
 
 Kiểm tra:
@@ -292,7 +292,7 @@ Sai:
 
 ```text
 repo-root/
-└── virtinfra-monitor-50.5.7-prod-r3-mac-push-hotfix/
+└── virtinfra-monitor-50.5.8-prod-r1-low-io-compatible/
     ├── app/
     ├── deploy/
     └── install.sh

@@ -9,7 +9,7 @@ def need(cond: bool, message: str) -> None:
         raise AssertionError(message)
 
 version = (ROOT / "VERSION").read_text().strip()
-need(version == "50.5.7-prod-r3-mac-push-hotfix", f"unexpected VERSION: {version}")
+need(version == "50.5.8-prod-r1-low-io-compatible", f"unexpected VERSION: {version}")
 
 app = (ROOT / "app/app.py").read_text()
 pg = (ROOT / "app/bw_pg.py").read_text()
@@ -126,7 +126,7 @@ need("WAL reserved/recycled" in app and "SHM {human" not in app, "PostgreSQL siz
 need("virtinfra-v502-final-ui" in app and "min-width:0!important" in app, "responsive Abuse override missing")
 need("page_cache_generation" in app, "cross-worker cache generation missing")
 agent_install = (ROOT / "deploy/agent/install-agent.sh").read_text(encoding="utf-8")
-need("VirtInfra Agent v13" in agent and "VirtInfra-Agent/13" in agent, "VirtInfra Agent identity missing")
+need("VirtInfra Agent v14" in agent and "VirtInfra-Agent/14" in agent, "VirtInfra Agent identity missing")
 need("virtinfra-agent.service" in agent_install and "/var/lib/virtinfra-agent" in agent_install, "canonical Agent service/path missing")
 need((ROOT / "deploy/postgres/virtinfra-monitor-health-watch.timer").exists(), "health watchdog timer missing")
 

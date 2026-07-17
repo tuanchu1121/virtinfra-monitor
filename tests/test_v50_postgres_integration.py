@@ -13,13 +13,17 @@ import sys
 import time
 import uuid
 
-import psycopg
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 DSN = os.environ.get("BW_TEST_DATABASE_URL", "").strip()
 if not DSN:
-    print("SKIP: BW_TEST_DATABASE_URL is not set")
-    raise SystemExit(0)
+    pytest.skip(
+        "BW_TEST_DATABASE_URL is not set",
+        allow_module_level=True,
+    )
+
+import psycopg
 
 with psycopg.connect(DSN, autocommit=True) as conn:
     conn.execute("DROP SCHEMA IF EXISTS public CASCADE")

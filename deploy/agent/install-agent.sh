@@ -18,6 +18,7 @@ SKIP_HEAVY="${BW_AGENT_SKIP_HEAVY_ON_OVERLOAD:-0}"
 PPS_WARN="${BW_AGENT_PPS_WARN:-200000}"
 MBPS_WARN="${BW_AGENT_MBPS_WARN:-800}"
 BRIDGE_ROLES="${BW_AGENT_BRIDGE_ROLES:-public:br0,private:br1}"
+HTTP_GZIP="${BW_AGENT_HTTP_GZIP:-1}"
 RESET_STATE=0; SKIP_CHECK=0
 log(){ printf '\n==> %s\n' "$*"; }
 die(){ printf '\nERROR: %s\n' "$*" >&2; exit 1; }
@@ -90,6 +91,8 @@ BW_AGENT_BRIDGE_ROLES='$BRIDGE_ROLES'
 BW_AGENT_BANDWIDTH_CONSUMPTION_ENABLED='1'
 BW_AGENT_BANDWIDTH_CONSUMPTION_JITTER_SECONDS='240'
 BW_AGENT_API_TIMEOUT='30'
+BW_AGENT_HTTP_GZIP='$HTTP_GZIP'
+BW_AGENT_HTTP_GZIP_MIN_BYTES='1024'
 BW_AGENT_DOMSTATS_TIMEOUT='180'
 BW_AGENT_VIRSH_LIST_TIMEOUT='30'
 BW_AGENT_DOMIFLIST_TIMEOUT='30'
@@ -98,7 +101,7 @@ EOF
 chmod 0600 "$ENV_FILE"
 cat > "$SERVICE_FILE" <<'EOF'
 [Unit]
-Description=VirtInfra Agent v13 persistent infrastructure collector
+Description=VirtInfra Agent v14 persistent infrastructure collector
 Wants=network-online.target
 After=network-online.target libvirtd.service
 ConditionPathExists=/usr/local/lib/virtinfra-agent/agent.py
@@ -146,6 +149,7 @@ Service:       virtinfra-agent.service (active)
 Monitor API:   $API
 Sample:        ${SAMPLE_SECONDS}s
 Push:          ${PUSH_SECONDS}s
+Transport:     gzip level 1 for JSON payloads (plain JSON compatible)
 Bandwidth:     compact node totals every completed local 2h bucket
 Environment:   $ENV_FILE (0600)
 State:         $STATE_DIR

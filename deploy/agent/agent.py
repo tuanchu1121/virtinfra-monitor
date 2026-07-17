@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-VirtInfra Agent v13 daemon (per-disk storage I/O + monitor-synchronized abuse)
+VirtInfra Agent v14 daemon (per-disk storage I/O + monitor-synchronized abuse)
 
 Collects:
   1) VM/tap network traffic from libvirt domiflist + /sys/class/net/<tap>/statistics
@@ -22,9 +22,11 @@ Important CPU behavior:
 
 import os
 import json
+import gzip
 import time
 import subprocess
 import urllib.request
+import urllib.error
 import ipaddress
 import copy
 import signal
@@ -71,8 +73,10 @@ MBPS_WARN = max(0.0, float(os.environ.get("BW_AGENT_MBPS_WARN", "800")))
 STALE_IFACE_SECONDS = max(120, int(os.environ.get("BW_AGENT_STALE_IFACE_SECONDS", "600")))
 RUNTIME = os.environ.get("VIRTINFRA_AGENT_RUNTIME") or os.environ.get("BW_AGENT_RUNTIME", "/var/lib/virtinfra-agent/runtime.json")
 QUIET = os.environ.get("BW_AGENT_QUIET", "0") == "1"
+HTTP_GZIP = os.environ.get("BW_AGENT_HTTP_GZIP", "1") == "1"
+HTTP_GZIP_MIN_BYTES = max(0, int(os.environ.get("BW_AGENT_HTTP_GZIP_MIN_BYTES", "1024")))
 
-AGENT_VERSION = 13
+AGENT_VERSION = 14
 STOP_EVENT = threading.Event()
 
 
@@ -2096,18 +2100,47 @@ def account_bandwidth_consumption(runtime, payload):
     return True
 
 
+def encode_http_payload(payload, allow_gzip=True):
+    raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if allow_gzip and HTTP_GZIP and len(raw) >= HTTP_GZIP_MIN_BYTES:
+        raw = gzip.compress(raw, compresslevel=1)
+        headers["Content-Encoding"] = "gzip"
+    return raw, headers
+
+
+def post_json_payload(url, payload, user_agent):
+    data, encoding_headers = encode_http_payload(payload, allow_gzip=True)
+
+    def send(body, extra_headers):
+        req = urllib.request.Request(
+            url,
+            data=body,
+            headers={
+                **extra_headers,
+                "X-Token": TOKEN,
+                "User-Agent": user_agent,
+            },
+        )
+        return urllib.request.urlopen(req, timeout=API_TIMEOUT).read().decode()
+
+    try:
+        return send(data, encoding_headers)
+    except urllib.error.HTTPError as exc:
+        # Rolling upgrades and rollback remain safe: older monitors do not
+        # understand request Content-Encoding and normally answer 400/415.
+        if encoding_headers.get("Content-Encoding") == "gzip" and exc.code in (400, 415):
+            plain, plain_headers = encode_http_payload(payload, allow_gzip=False)
+            return send(plain, plain_headers)
+        raise
+
+
 def post_bandwidth_consumption(payload):
-    data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    req = urllib.request.Request(
+    return post_json_payload(
         BANDWIDTH_CONSUMPTION_API,
-        data=data,
-        headers={
-            "Content-Type": "application/json",
-            "X-Token": TOKEN,
-            "User-Agent": "VirtInfra-Agent/13 BandwidthConsumption/1",
-        },
+        payload,
+        "VirtInfra-Agent/14 BandwidthConsumption/1",
     )
-    return urllib.request.urlopen(req, timeout=API_TIMEOUT).read().decode()
 
 
 def send_bandwidth_consumption_pending(runtime, allow_wait=False):
@@ -2150,13 +2183,7 @@ def send_bandwidth_consumption_pending(runtime, allow_wait=False):
     return True
 
 def post_payload(payload):
-    data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    req = urllib.request.Request(
-        API,
-        data=data,
-        headers={"Content-Type": "application/json", "X-Token": TOKEN, "User-Agent": "VirtInfra-Agent/13"},
-    )
-    return urllib.request.urlopen(req, timeout=API_TIMEOUT).read().decode()
+    return post_json_payload(API, payload, "VirtInfra-Agent/14")
 
 
 def main():

@@ -1,5 +1,5 @@
 ---
-- name: Deploy VirtInfra Agent v13
+- name: Deploy VirtInfra Agent v14
   hosts: all
   become: "{{ (ansible_user | default('root')) != 'root' }}"
   gather_facts: false
@@ -138,6 +138,8 @@
           BW_AGENT_BANDWIDTH_CONSUMPTION_ENABLED="1"
           BW_AGENT_BANDWIDTH_CONSUMPTION_JITTER_SECONDS="240"
           BW_AGENT_API_TIMEOUT="30"
+          BW_AGENT_HTTP_GZIP="1"
+          BW_AGENT_HTTP_GZIP_MIN_BYTES="1024"
           BW_AGENT_DOMSTATS_TIMEOUT="180"
           BW_AGENT_VIRSH_LIST_TIMEOUT="30"
           BW_AGENT_DOMIFLIST_TIMEOUT="30"
@@ -153,7 +155,7 @@
         mode: "0644"
         content: |
           [Unit]
-          Description=VirtInfra Agent v13 persistent infrastructure collector
+          Description=VirtInfra Agent v14 persistent infrastructure collector
           Wants=network-online.target
           After=network-online.target libvirtd.service
           ConditionPathExists=/usr/local/lib/virtinfra-agent/agent.py

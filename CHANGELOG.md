@@ -1,5 +1,15 @@
+# 50.5.8-prod-r1-low-io-compatible
+
+- In-place upgrade from 50.5.7; no UI, API, metric formula, 5-minute schedule, retention or queue behavior changes.
+- Adds backward-compatible gzip request bodies for Agent v14 while accepting plain JSON from existing agents.
+- Moves MAC search indexing to write-on-change identity lookup tables and removes MAC indexes from hot metric rows.
+- Removes volatile current-state indexes that were rewritten every push, adds a partial active-Abuse index, and applies HOT/autovacuum table settings.
+- Adds configurable PostgreSQL max/min WAL sizing while retaining WAL compression and 15-minute checkpoint smoothing.
+- Fixes PostgreSQL integration-test collection to skip cleanly when BW_TEST_DATABASE_URL is absent.
+
 ## 50.5.7-prod-r3-mac-push-hotfix
 
+- Fixed the MAC bridge UPSERT table reference that caused all `/push` requests to roll back in the initial MAC release.
 - Persisted each VM virtual NIC MAC from the existing libvirt Agent payload in `vm_iface_current` without enabling legacy raw `usage` writes.
 - Persisted the physical uplink MAC associated with the public/private `br0` and `br1` roles in `node_physical_net_latest`; the existing bridge-device MAC remains available separately in `node_bridge_addresses_latest`.
 - Added normalized MAC search across Dashboard, Node Health, Top VM direct lookup and Admin inventory. Colon, hyphen, Cisco dotted and compact MAC forms resolve to the same canonical address.
@@ -7,7 +17,7 @@
 - Added physical-uplink MAC badges to Node detail and additive migration `008_mac_identity_search.sql`.
 - Existing Agents require no reinstall. Empty MAC fields populate on the next accepted Agent push.
 
-## 50.5.7-prod-r3-mac-push-hotfix
+## 50.5.7-prod-r1-safe-queue-canonical-vm
 
 - Replaced the one-row Maintenance gate with a PostgreSQL FIFO queue. Multiple routine jobs can wait; one dispatcher atomically claims one `starting/running` worker with `FOR UPDATE SKIP LOCKED`.
 - Added 30-second worker heartbeats, a one-minute systemd watchdog, stale-unit recovery, queued-job cancellation and automatic dispatch of the next job.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE="50.5.7-prod-r3-mac-push-hotfix"
+RELEASE="50.5.8-prod-r1-low-io-compatible"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 APP_SRC="$REPO_ROOT/app"
@@ -232,6 +232,8 @@ BW_PG_MAX_PARALLEL_WORKERS=$parallel
 BW_PG_MAX_PARALLEL_PER_GATHER=4
 BW_TSDB_BACKGROUND_WORKERS=8
 BW_PG_SHM_SIZE=$shm
+BW_PG_MAX_WAL_SIZE=${BW_PG_MAX_WAL_SIZE:-8GB}
+BW_PG_MIN_WAL_SIZE=${BW_PG_MIN_WAL_SIZE:-2GB}
 EOF
 install -o root -g root -m 0600 "$PG_ENV.tmp" "$PG_ENV"; rm -f "$PG_ENV.tmp"
 
@@ -245,6 +247,7 @@ install -m 0644 "$PG_SRC/sql/005_ingest_write_profile.sql" "$APP_DIR/postgres/sq
 install -m 0644 "$PG_SRC/sql/006_postgres_native_maintenance.sql" "$APP_DIR/postgres/sql/006_postgres_native_maintenance.sql"
 install -m 0644 "$PG_SRC/sql/007_safe_maintenance_queue.sql" "$APP_DIR/postgres/sql/007_safe_maintenance_queue.sql"
 install -m 0644 "$PG_SRC/sql/008_mac_identity_search.sql" "$APP_DIR/postgres/sql/008_mac_identity_search.sql"
+install -m 0644 "$PG_SRC/sql/009_low_io_compat.sql" "$APP_DIR/postgres/sql/009_low_io_compat.sql"
 
 log "Start PostgreSQL 17 + TimescaleDB"
 "${COMPOSE[@]}" --env-file "$PG_ENV" -f "$APP_DIR/postgres/docker-compose.yml" pull
@@ -314,6 +317,8 @@ VIRTINFRA_PUSH_OBSERVABILITY='1'
 BW_REDIS_ENABLED='$REDIS_CACHE'
 BW_REDIS_URL='redis://127.0.0.1:6379/0'
 BW_PAGE_CACHE_ENABLED='1'
+BW_MAX_COMPRESSED_PUSH_BYTES='16777216'
+BW_MAX_UNCOMPRESSED_PUSH_BYTES='67108864'
 BW_PAGE_CACHE_TTL='6'
 BW_LOCAL_CACHE_ITEMS='1024'
 BW_DB_POOL_MIN='1'
@@ -396,6 +401,8 @@ docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATA
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/007_safe_maintenance_queue.sql"
 log "Apply MAC identity and search schema"
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/008_mac_identity_search.sql"
+log "Apply low-I/O compatible current-state profile"
+docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/009_low_io_compat.sql"
 
 log "Install services and management tools"
 install -m 0644 "$SCRIPT_DIR/bw-monitor.service" "$SERVICE_FILE"

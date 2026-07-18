@@ -34,7 +34,7 @@ def load_normalizer():
 
 
 def test_release_identity():
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r1-ui-responsive-theme-chart-gaps"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r2-ui-layout-polish-only"
 
 
 def test_existing_agent_already_reports_vm_and_physical_mac():

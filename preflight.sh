@@ -29,7 +29,7 @@ fail(){ echo "ERROR: $*" >&2; exit 1; }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.9-prod-r1-ui-responsive-theme-chart-gaps" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.5.9-prod-r2-ui-layout-polish-only" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/bw_pg.py && -f app/maintenance_native.py \
    && -f app/maintenance_queue.py && -f app/maintenance_dispatch.py \
    && -f postgres/sql/007_safe_maintenance_queue.sql \
@@ -138,6 +138,9 @@ log "Validate v50.5.9 r1 responsive UI, theme and chart-gap contract"
 
 log "Validate route, endpoint, query, form, sort, Agent and SQL equivalence"
 "$PYTHON" -m pytest -q tests/test_v5059_r1_contract_equivalence.py
+
+log "Validate v50.5.9 r2 presentation-only layout polish"
+"$PYTHON" -m pytest -q tests/test_v5059_r2_ui_layout_polish_only.py
 
 log "Verify one-command installer and operations flow"
 bash ./tools/test-installer-flow.sh

@@ -5,7 +5,8 @@
 - Removing unreferenced standard-library imports.
 - Removing the unreferenced private `_RE_QMARK` pattern.
 - Updating release metadata and version-gate tests without changing runtime payload versions.
-- Adding audit reports, an embedded previous-release archive, and a guarded rollback script.
+- Adding audit reports used to prove behavioral equivalence.
+- Excluding embedded ZIP/tar.gz rollback artifacts from the production manifest because Git ignores these files and raw GitHub installation cannot retrieve them.
 
 Controls: AST reference analysis, repository-wide search, deterministic route/HTML/API comparison, function-body fingerprint comparison, unchanged SQL fingerprint, syntax checks, and the regression suite.
 

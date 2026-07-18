@@ -27,6 +27,10 @@ grep -q 'repo_complete()' "$ROOT/install.sh" || fail "bootstrap repository valid
 grep -q 'normalize_shell_modes()' "$ROOT/install.sh" || fail "Windows GitHub Desktop mode normalization missing"
 grep -Fq 'stage_canonical_tree "$RAW_ROOT" "$CLEAN_ROOT"' "$ROOT/install.sh" || fail "canonical manifest staging missing"
 grep -Fq 'sha256sum -c SHA256SUMS' "$ROOT/install.sh" || fail "canonical source checksum verification missing"
+if grep -Eq '(^|[[:space:]])\.?/?.*\.(zip|tar\.gz)$' "$ROOT/SHA256SUMS"; then
+  fail "SHA256SUMS must not contain gitignored ZIP/tar.gz artifacts"
+fi
+[[ ! -e "$ROOT/rollback" && ! -e "$ROOT/rollback.sh" ]] || fail "embedded rollback artifacts must not be present in production source"
 grep -Fq 'bash "$CLEAN_ROOT/deploy/postgres/install-postgres-native.sh"' "$ROOT/install.sh" || fail "staged installer is not invoked through bash"
 grep -Fq 'bash "$REPO_ROOT/preflight.sh"' "$I" || fail "installer preflight still depends on executable mode"
 grep -Fq 'bash ./tools/test-installer-flow.sh' "$ROOT/preflight.sh" || fail "preflight child script still depends on executable mode"

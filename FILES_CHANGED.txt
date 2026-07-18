@@ -36,8 +36,6 @@ REMOVED_CODE.md
 RISK_ASSESSMENT.md
 TEST_RESULTS.txt
 FILES_CHANGED.txt
-rollback.sh
-rollback/virtinfra-monitor-50.5.9-prod-r3-ui-alignment-overflow-hotfix-production-slim.zip
 
 Added: audit evidence
 ---------------------
@@ -61,3 +59,9 @@ SHA256SUMS
 Deleted runtime files
 ---------------------
 None
+tools/build-dist.sh
+tests/test_manifest_contract.py
+
+REMOVED FROM PRODUCTION-SLIM PACKAGE:
+rollback.sh
+rollback/virtinfra-monitor-50.5.9-prod-r3-ui-alignment-overflow-hotfix-production-slim.zip

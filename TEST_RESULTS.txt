@@ -32,3 +32,17 @@ Cache/build artifacts in final package: none
 Environment limitation
 ----------------------
 The sandbox did not provide a disposable PostgreSQL test DSN. The live integration module was collected correctly and skipped with exit code 0. No claim is made that the destructive live schema test ran.
+
+Installer manifest production-slim correction:
+- Root cause: .gitignore excludes *.zip, while the old manifest listed an embedded rollback ZIP: CONFIRMED
+- Embedded rollback ZIP removed: PASS
+- rollback.sh removed from production source because its required embedded archive is intentionally absent: PASS
+- tools/build-dist.sh excludes *.zip and *.tar.gz from manifest and archives: PASS
+- tests/test_manifest_contract.py excludes local ignored archives from canonical source coverage: PASS
+- tools/test-installer-flow.sh rejects ZIP/tar.gz manifest entries: PASS
+- Python compileall: PASS
+- Shell syntax: PASS
+- Installer-flow contract: PASS
+- Runtime tests: 91 passed when executed module-by-module with real exit code 0
+- PostgreSQL integration: skipped because BW_TEST_DATABASE_URL is not set
+- Production deployment/restart: NOT PERFORMED

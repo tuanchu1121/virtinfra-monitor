@@ -1,8 +1,8 @@
 # BẮT ĐẦU TẠI ĐÂY - VirtInfra Monitor
 
-> Release: `50.6.0-prod-r1-node-groups-country-flags`
+> Release: `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
 
-> Release: `50.6.0-prod-r1-node-groups-country-flags`
+> Release: `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
 >
 > Bản này giữ nguyên toàn bộ chức năng, route, giao diện, Agent, Abuse, Storage I/O và Consumption hiện tại; đồng thời bổ sung Storage V2 với chart đúng từng điểm 5 phút trong 7 ngày, raw interface 48 giờ, Timescale retention và rollback reader nhanh.
 
@@ -111,7 +111,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Kết quả phải là:
 
 ```text
-50.6.0-prod-r1-node-groups-country-flags
+50.5.9-prod-r3-ui-alignment-overflow-hotfix
 ```
 
 ### Bước B - Update Monitor đang chạy
@@ -129,7 +129,7 @@ virtinfra-monitorctl version
 Kết quả version phải là:
 
 ```text
-50.6.0-prod-r1-node-groups-country-flags
+50.5.9-prod-r3-ui-alignment-overflow-hotfix
 ```
 
 Kiểm tra thêm:

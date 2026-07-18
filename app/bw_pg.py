@@ -13,7 +13,6 @@ import os
 import re
 import threading
 from collections.abc import Mapping
-from contextlib import contextmanager
 from decimal import Decimal
 from typing import Any, Iterable, Sequence
 
@@ -62,7 +61,6 @@ _SERIAL_TABLES = {
     "vm_abuse_events", "vm_abuse_incidents",
 }
 
-_RE_QMARK = re.compile(r"\?")
 _RE_COLLATE_NOCASE = re.compile(r"\s+COLLATE\s+NOCASE\b", re.I)
 _RE_WITHOUT_ROWID = re.compile(r"\s+WITHOUT\s+ROWID\b", re.I)
 _RE_AUTOINC_ID = re.compile(

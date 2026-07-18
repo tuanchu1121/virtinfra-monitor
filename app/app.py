@@ -13,7 +13,6 @@ import json
 import gzip
 import io
 import subprocess
-import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from html import escape
@@ -36093,7 +36092,7 @@ def page(title, content):
 # ---------------------------------------------------------------------------
 # Presentation-only layer. It preserves routes, query parameters, payloads,
 # database statements, sort/filter behavior, refresh cadence and Agent flow.
-V5059R3_RELEASE = "50.5.9-prod-r3-ui-alignment-overflow-hotfix"
+V5059R3_RELEASE = "50.5.9-prod-r4-dead-code-cleanup"
 
 
 # One appearance selector contains the three core modes plus every configured

@@ -6,7 +6,6 @@ public and bw_meta schemas in that database.
 """
 from __future__ import annotations
 import importlib.util
-import json
 import os
 from pathlib import Path
 import sys

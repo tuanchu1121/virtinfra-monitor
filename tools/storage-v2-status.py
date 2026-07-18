@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 import psycopg
 from psycopg.rows import dict_row
 

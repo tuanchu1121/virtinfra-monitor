@@ -28832,7 +28832,7 @@ def api_v1_performance_v48140():
             try: redis_ok = bool(client.ping())
             except Exception: redis_ok = False
         return jsonify({
-            "version":"50.5.9-prod-r2-ui-layout-polish-only",
+            "version":"50.5.9-prod-r1-ui-responsive-theme-chart-gaps",
             "database":{
                 "engine":"PostgreSQL + TimescaleDB",
                 "database":pg.get("database"),
@@ -29137,7 +29137,7 @@ def page(title, content):
 # protocol. Agents submit one compact node aggregate for each completed local
 # 2-hour bucket. VM UUIDs and per-VM history are deliberately not stored.
 
-V5030_RELEASE = "50.5.9-prod-r2-ui-layout-polish-only"
+V5030_RELEASE = "50.5.9-prod-r1-ui-responsive-theme-chart-gaps"
 V5030_BW_TABLE = "node_bandwidth_consumption_2h"
 V5030_BW_BUCKET_SECONDS = 2 * 3600
 V5030_BW_RETENTION_SECONDS = 7 * 86400
@@ -32645,7 +32645,7 @@ def valid_agent_token(value):
 # ---------------------------------------------------------------------------
 # 50.5.7 safe FIFO maintenance + canonical VM detail correctness
 # ---------------------------------------------------------------------------
-V5057_VERSION = "50.5.9-prod-r2-ui-layout-polish-only"
+V5057_VERSION = "50.5.9-prod-r1-ui-responsive-theme-chart-gaps"
 
 
 def enqueue_maintenance_job(action, parameters, actor):
@@ -34427,7 +34427,7 @@ _v48140_cached_endpoint("bandwidth_consumption_page", V48140_PAGE_CACHE_TTL)
 import threading as _v5058r4_threading
 import random as _v5058r4_random
 
-V5058R4_RELEASE = "50.5.9-prod-r2-ui-layout-polish-only"
+V5058R4_RELEASE = "50.5.9-prod-r1-ui-responsive-theme-chart-gaps"
 V5058R4_SUMMARY_CACHE_TTL = 60
 V5058R4_INVENTORY_BATCH = max(50, min(2000, safe_int(os.environ.get("BW_INVENTORY_CLEANUP_BATCH", "500"), 500)))
 V5058R4_INVENTORY_MAX_BATCHES = max(1, min(1000, safe_int(os.environ.get("BW_INVENTORY_CLEANUP_MAX_BATCHES", "200"), 200)))
@@ -35296,9 +35296,9 @@ if _v5058r4_push_view_base is not None:
     app.view_functions["push"] = push_v5058r4_deadlock_retry
 
 # ---------------------------------------------------------------------------
-# v50.5.9 r2 layout-polish-only release based on r1
+# v50.5.9 r1 responsive UI, theme and chart-gap release
 # ---------------------------------------------------------------------------
-V5059R2_RELEASE = "50.5.9-prod-r2-ui-layout-polish-only"
+V5059R1_RELEASE = "50.5.9-prod-r1-ui-responsive-theme-chart-gaps"
 
 
 def _v5058r5_is_transient_iface(value):
@@ -35945,132 +35945,6 @@ body.endpoint-vm-abuse-page .table-hint{display:none!important}
 </style>
 '''
 
-V5059R2_UI_CSS = r'''
-<style id="v5059r2-layout-polish-only">
-/* 50.5.9 r2: presentation-only layout corrections. No data, URL or behavior changes. */
-
-/* Dashboard: reserve real space for live status and snapshot so text cannot overlap. */
-body.endpoint-index .node-dashboard-table{
-  width:100%;min-width:1768px!important;table-layout:fixed!important
-}
-body.endpoint-index .node-dashboard-table th,
-body.endpoint-index .node-dashboard-table td{vertical-align:middle!important;box-sizing:border-box}
-body.endpoint-index .node-dashboard-table th:nth-child(1),body.endpoint-index .node-dashboard-table td:nth-child(1){width:148px!important;padding-left:12px!important}
-body.endpoint-index .node-dashboard-table th:nth-child(2),body.endpoint-index .node-dashboard-table td:nth-child(2){width:148px!important;min-width:148px!important;max-width:148px!important;overflow:hidden}
-body.endpoint-index .node-dashboard-table th:nth-child(3),body.endpoint-index .node-dashboard-table td:nth-child(3){width:146px!important;min-width:146px!important;max-width:146px!important;text-align:center!important;white-space:nowrap!important}
-body.endpoint-index .node-dashboard-table th:nth-child(4),body.endpoint-index .node-dashboard-table td:nth-child(4){width:50px!important}
-body.endpoint-index .node-dashboard-table th:nth-child(5),body.endpoint-index .node-dashboard-table td:nth-child(5){width:150px!important}
-body.endpoint-index .node-dashboard-table th:nth-child(6),body.endpoint-index .node-dashboard-table td:nth-child(6){width:82px!important}
-body.endpoint-index .node-dashboard-table th:nth-child(7),body.endpoint-index .node-dashboard-table td:nth-child(7),body.endpoint-index .node-dashboard-table th:nth-child(8),body.endpoint-index .node-dashboard-table td:nth-child(8){width:76px!important}
-body.endpoint-index .node-dashboard-table th:nth-child(9),body.endpoint-index .node-dashboard-table td:nth-child(9),body.endpoint-index .node-dashboard-table th:nth-child(10),body.endpoint-index .node-dashboard-table td:nth-child(10){width:94px!important}
-body.endpoint-index .node-dashboard-table th:nth-child(11),body.endpoint-index .node-dashboard-table td:nth-child(11),body.endpoint-index .node-dashboard-table th:nth-child(12),body.endpoint-index .node-dashboard-table td:nth-child(12),body.endpoint-index .node-dashboard-table th:nth-child(13),body.endpoint-index .node-dashboard-table td:nth-child(13){width:92px!important}
-body.endpoint-index .node-dashboard-table th:nth-child(14),body.endpoint-index .node-dashboard-table td:nth-child(14),body.endpoint-index .node-dashboard-table th:nth-child(15),body.endpoint-index .node-dashboard-table td:nth-child(15){width:90px!important}
-body.endpoint-index .node-dashboard-table th:nth-child(16),body.endpoint-index .node-dashboard-table td:nth-child(16){width:58px!important}
-body.endpoint-index .node-dashboard-table th:nth-child(17),body.endpoint-index .node-dashboard-table td:nth-child(17){width:48px!important}
-body.endpoint-index .node-dashboard-table th:nth-child(18),body.endpoint-index .node-dashboard-table td:nth-child(18){width:142px!important}
-body.endpoint-index .node-dashboard-table td:nth-child(2) .status{
-  display:inline-block!important;max-width:100%;font-size:13.5px!important;line-height:1.25!important;
-  white-space:normal!important;overflow:hidden;overflow-wrap:normal;vertical-align:middle
-}
-body.endpoint-index .node-dashboard-table td:nth-child(3){font-size:11px!important;letter-spacing:-.015em}
-body.endpoint-index .node-dashboard-table .node-name-cell{min-width:0}
-body.endpoint-index .node-dashboard-table .node-name-cell>a,
-body.endpoint-index .node-dashboard-table .node-name-cell small{max-width:100%;overflow:hidden;text-overflow:ellipsis}
-body.endpoint-index .node-dashboard-table .dashboard-load-col{width:150px!important;min-width:150px!important;max-width:150px!important}
-body.endpoint-index .node-dashboard-table .dashboard-load-pill{width:138px!important;min-width:138px!important;max-width:138px!important;margin-inline:auto}
-
-/* Top VM: compact leading columns and keep compound headers on one centered line. */
-body.endpoint-top-page .table-top-vm{width:100%;min-width:1940px!important;table-layout:fixed!important}
-body.endpoint-top-page .table-top-vm col.top-rank{width:30px!important}
-body.endpoint-top-page .table-top-vm col.top-node{width:132px!important}
-body.endpoint-top-page .table-top-vm col.top-uuid{width:220px!important}
-body.endpoint-top-page .table-top-vm col.top-ifaces{width:50px!important}
-body.endpoint-top-page .table-top-vm col.top-public,body.endpoint-top-page .table-top-vm col.top-private{width:76px!important}
-body.endpoint-top-page .table-top-vm col.top-total{width:86px!important}
-body.endpoint-top-page .table-top-vm col.top-mbps{width:70px!important}
-body.endpoint-top-page .table-top-vm col.top-peakmbps{width:74px!important}
-body.endpoint-top-page .table-top-vm col.top-pps{width:76px!important}
-body.endpoint-top-page .table-top-vm col.top-peakpps{width:80px!important}
-body.endpoint-top-page .table-top-vm col.top-sample{width:90px!important}
-body.endpoint-top-page .table-top-vm col.top-cpu{width:114px!important}
-body.endpoint-top-page .table-top-vm col.top-vcpu{width:46px!important}
-body.endpoint-top-page .table-top-vm col.top-ram{width:180px!important}
-body.endpoint-top-page .table-top-vm col.top-diskcap{width:220px!important}
-body.endpoint-top-page .table-top-vm col.top-diskr,body.endpoint-top-page .table-top-vm col.top-diskw{width:84px!important}
-body.endpoint-top-page .table-top-vm col.top-push{width:60px!important}
-body.endpoint-top-page .table-top-vm col.top-drops{width:46px!important}
-body.endpoint-top-page .table-top-vm col.top-errors{width:42px!important}
-body.endpoint-top-page .table-top-vm th,body.endpoint-top-page .table-top-vm td{vertical-align:middle!important}
-body.endpoint-top-page .table-top-vm th:first-child,body.endpoint-top-page .table-top-vm td:first-child{padding-left:3px!important;padding-right:3px!important;text-align:center!important}
-body.endpoint-top-page .table-top-vm th:nth-child(2),body.endpoint-top-page .table-top-vm td:nth-child(2){padding-left:7px!important}
-body.endpoint-top-page .cpu-dual-head,body.endpoint-top-page .ram-compact-sort-head,body.endpoint-top-page .disk-capacity-sort-head{text-align:center!important}
-body.endpoint-top-page .cpu-dual-head>div,body.endpoint-top-page .ram-compact-head,body.endpoint-top-page .disk-cap-compact-head{width:100%;justify-items:center;align-items:center;text-align:center}
-body.endpoint-top-page .cpu-dual-head small,
-body.endpoint-top-page .disk-cap-compact-head small{
-  display:inline-flex!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:center!important;
-  gap:4px!important;width:auto!important;max-width:100%;white-space:nowrap!important;line-height:1.1!important
-}
-body.endpoint-top-page .disk-cap-compact-head>div{font-size:9.5px!important;white-space:nowrap!important}
-body.endpoint-top-page .disk-cap-sort-link{font-size:8.5px!important;padding:1px 2px!important;white-space:nowrap!important}
-body.endpoint-top-page .cpu-dual-cell,body.endpoint-top-page .ram-cell,body.endpoint-top-page .disk-cap-cell{text-align:center!important}
-body.endpoint-top-page .cpu-dual-cell .cpu-meter{width:96px;max-width:100%;margin:6px auto 0!important}
-body.endpoint-top-page .vm-ram-compact{margin-inline:auto!important;text-align:center!important;min-width:0!important;width:156px;max-width:100%}
-body.endpoint-top-page .vm-ram-compact .ram-meter{width:100%;margin-left:auto!important;margin-right:auto!important}
-body.endpoint-top-page .top-disk-capacity{text-align:center!important;margin-inline:auto;max-width:194px}
-body.endpoint-top-page .top-disk-capacity .disk-cap-meter{margin-left:auto;margin-right:auto}
-
-/* Consumption: explicit identity/metric proportions and a toolbar grid matching each tab. */
-body.endpoint-bandwidth-consumption-page .v5058c-toolbar:has(select[name="node"]){grid-template-columns:minmax(360px,1.45fr) minmax(185px,.72fr) minmax(175px,.68fr) auto auto auto!important}
-body.endpoint-bandwidth-consumption-page .v5058c-toolbar:not(:has(select[name="node"])){grid-template-columns:minmax(360px,1.6fr) minmax(190px,.72fr) auto auto auto!important}
-body.endpoint-bandwidth-consumption-page .v5058c-table{width:100%!important;table-layout:auto!important}
-body.endpoint-bandwidth-consumption-page .v5058c-vm-table{min-width:1340px!important}
-body.endpoint-bandwidth-consumption-page .v5058c-node-table{min-width:1180px!important}
-body.endpoint-bandwidth-consumption-page .v5058c-vm-table thead tr:first-child th:nth-child(1),body.endpoint-bandwidth-consumption-page .v5058c-vm-table tbody td:nth-child(1){width:220px!important;min-width:220px!important;max-width:260px!important}
-body.endpoint-bandwidth-consumption-page .v5058c-vm-table thead tr:first-child th:nth-child(2),body.endpoint-bandwidth-consumption-page .v5058c-vm-table tbody td:nth-child(2){width:190px!important;min-width:190px!important;max-width:230px!important}
-body.endpoint-bandwidth-consumption-page .v5058c-vm-table thead tr:first-child th:nth-child(3),body.endpoint-bandwidth-consumption-page .v5058c-vm-table thead tr:first-child th:nth-child(4){min-width:330px!important}
-body.endpoint-bandwidth-consumption-page .v5058c-vm-table tbody td:nth-child(n+3):nth-child(-n+8){width:108px!important;min-width:96px!important}
-body.endpoint-bandwidth-consumption-page .v5058c-vm-table thead tr:first-child th:nth-child(5),body.endpoint-bandwidth-consumption-page .v5058c-vm-table tbody td:nth-child(9){width:100px!important;min-width:100px!important}
-body.endpoint-bandwidth-consumption-page .v5058c-vm-table thead tr:first-child th:nth-child(6),body.endpoint-bandwidth-consumption-page .v5058c-vm-table tbody td:nth-child(10){width:150px!important;min-width:150px!important}
-body.endpoint-bandwidth-consumption-page .v5058c-node-table thead tr:first-child th:nth-child(1),body.endpoint-bandwidth-consumption-page .v5058c-node-table tbody td:nth-child(1){width:200px!important;min-width:200px!important;max-width:250px!important}
-body.endpoint-bandwidth-consumption-page .v5058c-node-table thead tr:first-child th:nth-child(2),body.endpoint-bandwidth-consumption-page .v5058c-node-table thead tr:first-child th:nth-child(3){min-width:330px!important}
-body.endpoint-bandwidth-consumption-page .v5058c-node-table tbody td:nth-child(n+2):nth-child(-n+7){width:108px!important;min-width:96px!important}
-body.endpoint-bandwidth-consumption-page .v5058c-node-table thead tr:first-child th:nth-child(4),body.endpoint-bandwidth-consumption-page .v5058c-node-table tbody td:nth-child(8){width:100px!important;min-width:100px!important}
-body.endpoint-bandwidth-consumption-page .v5058c-node-table thead tr:first-child th:nth-child(5),body.endpoint-bandwidth-consumption-page .v5058c-node-table tbody td:nth-child(9){width:150px!important;min-width:150px!important}
-body.endpoint-bandwidth-consumption-page .v5058c-table th{padding-left:8px!important;padding-right:8px!important}
-body.endpoint-bandwidth-consumption-page .v5058c-table td{padding-left:10px!important;padding-right:10px!important}
-body.endpoint-bandwidth-consumption-page .v5058c-table .v5058c-uuid .uuid-cell{max-width:none!important;min-width:0}
-body.endpoint-bandwidth-consumption-page .v5058c-table .v5058c-node>a b{font-size:12.5px;line-height:1.15}
-body.endpoint-bandwidth-consumption-page .v5058c-table .v5058c-total{text-align:right!important}
-body.endpoint-bandwidth-consumption-page .v5058c-table td:nth-last-child(2){text-align:center!important}
-body.endpoint-bandwidth-consumption-page .v5058c-table td:nth-last-child(2) .status{font-size:13px!important;font-weight:850!important;line-height:1.15!important;white-space:nowrap!important}
-body.endpoint-bandwidth-consumption-page .v5058c-latest{text-align:right!important;padding-right:14px!important}
-body.endpoint-bandwidth-consumption-page .v5058c-latest .v5058c-time{font-size:10.5px!important;white-space:nowrap}
-body.endpoint-bandwidth-consumption-page .v5058c-na{display:inline-block;min-width:78px;text-align:center;opacity:.78}
-
-/* Node Health: comfortable first-column inset and balanced operational columns. */
-body.endpoint-node-health-page .top-card{padding:14px 16px!important}
-body.endpoint-node-health-page .top-card .top-grid{gap:18px!important}
-body.endpoint-node-health-page .top-card .search{max-width:520px;margin-top:10px!important}
-body.endpoint-node-health-page .card>table{width:100%;table-layout:fixed}
-body.endpoint-node-health-page .card>table th,body.endpoint-node-health-page .card>table td{vertical-align:middle!important}
-body.endpoint-node-health-page .card>table th:nth-child(1),body.endpoint-node-health-page .card>table td:nth-child(1){width:220px!important;padding-left:18px!important}
-body.endpoint-node-health-page .card>table th:nth-child(2),body.endpoint-node-health-page .card>table td:nth-child(2){width:130px!important}
-body.endpoint-node-health-page .card>table th:nth-child(3),body.endpoint-node-health-page .card>table td:nth-child(3){width:170px!important;white-space:nowrap}
-body.endpoint-node-health-page .card>table th:nth-child(4),body.endpoint-node-health-page .card>table td:nth-child(4){width:90px!important}
-body.endpoint-node-health-page .card>table th:nth-child(5),body.endpoint-node-health-page .card>table td:nth-child(5){width:110px!important;text-align:center}
-body.endpoint-node-health-page .card>table th:nth-child(6),body.endpoint-node-health-page .card>table td:nth-child(6){width:70px!important;text-align:center}
-body.endpoint-node-health-page .card>table th:nth-child(7),body.endpoint-node-health-page .card>table td:nth-child(7){width:90px!important;text-align:center}
-body.endpoint-node-health-page .card>table th:nth-child(8),body.endpoint-node-health-page .card>table td:nth-child(8){width:120px!important;text-align:right;padding-right:18px!important}
-body.endpoint-node-health-page .card>table .node-name-cell>a b{font-size:14px}
-body.endpoint-node-health-page .card>table .node-name-cell small{margin-top:3px!important}
-
-@media(max-width:1500px){
-  body.endpoint-bandwidth-consumption-page .v5058c-toolbar:has(select[name="node"]){grid-template-columns:minmax(280px,1fr) minmax(145px,.52fr) minmax(145px,.5fr) auto auto auto!important}
-  body.endpoint-bandwidth-consumption-page .v5058c-toolbar:not(:has(select[name="node"])){grid-template-columns:minmax(300px,1fr) minmax(170px,.6fr) auto auto auto!important}
-}
-</style>
-'''
-
 
 _page_v5058r5_base = page
 
@@ -36081,7 +35955,7 @@ def page(title, content):
         html = response.get_data(as_text=True)
         # Remove transient guestfs names from rendered output only.
         html = re.sub(r'guestfs-[A-Za-z0-9_.:-]+', '-', html, flags=re.I)
-        html = html.replace('</head>', V5058R5_UI_CSS + V5059R2_UI_CSS + V5059R1_A11Y_SCRIPT + '</head>', 1)
+        html = html.replace('</head>', V5058R5_UI_CSS + V5059R1_A11Y_SCRIPT + '</head>', 1)
         response.set_data(html)
     except Exception:
         app.logger.exception("Could not apply r5 professional UI layer")

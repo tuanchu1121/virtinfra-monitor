@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.9-prod-r2-ui-layout-polish-only`
+Release: `50.5.9-prod-r1-ui-responsive-theme-chart-gaps`
 
 ## Final data path
 

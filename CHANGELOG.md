@@ -1,23 +1,32 @@
-# 50.5.9-prod-r2-ui-layout-polish-only
+# 50.5.9-prod-r1-ui-responsive-theme-chart-gaps
 
-Baseline trực tiếp: `50.5.9-prod-r1-ui-responsive-theme-chart-gaps`.
+- Production release identity for the responsive UI, consolidated theme controls and gap-aware charts.
+- Runtime behavior is contract-equivalent to the reviewed r5 source, apart from release metadata.
+- Keeps the Storage filtered-node SQL hotfix and the r4 inventory/Consumption fixes.
 
-## Thay đổi riêng của r2
+## Runtime changes
 
-- Chỉ bổ sung một lớp CSS presentation cuối cùng, không thêm JavaScript, route, endpoint, form, query parameter, sort key, SQL, API hay luồng backend mới.
-- Dashboard: dành đủ chiều rộng cho `STATUS` và `SNAPSHOT`, loại bỏ hiện tượng chữ đè nhau; giữ nguyên 18 cột và thứ tự hiện tại.
-- Top VM: thu gọn cột `#`, Node, UUID và IFACES; căn giữa CPU/RAM/Disk Capacity; giữ `ALLOC · ASSIGNED · % · SLOTS` trên một hàng.
-- VM Consumption: nới VM/UUID và Node/IP, cân lại sáu cột Public/Private, Coverage và Latest Sample; toolbar vẫn dùng nguyên form/action/parameter.
-- Node Consumption: cân lại Node/IP, Physical Public/Private, Coverage, Latest Sample và grid toolbar không có Node filter.
-- Node Health: tăng khoảng cách mép trái cho Node/IP và cân lại tám cột hiện có.
-- Không thêm tính năng kéo thả, resize, ẩn/hiện cột hoặc cấu hình layout.
+- Preserves the r4 inventory deadlock fix, five-minute Consumption pipeline and server rollups.
+- Fixes `/storage?view=nodes&mount=...` HTTP 500 by adding the missing `node_inventory ni` join to the filtered Node Storage query.
+- Adds a final UI-only presentation layer for Dashboard, Node, VM UUID, Consumption, Top VM and VM Abuse.
+- Hides transient `guestfs-*` interface names from rendered pages without changing collection or database rows.
+- Keeps real zero values on charts and breaks lines across missing retained time buckets.
+- Removes the long VM RAM chart implementation note.
+- Makes real/retained snapshot tables collapsed by default while preserving sorting and pagination.
+- Replaces the three theme buttons with compact Mode and Theme selects in the upper-right header.
 
-## Phần kế thừa nguyên vẹn từ r1
+## Previous r4 notes
 
-- Theme Auto/Light/Dark, chart gap segmentation, snapshot collapse và presentation filter `guestfs-*`.
-- Inventory deadlock cleanup worker/timer và `/push` deadlock retry.
-- Agent v15, five-minute metrics, Consumption rollups và Storage filtered-node hotfix.
-- Abuse, CPU/RAM/network/PPS/disk formula, retention, queue, authentication và API contract.
+- Removed broad `auto_cleanup_inventory()` writes from all web/read and auto-refresh paths. The compatibility symbol now returns without writing.
+- Added `bw-monitor-inventory-cleanup.timer`, scheduled every ten minutes around `:02`, with one global advisory lock, ordered 500-row batches, `FOR UPDATE SKIP LOCKED`, sticky hidden rows and bounded deadlock retry.
+- Preserved current expiry thresholds: VM stale after 3 days, VM soft-delete after 15 days and node soft-delete after 7 days.
+- Added whole-transaction `/push` retry for residual PostgreSQL `40P01` deadlocks; failed attempts roll back before retry and `push_receipts` remains authoritative.
+- Updated the Agent to v15. It keeps the established five-minute payload and durable pending retry, but removes the separate local two-hour Consumption accumulator and delivery request.
+- Added server-side physical `node_consumption_hourly` and `node_consumption_daily` rollups in the accepted `/push` transaction, plus a recent raw-data backfill during Monitor upgrade.
+- Reworked Consumption rolling ranges so complete days/hours use compact rollups and only incomplete hour edges read five-minute rows. The `2H` UI range remains available.
+- Combined table rows and count with `COUNT(*) OVER()`, cached range summary totals for 60 seconds, pre-aggregated inventory metadata and corrected coverage to count one accepted sample instead of one row per NIC.
+- Retained `/push/bandwidth-consumption` and `node_bandwidth_consumption_2h` only for staged-upgrade and pre-v15 history compatibility; Agent v15 does not call them.
+- Kept Abuse behavior, CPU/RAM/Disk formulas, Storage I/O, queue semantics, API authentication, timezone and all non-Consumption pages unchanged.
 
 # 50.5.8-prod-r3-consumption-vm-node
 

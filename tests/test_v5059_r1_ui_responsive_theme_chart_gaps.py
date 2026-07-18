@@ -5,7 +5,7 @@ APP = (ROOT / "app" / "app.py").read_text(encoding="utf-8")
 
 
 def test_release_marker():
-    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "50.5.9-prod-r3-ui-alignment-overflow-hotfix"
+    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "50.6.0-prod-r2-node-groups-update-detection-fix"
     assert 'V5059R2_RELEASE = "50.5.9-prod-r3-ui-alignment-overflow-hotfix"' in APP
 
 

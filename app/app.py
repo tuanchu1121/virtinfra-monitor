@@ -36431,3 +36431,10 @@ def page(title, content):
     except Exception:
         app.logger.exception("Could not apply v50.5.9 r3 UI alignment layer")
     return response
+
+# ---------------------------------------------------------------------------
+# v50.6.0 Node Groups, inherited VM geography and vendored local SVG flags
+# ---------------------------------------------------------------------------
+V5060_RELEASE = "50.6.0-prod-r2-node-groups-update-detection-fix"
+import node_groups as _v5060_node_groups
+_v5060_node_groups.install(globals())

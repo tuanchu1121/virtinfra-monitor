@@ -29,11 +29,17 @@ fail(){ echo "ERROR: $*" >&2; exit 1; }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.9-prod-r3-ui-alignment-overflow-hotfix" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.6.0-prod-r2-node-groups-update-detection-fix" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/bw_pg.py && -f app/maintenance_native.py \
    && -f app/maintenance_queue.py && -f app/maintenance_dispatch.py \
    && -f postgres/sql/007_safe_maintenance_queue.sql \
    && -f postgres/sql/010_consumption_inventory_cleanup.sql \
+   && -f postgres/sql/011_node_groups_country_flags.sql \
+   && -f app/node_groups.py \
+   && -f static/flags/4x3/jp.svg \
+   && -f static/flags/countries.json \
+   && -f THIRD_PARTY_LICENSES/flag-icons-LICENSE.txt \
+   && -f THIRD_PARTY_NOTICES.md \
    && -f app/inventory_cleanup.py && -f app/consumption_rollup.py \
    && -f deploy/postgres/bw-monitor-inventory-cleanup.timer \
    && -f deploy/agent/agent.py && -f deploy/agent/fix-agent-uuid.sh ]] \
@@ -144,6 +150,12 @@ log "Validate v50.5.9 r2 presentation-only layout polish"
 
 log "Validate v50.5.9 r3 UI alignment, unified theme and contained table overflow"
 "$PYTHON" -m pytest -q tests/test_v5059_r3_ui_alignment_overflow_hotfix.py
+
+log "Validate v50.6.0 Node Groups, inherited VM geography and local SVG flags"
+"$PYTHON" -m pytest -q tests/test_v5060_node_groups_country_flags.py
+
+log "Validate v50.6.0 r2 existing-install detection and PG environment recovery"
+"$PYTHON" -m pytest -q tests/test_v5060_r2_update_detection.py
 
 log "Verify one-command installer and operations flow"
 bash ./tools/test-installer-flow.sh

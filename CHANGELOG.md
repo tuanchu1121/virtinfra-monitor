@@ -1,16 +1,43 @@
-# 50.5.9-prod-r3-ui-alignment-overflow-hotfix
+# 50.6.0-prod-r2-node-groups-update-detection-fix
 
-Baseline trực tiếp: `50.5.9-prod-r2-ui-layout-polish-only`.
+Baseline trực tiếp: `50.6.0-prod-r1-node-groups-country-flags`.
 
-## Thay đổi riêng của r3
+## Sửa updater trên installation hiện có
 
-- Theme: gộp Auto, Light, Dark và toàn bộ theme đã cấu hình vào một ô `Theme`; giao diện không còn ô `Style`. Giữ nguyên các localStorage key cũ để không làm mất lựa chọn của trình duyệt.
-- Dashboard Nodes: căn cùng trục header và số liệu, cân lại phần cuối bảng, giữ `INTERFACE` trong khung và không để nội dung tràn qua viền khi cuộn.
-- Top VM: giữ cách hiển thị Node/UUID của code cũ; căn giữa CPU, RAM và Allocated/Assigned; đặt ba progress bar cùng chiều dài 136 px và cùng tâm cột.
-- VM Consumption và Node Consumption: thêm colgroup trình bày cố định để hai tầng header khớp tuyệt đối với body; thu gọn ô Search và cân lại toolbar.
-- Node Health: bọc bảng trong vùng cuộn nội bộ, tăng inset cột Node và cân lại tám cột hiện có.
-- Tất cả bảng rộng: chỉ vùng `.table-wrap` cuộn ngang; body không tràn ngang, cell và phần tử con bị giới hạn trong viền bảng.
-- Không thêm tính năng mới, không đổi route, endpoint, query parameter, sort key, form action, payload, SQL, công thức, retention, queue, Abuse, Agent hay luồng push.
+- Không còn bắt buộc `/etc/default/bw-monitor-postgres` phải tồn tại mới nhận diện được bản v50 đang chạy.
+- Existing installation được xác định bằng runtime thực tế: `/opt/bw-monitor/app.py`, `/etc/default/bw-monitor` và `bw-monitor.service`.
+- Khi thiếu PostgreSQL env riêng, updater phục hồi user/password/database/port từ `BW_POSTGRES_DSN` hoặc `BW_DATABASE_URL`, sau đó đối chiếu container `bw-timescaledb`.
+- Updater từ chối tạo password database mới nếu không thể phục hồi credential hiện tại và từ chối tự đổi external PostgreSQL DSN thành local container.
+- `node_groups.py` được py_compile trước khi service khởi động; thư mục cờ local được thay sạch khi update để không giữ file thừa từ release cũ.
+
+## Node Groups
+
+- Admin menu được chuẩn hóa thành `Overview`, `Nodes`, `Node Groups`, `VMs`, `Maintenance`.
+- Thêm CRUD Node Group với tên, mô tả, mã quốc gia ISO 3166-1 alpha-2, Enabled, Hidden và Default.
+- Membership chỉ dùng chính xác `node_inventory.node`; không dùng public/private IP, MAC, interface hoặc VM UUID.
+- Một Node chỉ thuộc tối đa một Group; `Ungrouped` là nhóm ảo. Assign, Move, Remove và xóa Group đều chạy trong transaction và không xóa metric.
+- VM không có quan hệ Group riêng; Group và cờ được kế thừa từ Node chứa VM.
+- Lưu lịch sử thay đổi membership để audit và chuẩn bị cho báo cáo theo thời điểm sau này.
+
+## Cờ quốc gia local
+
+- Vendor trực tiếp bộ SVG 4:3 từ `flag-icons 7.5.0` vào `static/flags/4x3/`.
+- Database chỉ lưu mã như `JP`, `US`, `SG`; không lưu emoji, filename hoặc URL.
+- Icon trong bảng khóa ở 16 × 12 px, hiển thị cạnh tên Node; thiếu SVG sẽ fallback emoji hoặc `Global`.
+- Runtime không phụ thuộc GitHub, npm, CDN hoặc upstream flag-icons. MIT license được đóng kèm.
+
+## Filter và Consumption
+
+- Thêm Group/Node filter vào các màn hình có dữ liệu Node/VM và giữ filter qua link, form, sort, pager và refresh.
+- Admin Nodes có cột Group/flag và thao tác Assign/Move/Remove bằng exact Node name.
+- Admin VMs chỉ hiển thị Group kế thừa, không có nút hoặc cột membership trực tiếp.
+- Consumption có thêm tab Group. Tổng Group được cộng từ physical Node counters; coverage dùng `SUM(valid coverage seconds) / SUM(expected seconds)`, không dùng trung bình phần trăm Node.
+
+## Tương thích
+
+- `app/app.py` chỉ thêm hook cài module cuối; implementation mới nằm trong `app/node_groups.py`.
+- Agent byte-for-byte không đổi. Không đổi payload, API endpoint hiện tại, CPU/RAM/disk/network formula, retention, queue, Abuse hoặc cadence push 5 phút.
+- Không tự deploy và không tự restart production.
 
 # 50.5.9-prod-r2-ui-layout-polish-only
 

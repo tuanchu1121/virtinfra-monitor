@@ -2,12 +2,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = (ROOT / "app" / "app.py").read_text(encoding="utf-8")
-VERSION = "50.5.9-prod-r3-ui-alignment-overflow-hotfix"
+VERSION = "50.6.0-prod-r2-node-groups-update-detection-fix"
 
 
 def test_release_identity():
     assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == VERSION
-    assert f'V5059R2_RELEASE = "{VERSION}"' in APP
+    assert 'V5059R2_RELEASE = "50.5.9-prod-r3-ui-alignment-overflow-hotfix"' in APP
     assert 'style id="v5059r2-layout-polish-only"' in APP
 
 

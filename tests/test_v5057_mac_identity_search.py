@@ -34,7 +34,7 @@ def load_normalizer():
 
 
 def test_release_identity():
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r3-ui-alignment-overflow-hotfix"
+    assert (ROOT / "VERSION").read_text().strip() == "50.6.0-prod-r2-node-groups-update-detection-fix"
 
 
 def test_existing_agent_already_reports_vm_and_physical_mac():

@@ -1,9 +1,9 @@
 # VirtInfra Monitor v50 PostgreSQL Native
 
-**Release:** `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
+**Release:** `50.6.0-prod-r2-node-groups-update-detection-fix`
 Production monitoring for KVM/libvirt nodes and virtual machines. PostgreSQL 17 + TimescaleDB is the only runtime data plane. This repository keeps the complete v48/v49 dashboard, Abuse Engine, storage views, Admin tools, REST API and Agent protocol, while replacing the runtime data store with one PostgreSQL 17 + TimescaleDB database.
 
-> Release: `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
+> Release: `50.6.0-prod-r2-node-groups-update-detection-fix`
 
 > **Operations source of truth:** [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md)
 >
@@ -347,6 +347,12 @@ The public product name is **VirtInfra Monitor** and the node collector is **Vir
 
 ## Custom Theme Library
 
-The original dashboard `Auto`, `Light`, and `Dark` modes are protected and keep their existing CSS. Administrators can open `Admin -> Themes` to create, edit, publish, hide, duplicate, or delete separate custom themes. Published themes appear in a user selector beside the protected core controls, and every browser keeps its own choice. Built-in templates include VirtInfra Ocean, Grafana Inspired, Zabbix Inspired, Datadog Inspired, Prometheus Inspired, NOC High Contrast, and Dense Operations.
+The original dashboard `Auto`, `Light`, and `Dark` modes are protected and keep their existing CSS. Existing custom theme management remains available for compatibility, while the visible header uses one unified `Theme` selector. Published themes appear in that same selector together with Auto, Light, and Dark, and every browser keeps its own choice. Built-in templates include VirtInfra Ocean, Grafana Inspired, Zabbix Inspired, Datadog Inspired, Prometheus Inspired, NOC High Contrast, and Dense Operations.
 
 See [docs/THEME_MANAGER.md](docs/THEME_MANAGER.md).
+
+## Node Groups and country flags
+
+Release 50.6.0 adds Admin-managed Node Groups keyed strictly by exact Node name,
+inherited VM geography, small local SVG flags, Group/Node filters, and weighted
+Group Consumption. See [docs/NODE_GROUPS.md](docs/NODE_GROUPS.md).

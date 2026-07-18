@@ -1,6 +1,6 @@
 # VIRTINFRA MONITOR: TÀI LIỆU VẬN HÀNH
 
-> Release `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
+> Release `50.6.0-prod-r2-node-groups-update-detection-fix`
 
 Runtime hiện tại dùng PostgreSQL 17 + TimescaleDB làm nguồn dữ liệu duy nhất.
 

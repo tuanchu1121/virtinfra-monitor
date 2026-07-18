@@ -96,5 +96,21 @@ def test_agent_is_byte_for_byte_unchanged():
     assert actual == CONTRACT["agent_sha256"]
 
 
-def test_postgresql_sql_is_byte_for_byte_unchanged():
-    assert digest_tree((ROOT / "postgres" / "sql").glob("*.sql")) == CONTRACT["postgres_sql_tree_sha256"]
+def test_existing_postgresql_sql_is_byte_for_byte_unchanged():
+    # v50.6 adds one isolated migration for Node Groups. The established
+    # PostgreSQL migrations 001-010 must remain byte-for-byte identical to the
+    # v50.5.9 runtime contract.
+    existing = [
+        path for path in (ROOT / "postgres" / "sql").glob("*.sql")
+        if not path.name.startswith("011_")
+    ]
+    assert digest_tree(existing) == CONTRACT["postgres_sql_tree_sha256"]
+
+
+def test_node_groups_migration_is_additive():
+    migration = ROOT / "postgres" / "sql" / "011_node_groups_country_flags.sql"
+    assert migration.is_file()
+    text = migration.read_text(encoding="utf-8")
+    assert "CREATE TABLE IF NOT EXISTS node_groups" in text
+    assert "CREATE TABLE IF NOT EXISTS node_group_memberships" in text
+    assert "CREATE TABLE IF NOT EXISTS node_group_membership_history" in text

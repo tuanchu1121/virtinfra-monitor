@@ -2,7 +2,7 @@
 
 ## Upgrade type
 
-`50.5.9-prod-r3-ui-alignment-overflow-hotfix` is an **in-place upgrade** from the existing PostgreSQL-native VirtInfra Monitor release. It is not a clean-install-only branch.
+`50.6.0-prod-r2-node-groups-update-detection-fix` is an **in-place upgrade** from the existing PostgreSQL-native VirtInfra Monitor release. It is not a clean-install-only branch.
 
 The package can also perform a fresh installation, but the intended production path is:
 

@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.8-prod-r4-consumption-fast-inventory-deadlock-fix`
+Release: `50.5.8-prod-r5-professional-ui-storage-hotfix`
 
 ## Final data path
 

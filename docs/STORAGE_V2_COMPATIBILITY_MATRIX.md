@@ -1,6 +1,6 @@
 # Storage V2 compatibility matrix
 
-Release: `50.5.8-prod-r4-consumption-fast-inventory-deadlock-fix`
+Release: `50.5.8-prod-r5-professional-ui-storage-hotfix`
 
 Status values: **UNCHANGED**, **V2 READ**, **V2 WRITE**, **ADDITIVE**, **FALLBACK AVAILABLE**.
 

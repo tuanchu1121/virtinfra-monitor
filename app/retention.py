@@ -74,7 +74,7 @@ def main() -> int:
         result = module.run_retention(dry_run=False)
         print(json.dumps({
             "ok": True,
-            "version": "50.5.8-prod-r4-consumption-fast-inventory-deadlock-fix",
+            "version": "50.5.8-prod-r5-professional-ui-storage-hotfix",
             "started_at": started,
             "finished_at": int(time.time()),
             "result": result,

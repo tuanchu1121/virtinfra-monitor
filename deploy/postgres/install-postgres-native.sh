@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE="50.5.8-prod-r4-consumption-fast-inventory-deadlock-fix"
+RELEASE="50.5.8-prod-r5-professional-ui-storage-hotfix"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 APP_SRC="$REPO_ROOT/app"

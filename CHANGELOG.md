@@ -1,4 +1,17 @@
-# 50.5.8-prod-r4-consumption-fast-inventory-deadlock-fix
+# 50.5.8-prod-r5-professional-ui-storage-hotfix
+
+## Runtime changes
+
+- Preserves the r4 inventory deadlock fix, five-minute Consumption pipeline and server rollups.
+- Fixes `/storage?view=nodes&mount=...` HTTP 500 by adding the missing `node_inventory ni` join to the filtered Node Storage query.
+- Adds a final UI-only presentation layer for Dashboard, Node, VM UUID, Consumption, Top VM and VM Abuse.
+- Hides transient `guestfs-*` interface names from rendered pages without changing collection or database rows.
+- Keeps real zero values on charts and breaks lines across missing retained time buckets.
+- Removes the long VM RAM chart implementation note.
+- Makes real/retained snapshot tables collapsed by default while preserving sorting and pagination.
+- Replaces the three theme buttons with compact Mode and Theme selects in the upper-right header.
+
+## Previous r4 notes
 
 - Removed broad `auto_cleanup_inventory()` writes from all web/read and auto-refresh paths. The compatibility symbol now returns without writing.
 - Added `bw-monitor-inventory-cleanup.timer`, scheduled every ten minutes around `:02`, with one global advisory lock, ordered 500-row batches, `FOR UPDATE SKIP LOCKED`, sticky hidden rows and bounded deadlock retry.

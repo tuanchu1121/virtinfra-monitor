@@ -29,7 +29,7 @@ fail(){ echo "ERROR: $*" >&2; exit 1; }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.8-prod-r4-consumption-fast-inventory-deadlock-fix" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.5.8-prod-r5-professional-ui-storage-hotfix" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/bw_pg.py && -f app/maintenance_native.py \
    && -f app/maintenance_queue.py && -f app/maintenance_dispatch.py \
    && -f postgres/sql/007_safe_maintenance_queue.sql \

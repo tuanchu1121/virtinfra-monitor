@@ -1,8 +1,8 @@
 # SOURCE OF TRUTH VẬN HÀNH
 
-> Release: `50.5.8-prod-r4-consumption-fast-inventory-deadlock-fix`
+> Release: `50.5.8-prod-r5-professional-ui-storage-hotfix`
 
-> Release: `50.5.8-prod-r4-consumption-fast-inventory-deadlock-fix`
+> Release: `50.5.8-prod-r5-professional-ui-storage-hotfix`
 >
 > Tài liệu này được đối chiếu trực tiếp với `install.sh`, `deploy/postgres/*`, `deploy/agent/*`, `postgres/docker-compose.yml`, `app/app.py` và các test contract hiện tại.
 

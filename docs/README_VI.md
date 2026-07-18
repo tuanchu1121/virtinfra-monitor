@@ -1,6 +1,6 @@
 # VIRTINFRA MONITOR: TÀI LIỆU VẬN HÀNH
 
-> Release `50.5.8-prod-r4-consumption-fast-inventory-deadlock-fix`
+> Release `50.5.8-prod-r5-professional-ui-storage-hotfix`
 
 Runtime hiện tại dùng PostgreSQL 17 + TimescaleDB làm nguồn dữ liệu duy nhất.
 

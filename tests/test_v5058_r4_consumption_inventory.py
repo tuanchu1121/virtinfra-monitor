@@ -10,7 +10,7 @@ VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 
 def test_release_identity():
-    assert VERSION == "50.5.9-prod-r2-ui-layout-polish-only"
+    assert VERSION == "50.5.9-prod-r3-ui-alignment-overflow-hotfix"
     assert VERSION in APP
     assert VERSION in INSTALLER
 

@@ -74,7 +74,7 @@ def main() -> int:
         result = module.run_retention(dry_run=False)
         print(json.dumps({
             "ok": True,
-            "version": "50.5.9-prod-r2-ui-layout-polish-only",
+            "version": "50.5.9-prod-r3-ui-alignment-overflow-hotfix",
             "started_at": started,
             "finished_at": int(time.time()),
             "result": result,

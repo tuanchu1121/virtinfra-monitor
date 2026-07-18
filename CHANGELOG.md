@@ -1,3 +1,17 @@
+# 50.5.9-prod-r3-ui-alignment-overflow-hotfix
+
+Baseline trực tiếp: `50.5.9-prod-r2-ui-layout-polish-only`.
+
+## Thay đổi riêng của r3
+
+- Theme: gộp Auto, Light, Dark và toàn bộ theme đã cấu hình vào một ô `Theme`; giao diện không còn ô `Style`. Giữ nguyên các localStorage key cũ để không làm mất lựa chọn của trình duyệt.
+- Dashboard Nodes: căn cùng trục header và số liệu, cân lại phần cuối bảng, giữ `INTERFACE` trong khung và không để nội dung tràn qua viền khi cuộn.
+- Top VM: giữ cách hiển thị Node/UUID của code cũ; căn giữa CPU, RAM và Allocated/Assigned; đặt ba progress bar cùng chiều dài 136 px và cùng tâm cột.
+- VM Consumption và Node Consumption: thêm colgroup trình bày cố định để hai tầng header khớp tuyệt đối với body; thu gọn ô Search và cân lại toolbar.
+- Node Health: bọc bảng trong vùng cuộn nội bộ, tăng inset cột Node và cân lại tám cột hiện có.
+- Tất cả bảng rộng: chỉ vùng `.table-wrap` cuộn ngang; body không tràn ngang, cell và phần tử con bị giới hạn trong viền bảng.
+- Không thêm tính năng mới, không đổi route, endpoint, query parameter, sort key, form action, payload, SQL, công thức, retention, queue, Abuse, Agent hay luồng push.
+
 # 50.5.9-prod-r2-ui-layout-polish-only
 
 Baseline trực tiếp: `50.5.9-prod-r1-ui-responsive-theme-chart-gaps`.

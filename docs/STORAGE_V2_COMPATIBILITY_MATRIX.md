@@ -1,6 +1,6 @@
 # Storage V2 compatibility matrix
 
-Release: `50.5.9-prod-r2-ui-layout-polish-only`
+Release: `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
 
 Status values: **UNCHANGED**, **V2 READ**, **V2 WRITE**, **ADDITIVE**, **FALLBACK AVAILABLE**.
 

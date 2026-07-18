@@ -1,252 +1,121 @@
-# Báo cáo kiểm thử VirtInfra Monitor 50.5.9 r2
+# Báo cáo kiểm thử VirtInfra Monitor 50.5.9 r3
 
-**Release:** `50.5.9-prod-r2-ui-layout-polish-only`  
-**Ngày đóng gói:** 2026-07-18  
-**Baseline trực tiếp:** `50.5.9-prod-r1-ui-responsive-theme-chart-gaps`
+**Release:** `50.5.9-prod-r3-ui-alignment-overflow-hotfix`  
+**Baseline:** `50.5.9-prod-r2-ui-layout-polish-only`
 
-## Mục tiêu release
+## Phạm vi sửa
 
-Đây là bản full source chỉ đánh bóng bố cục giao diện trên baseline r1. Không bổ sung tính năng mới và không thay đổi luồng hoạt động của Monitor.
+Bản này chỉ sửa lớp trình bày và điều khiển giao diện đã thảo luận:
 
-Phạm vi giao diện được sửa:
+- Dashboard Nodes: căn lại header/số liệu và giữ cột `INTERFACE` trong khung.
+- Top VM: giữ Node/UUID theo cách hiển thị cũ; CPU, RAM và Storage bar cùng chiều dài, cùng tâm.
+- VM Consumption và Node Consumption: colgroup cố định, header hai tầng khớp body, ô Search gọn hơn.
+- Node Health: tăng inset cột Node và thêm vùng cuộn nội bộ.
+- Theme: một ô duy nhất chứa Auto, Light, Dark và toàn bộ theme đã cấu hình; bỏ ô Style khỏi UI thực tế.
+- Bảng rộng: body không cuộn ngang, chỉ `.table-wrap` được cuộn và nội dung không tràn qua viền card.
 
-- Dashboard Nodes: tách rõ `STATUS` và `SNAPSHOT`, cân lại chiều rộng 18 cột và khung Load.
-- Top VM: thu gọn cột `#`, dàn ngang `ALLOC · ASSIGNED · % · SLOTS`, căn giữa CPU, RAM và Disk Capacity.
-- VM Consumption: nới VM/UUID và Node/IP, thu gọn các cột RX/TX, cân Total, Coverage, Latest Sample và toolbar.
-- Node Consumption: cân lại Node/IP, Physical Public/Private, Coverage, Latest Sample và toolbar riêng của tab Node.
-- Node Health: thêm khoảng đệm cho cột Node và cân lại tám cột vận hành.
+Không thêm tính năng kéo thả, resize, ẩn/hiện cột hoặc cấu hình layout.
 
-Không thêm kéo thả cột, resize cột, hide/show cột, API mới, route mới, query parameter mới hoặc JavaScript nghiệp vụ mới.
+## Kiểm tra contract
 
-## Thay đổi runtime
+- Route, endpoint, HTTP method, query parameter, form field/action và sort contract: **PASS**.
+- Agent `deploy/agent/agent.py` so với baseline r2: **byte-for-byte unchanged**.
+- PostgreSQL SQL so với contract baseline: **byte-for-byte unchanged**.
+- Không thêm route hoặc câu lệnh `CREATE/SELECT/INSERT/UPDATE/DELETE` trong lớp r3.
+- Consumption body, sort link, pagination và dữ liệu vẫn được giao cho implementation r2 hiện có; r3 chỉ chèn `colgroup` vào HTML đã render.
+- Node Health vẫn gọi nguyên renderer cũ rồi chỉ bọc bảng bằng `.table-wrap`.
+- LocalStorage key theme cũ được giữ nguyên để tương thích trình duyệt đang dùng.
 
-Thay đổi runtime duy nhất của r2 là một lớp CSS presentation-only mới trong `app/app.py`:
+## Test tự động
 
-```text
-V5059R2_UI_CSS
-<style id="v5059r2-layout-polish-only">
-```
-
-Lớp CSS được chèn sau CSS r1. Không thêm function, route, endpoint, SQL, form action, request handler, event listener hoặc timer mới.
-
-Các file runtime khác chỉ đổi release identity từ r1 sang r2.
-
-## Contract-equivalence với r1
-
-Contract test đối chiếu với snapshot của r1 đã PASS:
-
-- Route decorators: **72**, không đổi.
-- Runtime `app.view_functions` overrides: **60**, không đổi.
-- Request query keys: **45 nhóm**, không đổi.
-- Form keys: **67 nhóm**, không đổi.
-- `request.values` keys: **1 nhóm**, không đổi.
-- `url_for()` endpoint groups: **49**, không đổi.
-- Sort maps: **19**, không đổi.
-- Agent `deploy/agent/agent.py` SHA-256:  
-  `d637ec4fa0de2e07622402e3da60ae54ccf2d3f84f046de2141c813ee3b58081`
-- PostgreSQL SQL tree SHA-256:  
-  `0a56aa450c979b170ba431924e4bdc515fbcea45e81583cbe33b344f451d022c`
-
-Agent và toàn bộ `postgres/sql/*.sql` giữ nguyên byte-for-byte so với r1.
-
-## Test đã chạy
-
-### Pytest
-
-Toàn bộ các test function pytest được chạy theo từng file hoặc selector để tránh chi phí parse lặp của `app.py` trong một tiến trình dài:
+Kết quả suite pytest không có live PostgreSQL:
 
 ```text
-84 passed
-1 skipped: live PostgreSQL integration không có BW_TEST_DATABASE_URL
+91 passed, 1 skipped
 ```
 
-Các nhóm chính đã PASS:
+`1 skipped` là PostgreSQL integration vì không có `BW_TEST_DATABASE_URL` trỏ tới database disposable.
 
-- native COPY ingest;
-- selected snapshot correctness;
-- PostgreSQL LIKE compatibility;
-- PostgreSQL-native maintenance;
-- MAC identity/search;
-- safe queue và canonical VM detail;
-- low-I/O compatibility;
-- Agent log contract;
-- Consumption và inventory cleanup;
-- r1 route/query/form/sort/Agent/SQL equivalence;
-- r1 Theme/chart-gap contract;
-- r2 layout-only contract.
-
-### Direct contract scripts
-
-Các script contract dạng top-level assertion đã PASS:
-
-- Agent v15 single five-minute delivery;
-- Consumption authentication;
-- Consumption UI contract;
-- custom Theme runtime;
-- documentation accuracy;
-- repository contract;
-- Storage V2/multi-NIC;
-- Theme manager;
-- v50 product contract;
-- VirtInfra hardening.
-
-`test_manifest_contract.py` được chạy trong final preflight sau khi tạo manifest.
-
-### Syntax và parser
-
-- Python `py_compile`: **PASS**.
-- Bash `bash -n`: **PASS**.
-- Existing accessibility JavaScript `node --check`: **PASS**.
-- CSS r2 `tinycss2`: **97 top-level rules, 0 parse errors**.
-- YAML parse: chạy trong final preflight.
-
-### Installer và full preflight
-
-Final PostgreSQL-native preflight:
+Các kiểm tra riêng của r3:
 
 ```text
-PASS: VirtInfra Monitor v50 PostgreSQL Native preflight
+7 passed
 ```
 
-Preflight exit code: **0**.
+Bao gồm:
 
-Preflight đã kiểm tra release identity, checksum manifest, generated-file/secret scan, Bash syntax, Python compile, YAML parse, source contracts, installer flow và các targeted regression test. Live PostgreSQL integration được chủ động bỏ qua vì không có disposable DSN.
+- release identity;
+- một Theme select duy nhất;
+- Consumption colgroup và toolbar;
+- ba resource bar Top VM có cùng chiều dài;
+- Dashboard/Node Health alignment;
+- table overflow containment;
+- không đăng ký route hoặc SQL mới.
 
-Installer/operations flow:
+## Syntax, parser và final preflight
 
-```text
-PASS: v50 GitHub/new-server/domain/operations installer flow
-```
+- `app/app.py` Python `py_compile`: **PASS**.
+- Unified Theme JavaScript `node --check`: **PASS**.
+- CSS r3 `tinycss2`: **90 top-level rules, 0 parse errors**.
+- Bash syntax cho toàn bộ shell script: **PASS**.
+- YAML workflow và Ansible: **PASS**.
+- One-command installer/operations flow: **PASS**.
+- Canonical source manifest với đường dẫn `./...`: **PASS, 174 source files**.
+- `./preflight.sh --use-current-python --skip-live`: **PASS**.
 
-### Package clean-extraction review
+## Browser fixture review
 
-- Canonical source manifest: **168 files**, fresh hashes và exact coverage.
-- ZIP clean extraction: manifest PASS, **15 targeted tests passed**, `app.py` compile PASS.
-- TAR.GZ clean extraction: manifest PASS, **15 targeted tests passed**, `app.py` compile PASS.
-- Canonical extracted ZIP/TAR trees: **169 files**, byte-identical khi bỏ cache test sinh ra.
-- External archive `SHA256SUMS`: verified.
+Đã render Chromium bằng đúng ba lớp CSS cuối `V5058R5_UI_CSS`, `V5059R2_UI_CSS`, `V5059R3_UI_CSS` với cấu trúc đại diện cho:
 
-## Browser review đại diện
-
-Đã render bằng Chromium các fixture đại diện dùng đúng class, cấu trúc cột và CSS cuối cùng của r2 cho:
-
-- Dashboard;
+- Theme control;
+- Dashboard Nodes;
 - Top VM;
 - VM Consumption;
 - Node Consumption;
 - Node Health.
 
-Ma trận kiểm tra:
+Ma trận:
 
 ```text
-5 trang × 3 viewport × 3 mức zoom = 45 trường hợp
+2 themes × 3 viewport × 3 zoom = 18 cases
+Themes: Light, Dark
 Viewport: 1366, 1920, 2048 px
 Zoom: 100%, 125%, 150%
-Body horizontal overflow: 0/45
-Dashboard STATUS/SNAPSHOT overlap: 0/9
+Failed: 0/18
 ```
 
-Ảnh Light/Dark tại 1920 px và JSON kết quả nằm trong:
+Các assertion browser:
+
+- body horizontal overflow bằng 0;
+- mọi `.table-wrap` nằm trong card;
+- Consumption header con khớp đúng biên cột body;
+- CPU/RAM/Storage track có cùng chiều rộng và cùng tâm cell;
+- Dashboard Interface không vượt biên table/wrapper;
+- Node Health có inset trái đúng;
+- chỉ có một `#unified-theme-select` và không có nhãn Style.
+
+Tệp review:
 
 ```text
-docs/visual-review/50.5.9-r2/
+docs/visual-review/50.5.9-r3/fixture.html
+docs/visual-review/50.5.9-r3/fixture-dark-1920.png
+docs/visual-review/50.5.9-r3/fixture-light-1920.png
+docs/visual-review/50.5.9-r3/results.json
+docs/visual-review/50.5.9-r3/unified-theme-runtime.js
 ```
 
-### Giới hạn visual review
+## Giới hạn visual review
 
 **NOT VERIFIED AGAINST THE LIVE AUTHENTICATED APPLICATION**
 
-Fixture review không kết nối PostgreSQL thật, không dùng session đăng nhập production và không phải screenshot từ deployment thật. Vì vậy cần kiểm tra staging/production có kiểm soát với dữ liệu thực trước rollout rộng.
+Fixture không kết nối PostgreSQL thật, không dùng session production và không đại diện cho dữ liệu production đầy đủ. Không deploy và không restart production trong quá trình tạo release.
 
-## Live integration chưa chạy
+## Phần không thay đổi
 
-- Không chạy PostgreSQL/TimescaleDB integration vì không có `BW_TEST_DATABASE_URL` trỏ tới database disposable.
-- Không deploy production.
-- Không restart service production.
-- Không thay đổi database production.
-
-## Những phần không thay đổi
-
-- API endpoint, request payload và response payload.
-- Flask route, endpoint name và HTTP method.
-- Query parameter, sort key, sort direction và URL contract.
-- Form action, method, input name, hidden field và CSRF.
-- Search, filter, pagination, limit và refresh behavior.
-- Agent collection, Agent queue và Agent push.
-- Database schema và SQL nghiệp vụ.
-- CPU, RAM, network, PPS, disk và Abuse formula.
-- Severity, policy revision, retention, maintenance và queue.
-- Hide, Restore và Purge behavior.
-- Consumption data, rollup, cache và SQL.
-- Chart-gap behavior đã có trong r1.
-
-## Danh sách chính xác file thay đổi so với r1
-
-### Runtime và release identity
-
-- `VERSION`
-- `app/app.py`
-- `app/retention.py`
-- `deploy/postgres/install-postgres-native.sh`
-- `preflight.sh`
-- `tools/test-installer-flow.sh`
-
-Trong nhóm trên, chỉ `app/app.py` có CSS layout mới. Các file còn lại chỉ cập nhật release identity hoặc validation expectation.
-
-### Test
-
-- `tests/test_v5052_native_copy_ingest.py`
-- `tests/test_v5054_snapshot_detail_correctness.py`
-- `tests/test_v5055_sql_compat_hotfix.py`
-- `tests/test_v5057_mac_identity_search.py`
-- `tests/test_v5057_safe_queue_canonical_vm.py`
-- `tests/test_v5058_r4_consumption_inventory.py`
-- `tests/test_v5059_r1_ui_responsive_theme_chart_gaps.py`
-- `tests/test_v5059_r2_ui_layout_polish_only.py` (mới)
-- `tests/test_v50_contract.py`
-- `tests/test_virtinfra_hardening.py`
-
-Các test cũ chỉ đổi expected release identity. Test r2 mới khóa phạm vi CSS-only và các selector layout đã yêu cầu.
-
-### Tài liệu và metadata
-
-- `CHANGELOG.md`
-- `COMMANDS_A_TO_Z_VI.md`
-- `GITHUB_DESKTOP_VI.md`
-- `README.md`
-- `SOURCE_OF_TRUTH_VI.md`
-- `START_HERE_VI.md`
-- `VALIDATION_REPORT_VI.md`
-- `docs/CONSUMPTION_VM_NODE.md`
-- `docs/LOW_IO_UPGRADE.md`
-- `docs/PUBLISHING.md`
-- `docs/README_VI.md`
-- `docs/STORAGE_V2_ARCHITECTURE.md`
-- `docs/STORAGE_V2_AUDIT.md`
-- `docs/STORAGE_V2_COMPATIBILITY_MATRIX.md`
-- `docs/STORAGE_V2_DEPLOYMENT.md`
-- `SHA256SUMS`
-
-### Visual-review artifacts mới
-
-- `docs/visual-review/50.5.9-r2/README.md`
-- `docs/visual-review/50.5.9-r2/dashboard-1920-dark.png`
-- `docs/visual-review/50.5.9-r2/dashboard-1920-light.png`
-- `docs/visual-review/50.5.9-r2/topvm-1920-dark.png`
-- `docs/visual-review/50.5.9-r2/topvm-1920-light.png`
-- `docs/visual-review/50.5.9-r2/consumption-vm-1920-dark.png`
-- `docs/visual-review/50.5.9-r2/consumption-vm-1920-light.png`
-- `docs/visual-review/50.5.9-r2/consumption-node-1920-dark.png`
-- `docs/visual-review/50.5.9-r2/consumption-node-1920-light.png`
-- `docs/visual-review/50.5.9-r2/node-health-1920-dark.png`
-- `docs/visual-review/50.5.9-r2/node-health-1920-light.png`
-- `docs/visual-review/50.5.9-r2/layout-matrix.json`
-- `docs/visual-review/50.5.9-r2/representative-results.json`
-
-## Khuyến nghị triển khai
-
-1. Backup source, environment và database theo quy trình hiện có.
-2. Triển khai Monitor trên staging hoặc một cửa sổ có kiểm soát.
-3. Kiểm tra Dashboard, Top VM, VM/Node Consumption và Node Health bằng dữ liệu thật ở Light/Dark.
-4. Kiểm tra riêng STATUS/SNAPSHOT, compound headers và horizontal scrolling của table wrapper.
-5. Theo dõi HTTP 500, Gunicorn và PostgreSQL sau khi cập nhật.
+- API endpoint và payload.
+- Agent collection, queue, push cadence và retry.
+- Database schema, migration và SQL nghiệp vụ.
+- CPU, RAM, network, PPS, disk, Coverage và Abuse formula.
+- Search, filter, pagination, refresh và sort behavior.
+- Retention, maintenance, queue, hide/restore/purge.
+- Consumption rollup, cache và timezone behavior.

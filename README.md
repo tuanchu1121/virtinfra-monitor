@@ -1,9 +1,9 @@
 # VirtInfra Monitor v50 PostgreSQL Native
 
-**Release:** `50.5.8-prod-r3-consumption-vm-node`
+**Release:** `50.5.8-prod-r4-consumption-fast-inventory-deadlock-fix`
 Production monitoring for KVM/libvirt nodes and virtual machines. PostgreSQL 17 + TimescaleDB is the only runtime data plane. This repository keeps the complete v48/v49 dashboard, Abuse Engine, storage views, Admin tools, REST API and Agent protocol, while replacing the runtime data store with one PostgreSQL 17 + TimescaleDB database.
 
-> Release: `50.5.8-prod-r3-consumption-vm-node`
+> Release: `50.5.8-prod-r4-consumption-fast-inventory-deadlock-fix`
 
 > **Operations source of truth:** [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md)
 >
@@ -18,9 +18,8 @@ KVM/libvirt node
   └─ virtinfra-agent.service
        ├─ samples local counters every 15 seconds
        ├─ builds one durable 5-minute operational payload
-       ├─ accumulates node-only Public/Private RX/TX locally
-       ├─ POST /push every 300 seconds
-       └─ POST /push/bandwidth-consumption once per completed local 2-hour bucket
+       ├─ includes VM and physical Public/Private counter deltas
+       └─ POST /push every 300 seconds
                     │
                     ▼
          Nginx :443 or public IP:8080
@@ -41,7 +40,7 @@ The Agent behavior is unchanged:
 
 - local sampling: every **15 seconds**;
 - durable Monitor push: every **300 seconds / 5 minutes**;
-- Consumption push: once per completed local **2-hour** bucket;
+- Consumption rollup: derived server-side from the normal **5-minute** payload;
 - duplicate retry protection: stable node/push and V2 bucket keys;
 - `vm_chart_5m`: one exact point per VM per real 5-minute push, retained for **7 days** without hourly downsampling;
 - `node_chart_5m`: exact 5-minute node/host chart points, retained for **7 days**;
@@ -128,19 +127,19 @@ Detailed design and deployment notes:
 
 ## Consumption
 
-The new page is placed immediately after **Storage I/O**. It is intentionally isolated from the existing 5-minute monitoring and Abuse paths.
+The page is placed immediately after **Storage I/O** and uses the existing five-minute Agent payload.
 
-- one compact request per node for each completed local 2-hour bucket;
-- no VM UUIDs and no per-VM bandwidth history;
-- Physical Public, Physical Private, aggregate VM Public and aggregate VM Private stay separate;
-- RX, TX and RX+TX total are shown only within the same network section;
-- Public and Private differences are calculated separately;
-- hidden nodes are excluded from search, filters, tables, summary cards and coverage without deleting their history;
-- ranges: 2H, 6H, 12H, 1D through 7D;
-- rows older than 7 days are deleted by retention;
-- Admin cleanup, clear-history and Reset ALL integration are included.
+- Agent v15 does not send a separate two-hour request;
+- the `2H` control remains a rolling display range alongside `1H`, `6H`, `12H`, `24H`, `2D` and `7D`;
+- VM full days/hours use existing daily/hourly rollups and only incomplete edges read five-minute rows;
+- physical full hours use `node_consumption_hourly`, with raw five-minute rows only at incomplete edges;
+- `node_bandwidth_consumption_2h` remains a compatibility fallback for pre-upgrade history and old Agents during staged rollout;
+- four summary cards keep Physical Public, Physical Private, VM Public and VM Private separate;
+- summary totals are cached for 60 seconds; table count and rows are produced by one PostgreSQL query;
+- `bw-monitor-inventory-cleanup.timer` runs every ten minutes around `:02`, in ordered `SKIP LOCKED` batches away from normal push boundaries;
+- web page refreshes no longer execute broad inventory UPDATE statements.
 
-Agent `runtime.json` durably stores the current accumulator and retry list. A full reset advances a Monitor-side acceptance epoch so old Agent retries cannot recreate deleted history.
+See [`docs/CONSUMPTION_VM_NODE.md`](docs/CONSUMPTION_VM_NODE.md) for the exact query and cleanup behavior.
 
 ## New server, public IP
 

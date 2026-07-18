@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-VirtInfra Agent v14 daemon (per-disk storage I/O + monitor-synchronized abuse)
+VirtInfra Agent v15 daemon (per-disk storage I/O + monitor-synchronized abuse)
 
 Collects:
   1) VM/tap network traffic from libvirt domiflist + /sys/class/net/<tap>/statistics
@@ -10,7 +10,7 @@ Collects:
   5) IPv4 addresses assigned directly to br0/br1
   6) Agent self-health timings
   7) Local 15-second VM network peak sampling with directional sustained PPS timers and one 5-minute HTTP push
-  8) Separate compact node-level bandwidth accounting, flushed once per completed local 2-hour bucket
+  8) Physical and VM deltas used by server-side Consumption rollups
 
 Important CPU behavior:
   - cpu_percent is now CORE-based:
@@ -80,7 +80,7 @@ QUIET = os.environ.get("BW_AGENT_QUIET", "0") == "1"
 HTTP_GZIP = os.environ.get("BW_AGENT_HTTP_GZIP", "1") == "1"
 HTTP_GZIP_MIN_BYTES = max(0, int(os.environ.get("BW_AGENT_HTTP_GZIP_MIN_BYTES", "1024")))
 
-AGENT_VERSION = 14
+AGENT_VERSION = 15
 STOP_EVENT = threading.Event()
 
 
@@ -1219,14 +1219,10 @@ def load_runtime():
         data["iface_map"] = {}
     if data.get("pending") is not None and not isinstance(data.get("pending"), dict):
         data["pending"] = None
-    # The helper is defined later in the module and is available when this
-    # function is called from main(). Keep accounting state in the same atomic
-    # runtime file as the existing carry/pending state.
-    try:
-        bandwidth_consumption_state(data)
-    except Exception:
-        # Accounting state must never prevent the original Agent from starting.
-        data["bandwidth_consumption"] = {"buckets": {}, "pending": []}
+    # Agent v15 derives Consumption on the monitor from the established
+    # 5-minute payload. Drop obsolete v14 local 2-hour accumulator state during
+    # upgrade so it cannot be retried or grow in runtime.json.
+    data.pop("bandwidth_consumption", None)
     return data
 
 
@@ -1802,22 +1798,8 @@ def run_push_cycle(sampler, runtime, committed_state):
         STOP_EVENT.set()
         return committed_state
 
-    # Additive accounting consumes the already-collected deltas. It does not
-    # alter the normal payload and never stores/sends VM UUID bandwidth rows.
-    # A defect in the optional accounting path must never block the established
-    # operational /push path.
-    try:
-        account_bandwidth_consumption(runtime, payload)
-    except Exception as exc:
-        if not QUIET:
-            print(
-                "virtinfra-agent detail consumption_accounting=deferred "
-                "payload_delivery=continuing",
-                flush=True,
-            )
-
-    # One atomic runtime update moves carry into a durable pending payload and
-    # persists the 2-hour accumulator in the same fsync-backed runtime file.
+    # One atomic runtime update moves carry into a durable pending payload.
+    # Consumption is derived server-side from this same 5-minute payload.
     runtime["pending"] = {
         "payload": payload,
         "state_after": state_after,
@@ -1826,12 +1808,10 @@ def run_push_cycle(sampler, runtime, committed_state):
     runtime["carry"] = empty_network_window()
     save_runtime(runtime)
 
-    normal_push_ok = False
     try:
         _ok, new_state = send_pending(runtime)
         if new_state is not None:
             committed_state = new_state
-        normal_push_ok = True
         if not QUIET:
             quality_counts = {}
             for item in payload.get("interfaces") or []:
@@ -1875,20 +1855,6 @@ def run_push_cycle(sampler, runtime, committed_state):
                 flush=True,
             )
 
-    # Preserve the old operational push path. The compact accounting request is
-    # attempted only after the normal push succeeds, and only when a completed
-    # bucket exists. Deterministic jitter spreads nodes across the first four
-    # minutes after the boundary without creating a second Agent process.
-    if normal_push_ok:
-        try:
-            send_bandwidth_consumption_pending(runtime, allow_wait=True)
-        except Exception as exc:
-            if not QUIET:
-                print(
-                    "virtinfra-agent ERROR delivery=unavailable stage=consumption "
-                    "bucket_retained=1 detail=%s" % exc,
-                    flush=True,
-                )
     return committed_state
 
 
@@ -1937,243 +1903,8 @@ def restore_monitor_config(runtime):
 
 
 # ---------------------------------------------------------------------------
-# VirtInfra v50.3.0 compact Bandwidth Consumption accounting
+# HTTP delivery helpers
 # ---------------------------------------------------------------------------
-# The existing 5-minute payload remains unchanged. This module only sums the
-# already-collected deltas into four node-level groups and sends one compact
-# payload for each completed local 2-hour bucket. It never sends VM UUIDs.
-
-BANDWIDTH_CONSUMPTION_BUCKET_SECONDS = max(
-    7200,
-    int(os.environ.get("BW_AGENT_BANDWIDTH_CONSUMPTION_BUCKET_SECONDS", "7200")),
-)
-BANDWIDTH_CONSUMPTION_TZ_OFFSET_SECONDS = int(
-    os.environ.get("BW_AGENT_BANDWIDTH_CONSUMPTION_TZ_OFFSET_SECONDS", "25200")
-)
-BANDWIDTH_CONSUMPTION_JITTER_SECONDS = max(
-    0,
-    min(240, int(os.environ.get("BW_AGENT_BANDWIDTH_CONSUMPTION_JITTER_SECONDS", "240"))),
-)
-BANDWIDTH_CONSUMPTION_MAX_PENDING = max(
-    12,
-    int(os.environ.get("BW_AGENT_BANDWIDTH_CONSUMPTION_MAX_PENDING", "96")),
-)
-BANDWIDTH_CONSUMPTION_ENABLED = os.environ.get(
-    "BW_AGENT_BANDWIDTH_CONSUMPTION_ENABLED", "1"
-) == "1"
-if API.rstrip("/").endswith("/push"):
-    _BWCONS_DEFAULT_API = API.rstrip("/") + "/bandwidth-consumption"
-else:
-    _BWCONS_DEFAULT_API = API.rstrip("/") + "/push/bandwidth-consumption"
-BANDWIDTH_CONSUMPTION_API = os.environ.get(
-    "VIRTINFRA_AGENT_BANDWIDTH_CONSUMPTION_API"
-) or os.environ.get(
-    "BW_AGENT_BANDWIDTH_CONSUMPTION_API",
-    _BWCONS_DEFAULT_API,
-)
-BANDWIDTH_CONSUMPTION_FIELDS = (
-    "physical_public_rx_bytes",
-    "physical_public_tx_bytes",
-    "physical_private_rx_bytes",
-    "physical_private_tx_bytes",
-    "vm_public_rx_bytes",
-    "vm_public_tx_bytes",
-    "vm_private_rx_bytes",
-    "vm_private_tx_bytes",
-)
-
-
-def bandwidth_consumption_bucket_start(ts):
-    ts = safe_int(ts, int(time.time()))
-    return (
-        ((ts + BANDWIDTH_CONSUMPTION_TZ_OFFSET_SECONDS) // BANDWIDTH_CONSUMPTION_BUCKET_SECONDS)
-        * BANDWIDTH_CONSUMPTION_BUCKET_SECONDS
-        - BANDWIDTH_CONSUMPTION_TZ_OFFSET_SECONDS
-    )
-
-
-def bandwidth_consumption_jitter():
-    if BANDWIDTH_CONSUMPTION_JITTER_SECONDS <= 0:
-        return 0
-    seed = sum((index + 1) * ord(ch) for index, ch in enumerate(NODE_NAME))
-    return seed % (BANDWIDTH_CONSUMPTION_JITTER_SECONDS + 1)
-
-
-def bandwidth_consumption_state(runtime):
-    state = runtime.get("bandwidth_consumption")
-    if not isinstance(state, dict):
-        state = {}
-        runtime["bandwidth_consumption"] = state
-    if not isinstance(state.get("buckets"), dict):
-        state["buckets"] = {}
-    if not isinstance(state.get("pending"), list):
-        state["pending"] = []
-    state["pending"] = [item for item in state["pending"] if isinstance(item, dict)]
-    return state
-
-
-def bandwidth_consumption_totals(payload):
-    totals = {name: 0 for name in BANDWIDTH_CONSUMPTION_FIELDS}
-    bridge_to_role = {}
-    for role, bridge in parse_bridge_roles(BRIDGE_ROLES):
-        role = str(role or "").strip().lower()
-        bridge = str(bridge or "").strip()
-        if role in ("public", "private") and bridge:
-            bridge_to_role[bridge] = role
-
-    # VM/tap deltas are already collected by the normal Agent cycle. Only sum
-    # them by the configured bridge role. UUIDs are intentionally discarded.
-    for row in payload.get("interfaces") or []:
-        if not isinstance(row, dict):
-            continue
-        role = bridge_to_role.get(str(row.get("bridge") or "").strip())
-        if role not in ("public", "private"):
-            continue
-        # Linux tap/vnet counters are host-side. Host vnet TX is traffic
-        # received by the guest, while host vnet RX is traffic transmitted by
-        # the guest. Normalize to the VM/guest perspective so Physical RX can
-        # be compared with VM RX and Physical TX with VM TX.
-        totals["vm_%s_rx_bytes" % role] += max(0, safe_int(row.get("tx_delta"), 0))
-        totals["vm_%s_tx_bytes" % role] += max(0, safe_int(row.get("rx_delta"), 0))
-
-    # Physical rows already carry the public/private role resolved by the
-    # existing bridge-member collector.
-    for row in payload.get("physical_interfaces") or []:
-        if not isinstance(row, dict):
-            continue
-        role = str(row.get("role") or "").strip().lower()
-        if role not in ("public", "private"):
-            continue
-        totals["physical_%s_rx_bytes" % role] += max(0, safe_int(row.get("rx_delta"), 0))
-        totals["physical_%s_tx_bytes" % role] += max(0, safe_int(row.get("tx_delta"), 0))
-    return totals
-
-
-def _bandwidth_consumption_empty_bucket(bucket_start):
-    bucket_start = safe_int(bucket_start, 0)
-    item = {
-        "bucket_start": bucket_start,
-        "bucket_end": bucket_start + BANDWIDTH_CONSUMPTION_BUCKET_SECONDS,
-        "coverage_seconds": 0,
-        "sample_count": 0,
-        "estimated": 0,
-    }
-    for name in BANDWIDTH_CONSUMPTION_FIELDS:
-        item[name] = 0
-    return item
-
-
-def _bandwidth_consumption_enqueue(state, item):
-    payload = {
-        "node": NODE_NAME,
-        "bucket_start": safe_int(item.get("bucket_start"), 0),
-        "bucket_end": safe_int(item.get("bucket_end"), 0),
-        "coverage_seconds": max(
-            0,
-            min(
-                BANDWIDTH_CONSUMPTION_BUCKET_SECONDS,
-                safe_int(item.get("coverage_seconds"), 0),
-            ),
-        ),
-        "sample_count": max(0, safe_int(item.get("sample_count"), 0)),
-        "estimated": 1 if bool(item.get("estimated")) else 0,
-        "agent_version": AGENT_VERSION,
-    }
-    for name in BANDWIDTH_CONSUMPTION_FIELDS:
-        payload[name] = max(0, safe_int(item.get(name), 0))
-
-    pending = state.get("pending") or []
-    # Replace the same node+bucket record instead of duplicating it.
-    replaced = False
-    for index, old in enumerate(pending):
-        if safe_int(old.get("bucket_start"), -1) == payload["bucket_start"]:
-            pending[index] = payload
-            replaced = True
-            break
-    if not replaced:
-        pending.append(payload)
-    pending.sort(key=lambda x: safe_int(x.get("bucket_start"), 0))
-    if len(pending) > BANDWIDTH_CONSUMPTION_MAX_PENDING:
-        pending = pending[-BANDWIDTH_CONSUMPTION_MAX_PENDING:]
-    state["pending"] = pending
-
-
-def account_bandwidth_consumption(runtime, payload):
-    if not BANDWIDTH_CONSUMPTION_ENABLED or not isinstance(payload, dict):
-        return False
-    state = bandwidth_consumption_state(runtime)
-    end_ts = max(0, safe_int(payload.get("time"), 0))
-    interval = max(1, safe_int(payload.get("interval"), PUSH_SECONDS))
-    marker = "%s:%s" % (end_ts, interval)
-    if marker == state.get("last_marker"):
-        return False
-
-    # The first cycle after installation establishes a clean baseline. Its
-    # deltas may cover time before the feature was installed, so do not assign
-    # them to a historical bucket.
-    if not state.get("initialized"):
-        state["initialized"] = 1
-        state["last_marker"] = marker
-        state["initialized_at"] = end_ts
-        return True
-
-    start_ts = max(0, end_ts - interval)
-    totals = bandwidth_consumption_totals(payload)
-    cursor = start_ts
-    segment_count = 0
-    while cursor < end_ts:
-        bucket_start = bandwidth_consumption_bucket_start(cursor)
-        bucket_end = bucket_start + BANDWIDTH_CONSUMPTION_BUCKET_SECONDS
-        segment_end = min(end_ts, bucket_end)
-        segment_seconds = max(0, segment_end - cursor)
-        if segment_seconds <= 0:
-            break
-        segment_count += 1
-        key = str(bucket_start)
-        bucket = state["buckets"].get(key)
-        if not isinstance(bucket, dict):
-            bucket = _bandwidth_consumption_empty_bucket(bucket_start)
-            state["buckets"][key] = bucket
-
-        # Use cumulative integer allocation so all segment allocations add back
-        # to the exact delta even when an irregular interval crosses a boundary.
-        left = max(0, cursor - start_ts)
-        right = max(0, segment_end - start_ts)
-        for name in BANDWIDTH_CONSUMPTION_FIELDS:
-            total = max(0, safe_int(totals.get(name), 0))
-            allocated = (total * right // interval) - (total * left // interval)
-            bucket[name] = max(0, safe_int(bucket.get(name), 0)) + max(0, allocated)
-        bucket["coverage_seconds"] = min(
-            BANDWIDTH_CONSUMPTION_BUCKET_SECONDS,
-            max(0, safe_int(bucket.get("coverage_seconds"), 0)) + segment_seconds,
-        )
-        bucket["sample_count"] = max(0, safe_int(bucket.get("sample_count"), 0)) + 1
-        if segment_count > 1 or interval > PUSH_SECONDS * 2:
-            bucket["estimated"] = 1
-        cursor = segment_end
-
-    # A bucket is immutable once its local 2-hour end has passed. Move it from
-    # the working accumulator into the durable retry list.
-    for key in sorted(list(state["buckets"]), key=lambda value: safe_int(value, 0)):
-        bucket = state["buckets"].get(key)
-        if not isinstance(bucket, dict):
-            state["buckets"].pop(key, None)
-            continue
-        if safe_int(bucket.get("bucket_end"), 0) <= end_ts:
-            _bandwidth_consumption_enqueue(state, bucket)
-            state["buckets"].pop(key, None)
-
-    # Prevent corrupt/ancient partial state from growing forever. Completed
-    # records live in pending; only current and recent partial buckets remain.
-    oldest_partial = bandwidth_consumption_bucket_start(end_ts) - BANDWIDTH_CONSUMPTION_BUCKET_SECONDS
-    for key in list(state["buckets"]):
-        if safe_int(key, 0) < oldest_partial:
-            state["buckets"].pop(key, None)
-
-    state["last_marker"] = marker
-    state["last_accounted_at"] = end_ts
-    return True
-
 
 def encode_http_payload(payload, allow_gzip=True):
     raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
@@ -2210,55 +1941,8 @@ def post_json_payload(url, payload, user_agent):
         raise
 
 
-def post_bandwidth_consumption(payload):
-    return post_json_payload(
-        BANDWIDTH_CONSUMPTION_API,
-        payload,
-        "VirtInfra-Agent/14 BandwidthConsumption/1",
-    )
-
-
-def send_bandwidth_consumption_pending(runtime, allow_wait=False):
-    if not BANDWIDTH_CONSUMPTION_ENABLED:
-        return True
-    state = bandwidth_consumption_state(runtime)
-    pending = state.get("pending") or []
-    if not pending:
-        return True
-    payload = pending[0]
-    due_at = max(0, safe_int(payload.get("bucket_end"), 0)) + bandwidth_consumption_jitter()
-    delay = due_at - time.time()
-    if delay > 0:
-        if not allow_wait:
-            return False
-        if STOP_EVENT.wait(delay):
-            return False
-    response_text = post_bandwidth_consumption(payload)
-    try:
-        response = json.loads(response_text or "{}")
-    except Exception:
-        response = {}
-    if not isinstance(response, dict) or not response.get("ok"):
-        raise RuntimeError("bandwidth consumption endpoint did not acknowledge payload")
-    state["pending"] = pending[1:]
-    state["last_sent_bucket"] = safe_int(payload.get("bucket_start"), 0)
-    state["last_sent_at"] = int(time.time())
-    save_runtime(runtime)
-    if not QUIET:
-        print(
-            "virtinfra-agent consumption complete node=%s delivery=ok bucket=%s..%s coverage=%ss pending=%s" % (
-                NODE_NAME,
-                payload.get("bucket_start"),
-                payload.get("bucket_end"),
-                payload.get("coverage_seconds"),
-                len(state.get("pending") or []),
-            ),
-            flush=True,
-        )
-    return True
-
 def post_payload(payload):
-    return post_json_payload(API, payload, "VirtInfra-Agent/14")
+    return post_json_payload(API, payload, "VirtInfra-Agent/15")
 
 
 def main():

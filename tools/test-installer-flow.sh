@@ -8,7 +8,7 @@ for f in "$ROOT/install.sh" "$ROOT/update.sh" "$I" "$ROOT/deploy/postgres/bw-mon
   bash -n "$f"
 done
 
-grep -q 'RELEASE="50.5.8-prod-r3-consumption-vm-node"' "$I" || fail "release marker missing"
+grep -q 'RELEASE="50.5.8-prod-r4-consumption-fast-inventory-deadlock-fix"' "$I" || fail "release marker missing"
 CANONICAL='tuanchu1121/virtinfra-monitor'
 [[ "$(cat "$ROOT/CANONICAL_REPOSITORY")" == "$CANONICAL" ]] || fail "canonical repository contract is wrong"
 for repo_file in \
@@ -57,8 +57,11 @@ grep -q 'pg_restore' "$ROOT/deploy/postgres/restore.sh" || fail "pg_restore rest
 grep -q 'timescaledb_pre_restore' "$ROOT/deploy/postgres/restore.sh" || fail "Timescale pre-restore hook missing"
 grep -q 'timescaledb_post_restore' "$ROOT/deploy/postgres/restore.sh" || fail "Timescale post-restore hook missing"
 grep -q 'ProtectHome=read-only' "$ROOT/deploy/agent/install-agent.sh" || fail "Agent /home visibility fix missing"
-grep -q "BW_AGENT_BANDWIDTH_CONSUMPTION_ENABLED='1'" "$ROOT/deploy/agent/install-agent.sh" || fail "Bandwidth Consumption Agent default missing"
-grep -q 'BW_AGENT_BANDWIDTH_CONSUMPTION_ENABLED="1"' "$ROOT/ansible/deploy-agent.yml" || fail "Bandwidth Consumption Ansible default missing"
+! grep -q 'BW_AGENT_BANDWIDTH_CONSUMPTION_' "$ROOT/deploy/agent/install-agent.sh" || fail "obsolete Agent 2-hour Consumption settings remain"
+! grep -q 'BW_AGENT_BANDWIDTH_CONSUMPTION_' "$ROOT/ansible/deploy-agent.yml" || fail "obsolete Ansible 2-hour Consumption settings remain"
+grep -q '010_consumption_inventory_cleanup.sql' "$I" || fail "Consumption/inventory migration is not installed"
+grep -q 'bw-monitor-inventory-cleanup.timer' "$I" || fail "inventory cleanup timer is not installed"
+grep -q 'consumption_rollup.py' "$I" || fail "Consumption backfill worker is not installed"
 grep -q 'become: "{{ (ansible_user | default('"'"'root'"'"')) != '"'"'root'"'"' }}"' "$ROOT/ansible/deploy-agent.yml" || fail "Ansible root/sudo behavior missing"
 
 for doc in README.md docs/README_VI.md docs/INSTALL.md docs/DOMAIN.md docs/MANAGEMENT.md docs/DATABASE.md docs/BACKUP_RESTORE.md docs/ANSIBLE.md docs/UPGRADE.md docs/TROUBLESHOOTING.md docs/PUBLISHING.md; do

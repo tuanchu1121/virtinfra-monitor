@@ -1,5 +1,6 @@
 from pathlib import Path
 import ast
+from functools import lru_cache
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = (ROOT / "app/app.py").read_text(encoding="utf-8")
@@ -21,6 +22,7 @@ _AST_CACHE = {
 }
 
 
+@lru_cache(maxsize=None)
 def function_sources(source: str, name: str):
     tree = _AST_CACHE.get(id(source))
     if tree is None:
@@ -37,7 +39,7 @@ def last_function(source: str, name: str) -> str:
 
 
 def test_release_identity():
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.8-prod-r3-consumption-vm-node"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.8-prod-r4-consumption-fast-inventory-deadlock-fix"
 
 
 def test_fifo_queue_allows_waiting_rows_but_only_one_worker():

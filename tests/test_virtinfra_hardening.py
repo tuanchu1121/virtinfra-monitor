@@ -3,7 +3,7 @@ from pathlib import Path
 root=Path(__file__).resolve().parents[1]
 app=(root/'app/app.py').read_text()
 agent=(root/'deploy/agent/agent.py').read_text()
-assert (root/'VERSION').read_text().strip() == '50.5.8-prod-r3-consumption-vm-node'
+assert (root/'VERSION').read_text().strip() == '50.5.8-prod-r4-consumption-fast-inventory-deadlock-fix'
 assert 'VirtInfra Monitor' in app
 assert 'WAL reserved/recycled' in app
 assert 'SHM {human' not in app
@@ -17,7 +17,7 @@ assert 'virtinfra-v502-final-ui' in app
 assert 'td:nth-child(10)::before{content:"Last seen"}' in app
 assert "COALESCE(svi.status, 'active')!='hidden'" in app
 assert 'page_cache_generation' in app
-assert 'VirtInfra Agent v14' in agent and 'VirtInfra-Agent/14' in agent
+assert 'VirtInfra Agent v15' in agent and 'VirtInfra-Agent/15' in agent
 assert 'VIRTINFRA_AGENT_API' in agent
 assert 'HAVING total>0' not in app
 assert 'HAVING SUM(COALESCE(ns.rx_delta,0)+COALESCE(ns.tx_delta,0))>0' in app

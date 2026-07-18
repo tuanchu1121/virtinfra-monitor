@@ -29,10 +29,13 @@ fail(){ echo "ERROR: $*" >&2; exit 1; }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.8-prod-r3-consumption-vm-node" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.5.8-prod-r4-consumption-fast-inventory-deadlock-fix" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/bw_pg.py && -f app/maintenance_native.py \
    && -f app/maintenance_queue.py && -f app/maintenance_dispatch.py \
    && -f postgres/sql/007_safe_maintenance_queue.sql \
+   && -f postgres/sql/010_consumption_inventory_cleanup.sql \
+   && -f app/inventory_cleanup.py && -f app/consumption_rollup.py \
+   && -f deploy/postgres/bw-monitor-inventory-cleanup.timer \
    && -f deploy/agent/agent.py && -f deploy/agent/fix-agent-uuid.sh ]] \
 || fail "full source tree is incomplete"
 [[ ! -d release && ! -d enterprise ]] || fail "legacy duplicate runtime trees must not be shipped"
@@ -114,7 +117,7 @@ log "Run storage V2 contract and multi-NIC regression"
 log "Validate source-accurate operations documentation"
 "$PYTHON" tests/test_docs_source_accuracy.py
 
-log "Run compact Bandwidth Consumption Agent regression"
+log "Validate Agent v15 single five-minute Consumption delivery path"
 "$PYTHON" tests/test_bandwidth_consumption_agent.py
 
 log "Validate Consumption endpoint authentication contract"
@@ -123,8 +126,8 @@ log "Validate Consumption endpoint authentication contract"
 log "Validate Consumption neutral UI contract"
 "$PYTHON" tests/test_consumption_ui_contract.py
 
-log "Validate VM/Node Consumption read-path contract"
-"$PYTHON" -m pytest -q tests/test_v5058_r3_consumption_vm_node.py
+log "Validate fast Consumption and deadlock-safe inventory contract"
+"$PYTHON" -m pytest -q tests/test_v5058_r4_consumption_inventory.py
 
 log "Validate protected core and simple theme selector contract"
 "$PYTHON" tests/test_theme_manager_contract.py

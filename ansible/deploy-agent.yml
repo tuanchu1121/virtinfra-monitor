@@ -1,5 +1,5 @@
 ---
-- name: Deploy VirtInfra Agent v14
+- name: Deploy VirtInfra Agent v15
   hosts: all
   become: "{{ (ansible_user | default('root')) != 'root' }}"
   gather_facts: false
@@ -137,8 +137,6 @@
           BW_AGENT_COLLECT_PHYSICAL_NET="1"
           BW_AGENT_BRIDGE_ROLES={{ bwagent_bridge_roles | to_json }}
           BW_AGENT_REQUIRED_BRIDGE_ROLES={{ bwagent_required_bridge_roles | to_json }}
-          BW_AGENT_BANDWIDTH_CONSUMPTION_ENABLED="1"
-          BW_AGENT_BANDWIDTH_CONSUMPTION_JITTER_SECONDS="240"
           BW_AGENT_API_TIMEOUT="30"
           BW_AGENT_HTTP_GZIP="1"
           BW_AGENT_HTTP_GZIP_MIN_BYTES="1024"
@@ -157,7 +155,7 @@
         mode: "0644"
         content: |
           [Unit]
-          Description=VirtInfra Agent v14 persistent infrastructure collector
+          Description=VirtInfra Agent v15 persistent infrastructure collector
           Wants=network-online.target
           After=network-online.target libvirtd.service
           ConditionPathExists=/usr/local/lib/virtinfra-agent/agent.py
@@ -217,7 +215,7 @@
         msg:
           - "{{ inventory_hostname }}: virtinfra-agent.service={{ bwagent_active.stdout }}"
           - "Sample={{ bwagent_sample_seconds }}s; push={{ bwagent_push_seconds }}s"
-          - "Bandwidth Consumption: compact node totals every completed local 2h bucket"
+          - "Consumption: derived server-side from normal 5-minute pushes"
           - "Logs: journalctl -u virtinfra-agent.service -n 50 --no-pager"
 
   handlers:

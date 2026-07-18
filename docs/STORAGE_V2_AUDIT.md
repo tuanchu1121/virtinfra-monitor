@@ -1,6 +1,6 @@
 # Storage V2 source audit
 
-Release: `50.5.8-prod-r3-consumption-vm-node`
+Release: `50.5.8-prod-r4-consumption-fast-inventory-deadlock-fix`
 
 This audit was generated from the complete `app/app.py`, Agent, installer, PostgreSQL helper, maintenance and deployment source before the Storage V2 read path was enabled. The existing route names, response shapes, templates, CSS, authentication, CSRF, timezone, Agent payload, Abuse policy and Consumption calculations remain unchanged.
 

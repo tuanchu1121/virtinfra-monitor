@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE="50.5.8-prod-r3-consumption-vm-node"
+RELEASE="50.5.8-prod-r4-consumption-fast-inventory-deadlock-fix"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 APP_SRC="$REPO_ROOT/app"
@@ -248,6 +248,7 @@ install -m 0644 "$PG_SRC/sql/006_postgres_native_maintenance.sql" "$APP_DIR/post
 install -m 0644 "$PG_SRC/sql/007_safe_maintenance_queue.sql" "$APP_DIR/postgres/sql/007_safe_maintenance_queue.sql"
 install -m 0644 "$PG_SRC/sql/008_mac_identity_search.sql" "$APP_DIR/postgres/sql/008_mac_identity_search.sql"
 install -m 0644 "$PG_SRC/sql/009_low_io_compat.sql" "$APP_DIR/postgres/sql/009_low_io_compat.sql"
+install -m 0644 "$PG_SRC/sql/010_consumption_inventory_cleanup.sql" "$APP_DIR/postgres/sql/010_consumption_inventory_cleanup.sql"
 
 log "Start PostgreSQL 17 + TimescaleDB"
 "${COMPOSE[@]}" --env-file "$PG_ENV" -f "$APP_DIR/postgres/docker-compose.yml" pull
@@ -272,6 +273,8 @@ install -m 0644 "$APP_SRC/maintenance_queue.py" "$APP_DIR/maintenance_queue.py"
 install -m 0755 "$APP_SRC/maintenance_dispatch.py" "$APP_DIR/maintenance_dispatch.py"
 install -m 0755 "$APP_SRC/maintenance.py" "$APP_DIR/maintenance.py"
 install -m 0755 "$APP_SRC/retention.py" "$APP_DIR/retention.py"
+install -m 0755 "$APP_SRC/inventory_cleanup.py" "$APP_DIR/inventory_cleanup.py"
+install -m 0755 "$APP_SRC/consumption_rollup.py" "$APP_DIR/consumption_rollup.py"
 install -m 0755 "$REPO_ROOT/tools/storage-v2-status.py" "$APP_DIR/tools/storage-v2-status.py"
 install -m 0755 "$REPO_ROOT/tools/validate-storage-v2.py" "$APP_DIR/tools/validate-storage-v2.py"
 install -m 0755 "$REPO_ROOT/tools/benchmark-storage-v2.py" "$APP_DIR/tools/benchmark-storage-v2.py"
@@ -403,6 +406,13 @@ log "Apply MAC identity and search schema"
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/008_mac_identity_search.sql"
 log "Apply low-I/O compatible current-state profile"
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/009_low_io_compat.sql"
+log "Apply fast Consumption rollups and inventory cleanup indexes"
+docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/010_consumption_inventory_cleanup.sql"
+
+log "Backfill recent physical Consumption rollups"
+if ! "$APP_DIR/venv/bin/python3" "$APP_DIR/consumption_rollup.py" --hours 48; then
+  warn "Consumption backfill did not complete. New 5-minute pushes will populate rollups automatically."
+fi
 
 log "Install services and management tools"
 install -m 0644 "$SCRIPT_DIR/bw-monitor.service" "$SERVICE_FILE"
@@ -411,6 +421,8 @@ install -m 0644 "$SCRIPT_DIR/bw-monitor-maintenance-dispatch.service" /etc/syste
 install -m 0644 "$SCRIPT_DIR/bw-monitor-maintenance-watchdog.timer" /etc/systemd/system/bw-monitor-maintenance-watchdog.timer
 install -m 0644 "$SCRIPT_DIR/bw-monitor-retention.service" /etc/systemd/system/bw-monitor-retention.service
 install -m 0644 "$SCRIPT_DIR/bw-monitor-retention.timer" /etc/systemd/system/bw-monitor-retention.timer
+install -m 0644 "$SCRIPT_DIR/bw-monitor-inventory-cleanup.service" /etc/systemd/system/bw-monitor-inventory-cleanup.service
+install -m 0644 "$SCRIPT_DIR/bw-monitor-inventory-cleanup.timer" /etc/systemd/system/bw-monitor-inventory-cleanup.timer
 install -m 0755 "$SCRIPT_DIR/virtinfra-monitor-health-watch.sh" "$APP_DIR/virtinfra-monitor-health-watch.sh"
 install -m 0644 "$SCRIPT_DIR/virtinfra-monitor-health-watch.service" /etc/systemd/system/virtinfra-monitor-health-watch.service
 install -m 0644 "$SCRIPT_DIR/virtinfra-monitor-health-watch.timer" /etc/systemd/system/virtinfra-monitor-health-watch.timer
@@ -449,7 +461,7 @@ UNIT
 systemctl daemon-reload
 systemctl enable --now bw-monitor-maintenance-watchdog.timer
 systemctl --no-block start bw-monitor-maintenance-dispatch.service || true
-systemctl enable bw-monitor.service bw-monitor-retention.timer bw-monitor-backup.timer virtinfra-monitor-health-watch.timer
+systemctl enable bw-monitor.service bw-monitor-retention.timer bw-monitor-backup.timer virtinfra-monitor-health-watch.timer bw-monitor-inventory-cleanup.timer
 systemctl restart bw-monitor-retention.timer bw-monitor-backup.timer virtinfra-monitor-health-watch.timer
 
 if [[ -n "$DOMAIN" && $NO_NGINX -eq 0 ]]; then
@@ -496,6 +508,7 @@ for i in $(seq 1 60); do
   sleep 2
 done
 systemctl is-active --quiet bw-monitor.service || die "bw-monitor.service inactive"
+systemctl restart bw-monitor-inventory-cleanup.timer
 if [[ -n "$DOMAIN" && $NO_TLS -eq 0 ]]; then
   for i in $(seq 1 30); do curl -fsS --max-time 10 "https://$DOMAIN/login" >/dev/null && break; ((i==30)) && die "HTTPS health check failed"; sleep 2; done
 fi

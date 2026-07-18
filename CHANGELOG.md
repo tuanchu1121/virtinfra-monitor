@@ -1,3 +1,16 @@
+# 50.5.8-prod-r4-consumption-fast-inventory-deadlock-fix
+
+- Removed broad `auto_cleanup_inventory()` writes from all web/read and auto-refresh paths. The compatibility symbol now returns without writing.
+- Added `bw-monitor-inventory-cleanup.timer`, scheduled every ten minutes around `:02`, with one global advisory lock, ordered 500-row batches, `FOR UPDATE SKIP LOCKED`, sticky hidden rows and bounded deadlock retry.
+- Preserved current expiry thresholds: VM stale after 3 days, VM soft-delete after 15 days and node soft-delete after 7 days.
+- Added whole-transaction `/push` retry for residual PostgreSQL `40P01` deadlocks; failed attempts roll back before retry and `push_receipts` remains authoritative.
+- Updated the Agent to v15. It keeps the established five-minute payload and durable pending retry, but removes the separate local two-hour Consumption accumulator and delivery request.
+- Added server-side physical `node_consumption_hourly` and `node_consumption_daily` rollups in the accepted `/push` transaction, plus a recent raw-data backfill during Monitor upgrade.
+- Reworked Consumption rolling ranges so complete days/hours use compact rollups and only incomplete hour edges read five-minute rows. The `2H` UI range remains available.
+- Combined table rows and count with `COUNT(*) OVER()`, cached range summary totals for 60 seconds, pre-aggregated inventory metadata and corrected coverage to count one accepted sample instead of one row per NIC.
+- Retained `/push/bandwidth-consumption` and `node_bandwidth_consumption_2h` only for staged-upgrade and pre-v15 history compatibility; Agent v15 does not call them.
+- Kept Abuse behavior, CPU/RAM/Disk formulas, Storage I/O, queue semantics, API authentication, timezone and all non-Consumption pages unchanged.
+
 # 50.5.8-prod-r3-consumption-vm-node
 
 - Replaced only the effective Consumption page with separate **VM Consumption** and **Node Consumption** tabs.

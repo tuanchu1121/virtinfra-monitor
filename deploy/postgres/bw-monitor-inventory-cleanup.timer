@@ -1,0 +1,12 @@
+[Unit]
+Description=Run VirtInfra inventory cleanup away from 5-minute Agent push boundaries
+
+[Timer]
+OnCalendar=*-*-* *:02/10:00
+RandomizedDelaySec=30
+AccuracySec=1s
+Persistent=true
+Unit=bw-monitor-inventory-cleanup.service
+
+[Install]
+WantedBy=timers.target

@@ -9,7 +9,7 @@ def need(cond: bool, message: str) -> None:
         raise AssertionError(message)
 
 version = (ROOT / "VERSION").read_text().strip()
-need(version == "50.5.8-prod-r3-consumption-vm-node", f"unexpected VERSION: {version}")
+need(version == "50.5.8-prod-r4-consumption-fast-inventory-deadlock-fix", f"unexpected VERSION: {version}")
 
 app = (ROOT / "app/app.py").read_text()
 pg = (ROOT / "app/bw_pg.py").read_text()
@@ -126,7 +126,7 @@ need("WAL reserved/recycled" in app and "SHM {human" not in app, "PostgreSQL siz
 need("virtinfra-v502-final-ui" in app and "min-width:0!important" in app, "responsive Abuse override missing")
 need("page_cache_generation" in app, "cross-worker cache generation missing")
 agent_install = (ROOT / "deploy/agent/install-agent.sh").read_text(encoding="utf-8")
-need("VirtInfra Agent v14" in agent and "VirtInfra-Agent/14" in agent, "VirtInfra Agent identity missing")
+need("VirtInfra Agent v15" in agent and "VirtInfra-Agent/15" in agent, "VirtInfra Agent identity missing")
 need("virtinfra-agent.service" in agent_install and "/var/lib/virtinfra-agent" in agent_install, "canonical Agent service/path missing")
 need((ROOT / "deploy/postgres/virtinfra-monitor-health-watch.timer").exists(), "health watchdog timer missing")
 
@@ -141,13 +141,15 @@ need('V5030_BW_RETENTION_SECONDS = 7 * 86400' in app, "7-day bandwidth retention
 need('physical_public_rx_bytes' in app and 'physical_private_rx_bytes' in app, "physical Public/Private counters missing")
 need('vm_public_rx_bytes' in app and 'vm_private_rx_bytes' in app, "aggregate VM Public/Private counters missing")
 need('No per-VM UUID history is stored' in app, "node-only accounting contract missing")
-need('BANDWIDTH_CONSUMPTION_BUCKET_SECONDS' in agent, "Agent 2-hour accounting module missing")
-need('account_bandwidth_consumption(runtime, payload)' in agent, "Agent accounting is not connected to the existing cycle")
-need('send_bandwidth_consumption_pending(runtime, allow_wait=True)' in agent, "Agent compact flush is not connected")
+need('BANDWIDTH_CONSUMPTION_BUCKET_SECONDS' not in agent, "Agent still contains local 2-hour accounting")
+need('/push/bandwidth-consumption' not in agent, "Agent still sends a separate Consumption payload")
+need('data.pop("bandwidth_consumption", None)' in agent, "Agent upgrade does not discard obsolete 2-hour state")
+need('node_consumption_hourly' in app and 'node_consumption_daily' in app, "server-side physical Consumption rollups missing")
+need('COUNT(*) OVER()' in app, "Consumption table count is not combined with the page query")
 need('@app.route("/bandwidth-consumption/node/<path:node>")' in app, "Bandwidth Consumption node detail missing")
 need('V48102_RESET_APP_TABLES = tuple(dict.fromkeys(tuple(V48102_RESET_APP_TABLES) + (V5030_BW_TABLE,)))' in app, "Reset ALL does not include bandwidth table")
 need('bandwidth_consumption_accept_after' in app, "reset epoch protection missing")
-need('Host vnet TX is traffic' in agent and 'Normalize to the VM/guest perspective' in agent, "VM RX/TX normalization missing")
-need('"vm_uuid"' not in agent.split('def _bandwidth_consumption_enqueue',1)[1].split('def account_bandwidth_consumption',1)[0], "bandwidth queue payload must not contain VM UUID")
+need('CASE WHEN bridge=? THEN host_tx' in app and 'CASE WHEN bridge=? THEN host_rx' in app, "VM guest RX/TX normalization missing")
+need('run_inventory_cleanup_batches' in app and 'FOR UPDATE SKIP LOCKED' in app, "deadlock-safe inventory cleanup missing")
 
 print("PASS: v50 static product contract")

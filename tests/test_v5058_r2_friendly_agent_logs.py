@@ -88,13 +88,7 @@ def test_success_log_is_neutral_even_when_collection_is_partial(monkeypatch, cap
         "collect_cycle_payload",
         lambda committed, runtime, window: (payload, {"state": 1}),
     )
-    monkeypatch.setattr(agent, "account_bandwidth_consumption", lambda runtime, data: True)
     monkeypatch.setattr(agent, "send_pending", lambda runtime: (True, {"state": 1}))
-    monkeypatch.setattr(
-        agent,
-        "send_bandwidth_consumption_pending",
-        lambda runtime, allow_wait=False: True,
-    )
 
     agent.run_push_cycle(Sampler(), {}, {})
     output = capsys.readouterr().out.strip()
@@ -137,7 +131,6 @@ def test_delivery_failure_is_the_path_that_emits_error(monkeypatch, capsys):
         "collect_cycle_payload",
         lambda committed, runtime, window: (payload, {"state": 1}),
     )
-    monkeypatch.setattr(agent, "account_bandwidth_consumption", lambda runtime, data: True)
 
     def unavailable(_runtime):
         raise RuntimeError("monitor timeout")

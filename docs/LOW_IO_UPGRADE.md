@@ -2,22 +2,22 @@
 
 ## Upgrade type
 
-`50.5.8-prod-r3-consumption-vm-node` is an **in-place upgrade** from the existing PostgreSQL-native VirtInfra Monitor release. It is not a clean-install-only branch.
+`50.5.8-prod-r4-consumption-fast-inventory-deadlock-fix` is an **in-place upgrade** from the existing PostgreSQL-native VirtInfra Monitor release. It is not a clean-install-only branch.
 
 The package can also perform a fresh installation, but the intended production path is:
 
 1. Back up the existing monitor and PostgreSQL database.
 2. Upgrade the monitor first.
 3. Verify plain JSON pushes from existing Agents.
-4. Roll out Agent v14 gradually to enable gzip transport.
+4. Roll out Agent v15 gradually to enable gzip transport.
 
 The upgrade preserves the existing database, users, settings, UI routes, API endpoints, payload fields, metric formulas, five-minute sampling boundaries, abuse logic, canonical VM behavior, maintenance queue and retention policy.
 
 ## What changes below the application surface
 
 - The monitor accepts both plain JSON and gzip-compressed Agent request bodies.
-- Agent v14 sends gzip level 1 when payloads exceed the configured threshold.
-- Agent v14 retries once with plain JSON when an older monitor returns HTTP 400 or 415, so rollback remains possible.
+- Agent v15 sends gzip level 1 when payloads exceed the configured threshold.
+- Agent v15 retries once with plain JSON when an older monitor returns HTTP 400 or 415, so rollback remains possible.
 - VM and node MAC search indexes move to write-on-change identity lookup tables.
 - High-churn current-state indexes containing frequently updated columns are removed or replaced with stable-key indexes.
 - Hot current tables receive fillfactor and per-table autovacuum settings intended to improve HOT update reuse.
@@ -49,9 +49,9 @@ cd "$LATEST"
 sha256sum -c SHA256SUMS
 ```
 
-Deploy the monitor release first using the normal update path. Do not deploy Agent v14 before the monitor is accepting gzip requests.
+Deploy the monitor release first using the normal update path. Do not deploy Agent v15 before the monitor is accepting gzip requests.
 
-After the monitor is healthy, roll out Agent v14 in controlled batches. Existing Agents can remain online during this process.
+After the monitor is healthy, roll out Agent v15 in controlled batches. Existing Agents can remain online during this process.
 
 ## Verification
 
@@ -114,7 +114,7 @@ ORDER BY relname;
 
 The migration is additive for identity tables and non-destructive for metric data. Rolling back application code does not require dropping the new lookup tables.
 
-Agent v14 automatically retries plain JSON after an HTTP 400 or 415 from an older monitor. This prevents a monitor rollback from stopping Agent pushes.
+Agent v15 automatically retries plain JSON after an HTTP 400 or 415 from an older monitor. This prevents a monitor rollback from stopping Agent pushes.
 
 A rollback to older application code may recreate the previous high-churn indexes during startup. That restores the older performance profile but does not alter metric values or historical data.
 

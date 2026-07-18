@@ -18,10 +18,11 @@ if ((YES==0)); then
   [[ "$answer" == "$prompt" ]] || exit 1
 fi
 if [[ -x /opt/bw-monitor/backup.sh && $PURGE -eq 0 ]]; then /opt/bw-monitor/backup.sh || true; fi
-systemctl disable --now bw-monitor.service bw-monitor-retention.timer bw-monitor-backup.timer virtinfra-monitor-health-watch.timer 2>/dev/null || true
+systemctl disable --now bw-monitor.service bw-monitor-retention.timer bw-monitor-backup.timer virtinfra-monitor-health-watch.timer bw-monitor-inventory-cleanup.timer 2>/dev/null || true
 rm -f /etc/systemd/system/bw-monitor.service /etc/systemd/system/bw-monitor-maintenance@.service \
       /etc/systemd/system/bw-monitor-retention.service /etc/systemd/system/bw-monitor-retention.timer \
       /etc/systemd/system/bw-monitor-backup.service /etc/systemd/system/bw-monitor-backup.timer \
+      /etc/systemd/system/bw-monitor-inventory-cleanup.service /etc/systemd/system/bw-monitor-inventory-cleanup.timer \
       /etc/systemd/system/virtinfra-monitor-health-watch.service /etc/systemd/system/virtinfra-monitor-health-watch.timer
 systemctl daemon-reload
 rm -f /etc/nginx/sites-enabled/bw-monitor.conf /etc/nginx/sites-available/bw-monitor.conf

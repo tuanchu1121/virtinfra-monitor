@@ -15,11 +15,12 @@ INDEX_PROFILE = (ROOT / "postgres" / "sql" / "005_ingest_write_profile.sql").rea
 
 
 def _v5052_block() -> str:
-    return APP.split("# v50.5.2 native PostgreSQL COPY ingest", 1)[1]
+    block = APP.split("# v50.5.2 native PostgreSQL COPY ingest", 1)[1]
+    return block.split("# 50.5.7 Agent-token compatibility", 1)[0]
 
 
 def test_release_and_native_copy_contract() -> None:
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.8-prod-r3-consumption-vm-node"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.8-prod-r4-consumption-fast-inventory-deadlock-fix"
     assert "def copy_rows(" in PG
     assert "cursor.copy(statement)" in PG
     assert "copy.write_row(values)" in PG

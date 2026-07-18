@@ -17,15 +17,11 @@ import json
 from pathlib import Path
 try:
     data=json.loads(Path('/var/lib/virtinfra-agent/runtime.json').read_text())
-    state=data.get('bandwidth_consumption') if isinstance(data,dict) else {}
-    state=state if isinstance(state,dict) else {}
-    print('[INFO] Consumption pending=%s partial=%s last_sent_bucket=%s' % (
-        len(state.get('pending') or []),
-        len(state.get('buckets') or {}),
-        state.get('last_sent_bucket') or '-',
-    ))
+    pending=1 if isinstance(data,dict) and isinstance(data.get('pending'),dict) else 0
+    obsolete=1 if isinstance(data,dict) and 'bandwidth_consumption' in data else 0
+    print('[INFO] Delivery pending=%s obsolete_2h_state=%s' % (pending, obsolete))
 except Exception as exc:
-    print('[WARN] Cannot read Consumption runtime state: %s' % exc)
+    print('[WARN] Cannot read Agent runtime state: %s' % exc)
 PY_RUNTIME
 fi
 echo; journalctl -u "$UNIT" -n 40 --no-pager || true

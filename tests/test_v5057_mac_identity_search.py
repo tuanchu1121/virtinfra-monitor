@@ -1,5 +1,6 @@
 from pathlib import Path
 import ast
+from functools import lru_cache
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = (ROOT / "app/app.py").read_text(encoding="utf-8")
@@ -8,6 +9,7 @@ INSTALLER = (ROOT / "deploy/postgres/install-postgres-native.sh").read_text(enco
 MIGRATION = (ROOT / "postgres/sql/008_mac_identity_search.sql").read_text(encoding="utf-8")
 
 
+@lru_cache(maxsize=None)
 def function_sources(source: str, name: str):
     tree = ast.parse(source)
     lines = source.splitlines()
@@ -32,7 +34,7 @@ def load_normalizer():
 
 
 def test_release_identity():
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.8-prod-r3-consumption-vm-node"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.8-prod-r4-consumption-fast-inventory-deadlock-fix"
 
 
 def test_existing_agent_already_reports_vm_and_physical_mac():

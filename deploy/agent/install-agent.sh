@@ -91,8 +91,6 @@ BW_AGENT_COLLECT_NODE_HOST='1'
 BW_AGENT_COLLECT_PHYSICAL_NET='1'
 BW_AGENT_BRIDGE_ROLES='$BRIDGE_ROLES'
 BW_AGENT_REQUIRED_BRIDGE_ROLES='$REQUIRED_BRIDGE_ROLES'
-BW_AGENT_BANDWIDTH_CONSUMPTION_ENABLED='1'
-BW_AGENT_BANDWIDTH_CONSUMPTION_JITTER_SECONDS='240'
 BW_AGENT_API_TIMEOUT='30'
 BW_AGENT_HTTP_GZIP='$HTTP_GZIP'
 BW_AGENT_HTTP_GZIP_MIN_BYTES='1024'
@@ -104,7 +102,7 @@ EOF
 chmod 0600 "$ENV_FILE"
 cat > "$SERVICE_FILE" <<'EOF'
 [Unit]
-Description=VirtInfra Agent v14 persistent infrastructure collector
+Description=VirtInfra Agent v15 persistent infrastructure collector
 Wants=network-online.target
 After=network-online.target libvirtd.service
 ConditionPathExists=/usr/local/lib/virtinfra-agent/agent.py
@@ -153,7 +151,7 @@ Monitor API:   $API
 Sample:        ${SAMPLE_SECONDS}s
 Push:          ${PUSH_SECONDS}s
 Transport:     gzip level 1 for JSON payloads (plain JSON compatible)
-Bandwidth:     compact node totals every completed local 2h bucket
+Consumption:   derived server-side from normal 5-minute pushes
 Environment:   $ENV_FILE (0600)
 State:         $STATE_DIR
 Logs:          journalctl -fu virtinfra-agent.service

@@ -28832,7 +28832,7 @@ def api_v1_performance_v48140():
             try: redis_ok = bool(client.ping())
             except Exception: redis_ok = False
         return jsonify({
-            "version":"50.5.9-prod-r3-ui-alignment-overflow-hotfix",
+            "version":"50.6.0-prod-r1-node-groups-country-flags",
             "database":{
                 "engine":"PostgreSQL + TimescaleDB",
                 "database":pg.get("database"),
@@ -29137,7 +29137,7 @@ def page(title, content):
 # protocol. Agents submit one compact node aggregate for each completed local
 # 2-hour bucket. VM UUIDs and per-VM history are deliberately not stored.
 
-V5030_RELEASE = "50.5.9-prod-r3-ui-alignment-overflow-hotfix"
+V5030_RELEASE = "50.6.0-prod-r1-node-groups-country-flags"
 V5030_BW_TABLE = "node_bandwidth_consumption_2h"
 V5030_BW_BUCKET_SECONDS = 2 * 3600
 V5030_BW_RETENTION_SECONDS = 7 * 86400
@@ -32645,7 +32645,7 @@ def valid_agent_token(value):
 # ---------------------------------------------------------------------------
 # 50.5.7 safe FIFO maintenance + canonical VM detail correctness
 # ---------------------------------------------------------------------------
-V5057_VERSION = "50.5.9-prod-r3-ui-alignment-overflow-hotfix"
+V5057_VERSION = "50.6.0-prod-r1-node-groups-country-flags"
 
 
 def enqueue_maintenance_job(action, parameters, actor):
@@ -34427,7 +34427,7 @@ _v48140_cached_endpoint("bandwidth_consumption_page", V48140_PAGE_CACHE_TTL)
 import threading as _v5058r4_threading
 import random as _v5058r4_random
 
-V5058R4_RELEASE = "50.5.9-prod-r3-ui-alignment-overflow-hotfix"
+V5058R4_RELEASE = "50.6.0-prod-r1-node-groups-country-flags"
 V5058R4_SUMMARY_CACHE_TTL = 60
 V5058R4_INVENTORY_BATCH = max(50, min(2000, safe_int(os.environ.get("BW_INVENTORY_CLEANUP_BATCH", "500"), 500)))
 V5058R4_INVENTORY_MAX_BATCHES = max(1, min(1000, safe_int(os.environ.get("BW_INVENTORY_CLEANUP_MAX_BATCHES", "200"), 200)))
@@ -35298,7 +35298,7 @@ if _v5058r4_push_view_base is not None:
 # ---------------------------------------------------------------------------
 # v50.5.9 r2 layout-polish-only release based on r1
 # ---------------------------------------------------------------------------
-V5059R2_RELEASE = "50.5.9-prod-r3-ui-alignment-overflow-hotfix"
+V5059R2_RELEASE = "50.6.0-prod-r1-node-groups-country-flags"
 
 
 def _v5058r5_is_transient_iface(value):
@@ -36093,7 +36093,7 @@ def page(title, content):
 # ---------------------------------------------------------------------------
 # Presentation-only layer. It preserves routes, query parameters, payloads,
 # database statements, sort/filter behavior, refresh cadence and Agent flow.
-V5059R3_RELEASE = "50.5.9-prod-r3-ui-alignment-overflow-hotfix"
+V5059R3_RELEASE = "50.6.0-prod-r1-node-groups-country-flags"
 
 
 # One appearance selector contains the three core modes plus every configured
@@ -36431,3 +36431,9 @@ def page(title, content):
     except Exception:
         app.logger.exception("Could not apply v50.5.9 r3 UI alignment layer")
     return response
+
+# ---------------------------------------------------------------------------
+# 50.6.0 Node Groups + vendored local country flags
+# ---------------------------------------------------------------------------
+import node_groups as _v5060_node_groups
+_v5060_node_groups.install(sys.modules[__name__])

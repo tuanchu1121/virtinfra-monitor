@@ -1,8 +1,8 @@
 # SOURCE OF TRUTH VẬN HÀNH
 
-> Release: `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
+> Release: `50.6.0-prod-r1-node-groups-country-flags`
 
-> Release: `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
+> Release: `50.6.0-prod-r1-node-groups-country-flags`
 >
 > Tài liệu này được đối chiếu trực tiếp với `install.sh`, `deploy/postgres/*`, `deploy/agent/*`, `postgres/docker-compose.yml`, `app/app.py` và các test contract hiện tại.
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE="50.5.9-prod-r3-ui-alignment-overflow-hotfix"
+RELEASE="50.6.0-prod-r1-node-groups-country-flags"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 APP_SRC="$REPO_ROOT/app"
@@ -249,6 +249,7 @@ install -m 0644 "$PG_SRC/sql/007_safe_maintenance_queue.sql" "$APP_DIR/postgres/
 install -m 0644 "$PG_SRC/sql/008_mac_identity_search.sql" "$APP_DIR/postgres/sql/008_mac_identity_search.sql"
 install -m 0644 "$PG_SRC/sql/009_low_io_compat.sql" "$APP_DIR/postgres/sql/009_low_io_compat.sql"
 install -m 0644 "$PG_SRC/sql/010_consumption_inventory_cleanup.sql" "$APP_DIR/postgres/sql/010_consumption_inventory_cleanup.sql"
+install -m 0644 "$PG_SRC/sql/011_node_groups.sql" "$APP_DIR/postgres/sql/011_node_groups.sql"
 
 log "Start PostgreSQL 17 + TimescaleDB"
 "${COMPOSE[@]}" --env-file "$PG_ENV" -f "$APP_DIR/postgres/docker-compose.yml" pull
@@ -266,6 +267,10 @@ fi
 
 log "Install full application code"
 install -m 0644 "$APP_SRC/app.py" "$APP_DIR/app.py"
+install -m 0644 "$APP_SRC/node_groups.py" "$APP_DIR/node_groups.py"
+rm -rf "$APP_DIR/static/flags"
+install -d -m 0755 "$APP_DIR/static/flags/4x3"
+find "$APP_SRC/static/flags/4x3" -type f -name "*.svg" -exec install -m 0644 {} "$APP_DIR/static/flags/4x3/" \;
 install -m 0644 "$APP_SRC/bw_pg.py" "$APP_DIR/bw_pg.py"
 install -m 0644 "$APP_SRC/storage_v2.py" "$APP_DIR/storage_v2.py"
 install -m 0644 "$APP_SRC/maintenance_native.py" "$APP_DIR/maintenance_native.py"
@@ -408,6 +413,7 @@ log "Apply low-I/O compatible current-state profile"
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/009_low_io_compat.sql"
 log "Apply fast Consumption rollups and inventory cleanup indexes"
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/010_consumption_inventory_cleanup.sql"
+docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/011_node_groups.sql"
 
 log "Backfill recent physical Consumption rollups"
 if ! "$APP_DIR/venv/bin/python3" "$APP_DIR/consumption_rollup.py" --hours 48; then

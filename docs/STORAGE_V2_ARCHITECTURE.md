@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
+Release: `50.6.0-prod-r1-node-groups-country-flags`
 
 ## Final data path
 

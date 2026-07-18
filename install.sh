@@ -18,6 +18,7 @@ repo_complete() {
   for path in \
     deploy/postgres/install-postgres-native.sh \
     app/app.py \
+    app/node_groups.py \
     app/bw_pg.py \
     app/storage_v2.py \
     app/maintenance_native.py \
@@ -26,6 +27,7 @@ repo_complete() {
     postgres/docker-compose.yml \
     postgres/sql/004_storage_v2.sql \
     postgres/sql/006_postgres_native_maintenance.sql \
+    postgres/sql/011_node_groups.sql \
     postgres/sql/007_safe_maintenance_queue.sql \
     requirements.txt \
     VERSION \

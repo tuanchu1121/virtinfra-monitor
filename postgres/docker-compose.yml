@@ -1,0 +1,68 @@
+services:
+  timescaledb:
+    image: ${BW_TIMESCALE_IMAGE:-timescale/timescaledb:2.27.2-pg17}
+    container_name: bw-timescaledb
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${BW_PG_DATABASE:-bw_monitor}
+      POSTGRES_USER: ${BW_PG_USER:-bw_monitor}
+      POSTGRES_PASSWORD: ${BW_PG_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "127.0.0.1:${BW_PG_PORT:-55432}:5432"
+    volumes:
+      - bw_monitor_postgres_data:/var/lib/postgresql/data
+    shm_size: ${BW_PG_SHM_SIZE:-1gb}
+    command:
+      - postgres
+      - -c
+      - shared_buffers=${BW_PG_SHARED_BUFFERS:-1GB}
+      - -c
+      - effective_cache_size=${BW_PG_EFFECTIVE_CACHE_SIZE:-3GB}
+      - -c
+      - maintenance_work_mem=${BW_PG_MAINTENANCE_WORK_MEM:-512MB}
+      - -c
+      - work_mem=${BW_PG_WORK_MEM:-16MB}
+      - -c
+      - max_connections=${BW_PG_MAX_CONNECTIONS:-150}
+      - -c
+      - max_worker_processes=${BW_PG_MAX_WORKERS:-16}
+      - -c
+      - max_parallel_workers=${BW_PG_MAX_PARALLEL_WORKERS:-8}
+      - -c
+      - max_parallel_workers_per_gather=${BW_PG_MAX_PARALLEL_PER_GATHER:-4}
+      - -c
+      - timescaledb.max_background_workers=${BW_TSDB_BACKGROUND_WORKERS:-8}
+      - -c
+      - wal_compression=on
+      - -c
+      - checkpoint_timeout=15min
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - max_wal_size=${BW_PG_MAX_WAL_SIZE:-8GB}
+      - -c
+      - min_wal_size=${BW_PG_MIN_WAL_SIZE:-2GB}
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - effective_io_concurrency=200
+      - -c
+      - jit=off
+      - -c
+      - timezone=UTC
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${BW_PG_USER:-bw_monitor} -d ${BW_PG_DATABASE:-bw_monitor}"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+volumes:
+  bw_monitor_postgres_data:
+    name: bw_monitor_postgres_data

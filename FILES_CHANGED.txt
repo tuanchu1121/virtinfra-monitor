@@ -1,0 +1,63 @@
+Modified: dead-code cleanup
+---------------------------
+app/app.py
+app/bw_pg.py
+tests/test_v50_contract.py
+tests/test_v50_postgres_integration.py
+tools/storage-v2-status.py
+tools/validate-storage-v2.py
+
+Modified: release identity and matching regression gates
+--------------------------------------------------------
+VERSION
+README.md
+START_HERE_VI.md
+SOURCE_OF_TRUTH_VI.md
+GITHUB_DESKTOP_VI.md
+COMMANDS_A_TO_Z_VI.md
+deploy/postgres/install-postgres-native.sh
+preflight.sh
+tools/test-installer-flow.sh
+tests/test_v5052_native_copy_ingest.py
+tests/test_v5054_snapshot_detail_correctness.py
+tests/test_v5055_sql_compat_hotfix.py
+tests/test_v5057_mac_identity_search.py
+tests/test_v5057_safe_queue_canonical_vm.py
+tests/test_v5058_r4_consumption_inventory.py
+tests/test_v5059_r1_ui_responsive_theme_chart_gaps.py
+tests/test_v5059_r2_ui_layout_polish_only.py
+tests/test_v5059_r3_ui_alignment_overflow_hotfix.py
+tests/test_virtinfra_hardening.py
+
+Added: required cleanup release assets
+--------------------------------------
+CLEANUP_REPORT.md
+REMOVED_CODE.md
+RISK_ASSESSMENT.md
+TEST_RESULTS.txt
+FILES_CHANGED.txt
+rollback.sh
+rollback/virtinfra-monitor-50.5.9-prod-r3-ui-alignment-overflow-hotfix-production-slim.zip
+
+Added: audit evidence
+---------------------
+audit/BASELINE_METRICS.txt
+audit/CALL_GRAPH.tsv
+audit/DUPLICATE_FUNCTIONS.md
+audit/DYNAMIC_REFERENCES.txt
+audit/IMPORT_GRAPH.tsv
+audit/RUNTIME_MAP.txt
+audit/SCHEMA_FINGERPRINT.txt
+audit/before-routes.json
+audit/after-routes.json
+audit/before-runtime-contract.json
+audit/after-runtime-contract.json
+audit/source-cleanup.patch
+
+Regenerated
+-----------
+SHA256SUMS
+
+Deleted runtime files
+---------------------
+None

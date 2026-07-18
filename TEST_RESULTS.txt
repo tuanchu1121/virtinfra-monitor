@@ -1,0 +1,34 @@
+VirtInfra Monitor 50.5.9-prod-r4-dead-code-cleanup
+
+Baseline checks
+---------------
+Python compile: PASS (exit 0)
+Shell syntax: PASS (exit 0)
+Regression suite: 91 passed, 1 skipped in 42.57s
+Skipped test: live PostgreSQL integration because BW_TEST_DATABASE_URL was not set
+
+Cleanup candidate checks
+------------------------
+Python compile: PASS (exit 0)
+Shell syntax: PASS (exit 0)
+Warnings-as-errors route registration with deterministic test adapter: PASS (exit 0)
+Regression suite before reports: 91 passed, 1 skipped in 42.59s (exit 0)
+Regression suite with reports, rollback assets, and manifest: 91 passed, 1 skipped in 42.93s (exit 0)
+Skipped test: tests/test_v50_postgres_integration.py because BW_TEST_DATABASE_URL was not set
+
+Behavior-equivalence checks
+---------------------------
+Route map: PASS, 75 routes identical
+Route methods and endpoint names: PASS
+Deterministic main-page HTML hashes: PASS
+API status, content type, response length, deterministic hash, and JSON shape: PASS
+app.py function-body AST fingerprint: PASS
+PostgreSQL SQL-tree fingerprint: PASS
+Database migration files: byte-for-byte unchanged
+Agent source: byte-for-byte unchanged by the existing runtime contract test
+Line endings: unchanged
+Cache/build artifacts in final package: none
+
+Environment limitation
+----------------------
+The sandbox did not provide a disposable PostgreSQL test DSN. The live integration module was collected correctly and skipped with exit code 0. No claim is made that the destructive live schema test ran.

@@ -1,0 +1,16 @@
+---
+- name: Audit VirtInfra Monitor Agent
+  hosts: all
+  become: "{{ (ansible_user | default('root')) != 'root' }}"
+  gather_facts: false
+  strategy: free
+
+  tasks:
+    - name: Run Agent doctor
+      ansible.builtin.command: /usr/local/sbin/virtinfra-agent-doctor
+      register: doctor
+      changed_when: false
+
+    - name: Show Agent doctor result
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}\n{{ doctor.stdout }}"

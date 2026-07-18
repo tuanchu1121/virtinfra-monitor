@@ -28832,7 +28832,7 @@ def api_v1_performance_v48140():
             try: redis_ok = bool(client.ping())
             except Exception: redis_ok = False
         return jsonify({
-            "version":"50.5.8-prod-r5-professional-ui-storage-hotfix",
+            "version":"50.5.9-prod-r1-ui-responsive-theme-chart-gaps",
             "database":{
                 "engine":"PostgreSQL + TimescaleDB",
                 "database":pg.get("database"),
@@ -29137,7 +29137,7 @@ def page(title, content):
 # protocol. Agents submit one compact node aggregate for each completed local
 # 2-hour bucket. VM UUIDs and per-VM history are deliberately not stored.
 
-V5030_RELEASE = "50.5.8-prod-r5-professional-ui-storage-hotfix"
+V5030_RELEASE = "50.5.9-prod-r1-ui-responsive-theme-chart-gaps"
 V5030_BW_TABLE = "node_bandwidth_consumption_2h"
 V5030_BW_BUCKET_SECONDS = 2 * 3600
 V5030_BW_RETENTION_SECONDS = 7 * 86400
@@ -32645,7 +32645,7 @@ def valid_agent_token(value):
 # ---------------------------------------------------------------------------
 # 50.5.7 safe FIFO maintenance + canonical VM detail correctness
 # ---------------------------------------------------------------------------
-V5057_VERSION = "50.5.8-prod-r5-professional-ui-storage-hotfix"
+V5057_VERSION = "50.5.9-prod-r1-ui-responsive-theme-chart-gaps"
 
 
 def enqueue_maintenance_job(action, parameters, actor):
@@ -34427,7 +34427,7 @@ _v48140_cached_endpoint("bandwidth_consumption_page", V48140_PAGE_CACHE_TTL)
 import threading as _v5058r4_threading
 import random as _v5058r4_random
 
-V5058R4_RELEASE = "50.5.8-prod-r5-professional-ui-storage-hotfix"
+V5058R4_RELEASE = "50.5.9-prod-r1-ui-responsive-theme-chart-gaps"
 V5058R4_SUMMARY_CACHE_TTL = 60
 V5058R4_INVENTORY_BATCH = max(50, min(2000, safe_int(os.environ.get("BW_INVENTORY_CLEANUP_BATCH", "500"), 500)))
 V5058R4_INVENTORY_MAX_BATCHES = max(1, min(1000, safe_int(os.environ.get("BW_INVENTORY_CLEANUP_MAX_BATCHES", "200"), 200)))
@@ -35296,9 +35296,9 @@ if _v5058r4_push_view_base is not None:
     app.view_functions["push"] = push_v5058r4_deadlock_retry
 
 # ---------------------------------------------------------------------------
-# v50.5.8 r5 professional UI and Storage filtered-view hotfix
+# v50.5.9 r1 responsive UI, theme and chart-gap release
 # ---------------------------------------------------------------------------
-V5058R5_RELEASE = "50.5.8-prod-r5-professional-ui-storage-hotfix"
+V5059R1_RELEASE = "50.5.9-prod-r1-ui-responsive-theme-chart-gaps"
 
 
 def _v5058r5_is_transient_iface(value):
@@ -35765,10 +35765,11 @@ def node_chart_table(rows, node, period, q="", chart_sort="time", chart_order="d
     )
     inner = _v5058r5_strip_snapshot_hint(inner).replace(' id="real-snapshot-samples"', '', 1)
     opened = " open" if any(key in request.args for key in ("raw_page", "chart_sort", "chart_order")) else ""
+    expanded = "true" if opened else "false"
     return f'''
     <details class="card snapshot-fold" id="real-snapshot-samples"{opened}>
-      <summary><span>Real Snapshot Samples</span><small>{len(rows or [])} retained points · click to expand</small></summary>
-      <div class="snapshot-fold-body">{inner}</div>
+      <summary aria-expanded="{expanded}" aria-controls="real-snapshot-samples-panel"><span>Real Snapshot Samples</span><small>{len(rows or [])} retained points · click to expand</small></summary>
+      <div class="snapshot-fold-body" id="real-snapshot-samples-panel">{inner}</div>
     </details>'''
 
 
@@ -35779,10 +35780,11 @@ def vm_chart_table(rows, node, vm_uuid, bridge, iface, period, raw_sort="time", 
     )
     inner = _v5058r5_strip_snapshot_hint(inner)
     opened = " open" if any(key in request.args for key in ("raw_page", "raw_sort", "raw_order", "raw_limit")) else ""
+    expanded = "true" if opened else "false"
     return f'''
     <details class="card snapshot-fold" id="retained-network-snapshots"{opened}>
-      <summary><span>Retained Network Snapshots</span><small>{len(rows or [])} retained points · click to expand</small></summary>
-      <div class="snapshot-fold-body">{inner}</div>
+      <summary aria-expanded="{expanded}" aria-controls="retained-network-snapshots-panel"><span>Retained Network Snapshots</span><small>{len(rows or [])} retained points · click to expand</small></summary>
+      <div class="snapshot-fold-body" id="retained-network-snapshots-panel">{inner}</div>
     </details>'''
 
 
@@ -35796,14 +35798,14 @@ def _v5049_theme_selector_html(settings=None):
             )
         )
     return '''
-    <div class="appearance-controls appearance-controls-r5">
-      <label class="appearance-select"><span>Mode</span>
+    <div class="appearance-controls appearance-controls-r5" aria-label="Theme">
+      <label class="appearance-select"><span>Theme</span>
         <select id="core-theme-mode-select" aria-label="Theme mode">
-          <option value="auto">Auto</option><option value="dark">Dark</option><option value="light">Light</option>
+          <option value="auto">Auto</option><option value="light">Light</option><option value="dark">Dark</option>
         </select>
       </label>
-      <label class="appearance-select"><span>Theme</span>
-        <select id="simple-theme-select" aria-label="Additional theme">%s</select>
+      <label class="appearance-select"><span>Style</span>
+        <select id="simple-theme-select" aria-label="Theme style">%s</select>
       </label>
     </div>''' % ''.join(preset_options)
 
@@ -35840,6 +35842,23 @@ def _v5049_runtime_theme_script(settings=None):
   window.addEventListener("storage",function(ev){{if(ev.key===customKey||ev.key==="bw-theme-mode"){{var id=readCustom();if(id)useCustom(id,false);else useCore(coreMode(),false)}}}});
   var current=readCustom();if(current)useCustom(current,false);else useCore(coreMode(),false);
 }})();
+</script>
+'''
+
+
+V5059R1_A11Y_SCRIPT = r'''
+<script id="v5059r1-snapshot-accessibility">
+(function(){
+  function sync(details){
+    if(!details || !details.matches || !details.matches('details.snapshot-fold')) return;
+    var summary=details.querySelector(':scope > summary');
+    if(summary) summary.setAttribute('aria-expanded', details.open ? 'true' : 'false');
+  }
+  document.addEventListener('toggle',function(event){sync(event.target)},true);
+  document.addEventListener('DOMContentLoaded',function(){
+    document.querySelectorAll('details.snapshot-fold').forEach(sync);
+  });
+})();
 </script>
 '''
 
@@ -35886,6 +35905,7 @@ body.endpoint-vm-page .uuid-line,body.endpoint-node-page .uuid-cell{min-width:0}
 .snapshot-fold{padding:0!important;overflow:hidden}
 .snapshot-fold>summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 16px;font-weight:900;font-size:14px;user-select:none}
 .snapshot-fold>summary::-webkit-details-marker{display:none}.snapshot-fold>summary:before{content:"▸";font-size:13px;color:var(--brand,#2563eb);transition:transform .15s}.snapshot-fold[open]>summary:before{transform:rotate(90deg)}
+.snapshot-fold>summary:focus-visible{outline:2px solid var(--brand,#2563eb);outline-offset:-3px;border-radius:8px}
 .snapshot-fold>summary span{margin-right:auto}.snapshot-fold>summary small{font-weight:650;color:var(--muted,#667085);font-size:10.5px}
 .snapshot-fold[open]>summary{border-bottom:1px solid var(--line,#d0d5dd)}.snapshot-fold-body{padding:12px}.snapshot-fold-body>.card{border:0!important;box-shadow:none!important;margin:0!important;padding:0!important}.snapshot-fold-body .table-hint{display:none!important}
 
@@ -35935,7 +35955,7 @@ def page(title, content):
         html = response.get_data(as_text=True)
         # Remove transient guestfs names from rendered output only.
         html = re.sub(r'guestfs-[A-Za-z0-9_.:-]+', '-', html, flags=re.I)
-        html = html.replace('</head>', V5058R5_UI_CSS + '</head>', 1)
+        html = html.replace('</head>', V5058R5_UI_CSS + V5059R1_A11Y_SCRIPT + '</head>', 1)
         response.set_data(html)
     except Exception:
         app.logger.exception("Could not apply r5 professional UI layer")

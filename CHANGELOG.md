@@ -1,4 +1,8 @@
-# 50.5.8-prod-r5-professional-ui-storage-hotfix
+# 50.5.9-prod-r1-ui-responsive-theme-chart-gaps
+
+- Production release identity for the responsive UI, consolidated theme controls and gap-aware charts.
+- Runtime behavior is contract-equivalent to the reviewed r5 source, apart from release metadata.
+- Keeps the Storage filtered-node SQL hotfix and the r4 inventory/Consumption fixes.
 
 ## Runtime changes
 

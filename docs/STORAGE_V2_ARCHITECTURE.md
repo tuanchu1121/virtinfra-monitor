@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.8-prod-r5-professional-ui-storage-hotfix`
+Release: `50.5.9-prod-r1-ui-responsive-theme-chart-gaps`
 
 ## Final data path
 

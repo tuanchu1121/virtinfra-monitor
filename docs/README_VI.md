@@ -1,6 +1,6 @@
 # VIRTINFRA MONITOR: TÀI LIỆU VẬN HÀNH
 
-> Release `50.5.8-prod-r5-professional-ui-storage-hotfix`
+> Release `50.5.9-prod-r1-ui-responsive-theme-chart-gaps`
 
 Runtime hiện tại dùng PostgreSQL 17 + TimescaleDB làm nguồn dữ liệu duy nhất.
 

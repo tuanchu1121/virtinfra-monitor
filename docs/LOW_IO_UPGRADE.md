@@ -2,7 +2,7 @@
 
 ## Upgrade type
 
-`50.5.8-prod-r5-professional-ui-storage-hotfix` is an **in-place upgrade** from the existing PostgreSQL-native VirtInfra Monitor release. It is not a clean-install-only branch.
+`50.5.9-prod-r1-ui-responsive-theme-chart-gaps` is an **in-place upgrade** from the existing PostgreSQL-native VirtInfra Monitor release. It is not a clean-install-only branch.
 
 The package can also perform a fresh installation, but the intended production path is:
 

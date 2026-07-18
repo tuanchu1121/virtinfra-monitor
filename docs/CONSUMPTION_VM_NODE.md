@@ -1,6 +1,6 @@
 # Consumption VM/Node
 
-Release: `50.5.8-prod-r5-professional-ui-storage-hotfix`
+Release: `50.5.9-prod-r1-ui-responsive-theme-chart-gaps`
 
 ## Scope
 

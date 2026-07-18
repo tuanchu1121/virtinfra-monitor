@@ -97,4 +97,7 @@ def test_agent_is_byte_for_byte_unchanged():
 
 
 def test_postgresql_sql_is_byte_for_byte_unchanged():
-    assert digest_tree((ROOT / "postgres" / "sql").glob("*.sql")) == CONTRACT["postgres_sql_tree_sha256"]
+    baseline_sql = sorted((ROOT / "postgres" / "sql").glob("0[0-1][0-9]_*.sql"))
+    baseline_sql = [path for path in baseline_sql if path.name <= "010_consumption_inventory_cleanup.sql"]
+    assert digest_tree(baseline_sql) == CONTRACT["postgres_sql_tree_sha256"]
+    assert (ROOT / "postgres" / "sql" / "011_node_groups_country_flags.sql").is_file()

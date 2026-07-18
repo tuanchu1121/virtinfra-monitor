@@ -8,7 +8,7 @@ for f in "$ROOT/install.sh" "$ROOT/update.sh" "$I" "$ROOT/deploy/postgres/bw-mon
   bash -n "$f"
 done
 
-grep -q 'RELEASE="50.5.9-prod-r3-ui-alignment-overflow-hotfix"' "$I" || fail "release marker missing"
+grep -q 'RELEASE="50.6.0-prod-r1-node-groups-additive"' "$I" || fail "release marker missing"
 CANONICAL='tuanchu1121/virtinfra-monitor'
 [[ "$(cat "$ROOT/CANONICAL_REPOSITORY")" == "$CANONICAL" ]] || fail "canonical repository contract is wrong"
 for repo_file in \
@@ -60,6 +60,9 @@ grep -q 'ProtectHome=read-only' "$ROOT/deploy/agent/install-agent.sh" || fail "A
 ! grep -q 'BW_AGENT_BANDWIDTH_CONSUMPTION_' "$ROOT/deploy/agent/install-agent.sh" || fail "obsolete Agent 2-hour Consumption settings remain"
 ! grep -q 'BW_AGENT_BANDWIDTH_CONSUMPTION_' "$ROOT/ansible/deploy-agent.yml" || fail "obsolete Ansible 2-hour Consumption settings remain"
 grep -q '010_consumption_inventory_cleanup.sql' "$I" || fail "Consumption/inventory migration is not installed"
+grep -q '011_node_groups_country_flags.sql' "$I" || fail "Node Groups migration is not installed"
+grep -q 'node_groups.py' "$I" || fail "Node Groups module is not installed"
+grep -q 'static/flags/4x3' "$I" || fail "local SVG flags are not installed"
 grep -q 'bw-monitor-inventory-cleanup.timer' "$I" || fail "inventory cleanup timer is not installed"
 grep -q 'consumption_rollup.py' "$I" || fail "Consumption backfill worker is not installed"
 grep -q 'become: "{{ (ansible_user | default('"'"'root'"'"')) != '"'"'root'"'"' }}"' "$ROOT/ansible/deploy-agent.yml" || fail "Ansible root/sudo behavior missing"

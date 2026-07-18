@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE="50.5.9-prod-r3-ui-alignment-overflow-hotfix"
+RELEASE="50.6.0-prod-r1-node-groups-additive"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 APP_SRC="$REPO_ROOT/app"
@@ -101,15 +101,47 @@ done
 [[ "$ADMIN_USER" =~ ^[A-Za-z0-9_.@-]{1,80}$ ]] || die "Invalid Admin username."
 [[ -f "$APP_SRC/app.py" ]] || die "Missing full application source."
 [[ -f "$APP_SRC/bw_pg.py" ]] || die "Missing PostgreSQL data layer."
+[[ -f "$APP_SRC/node_groups.py" ]] || die "Missing additive Node Groups module."
+[[ -f "$PG_SRC/sql/011_node_groups_country_flags.sql" ]] || die "Missing Node Groups migration."
+[[ -f "$REPO_ROOT/static/flags/4x3/jp.svg" ]] || die "Missing local SVG flag assets."
 [[ -f "$PG_SRC/docker-compose.yml" ]] || die "Missing PostgreSQL compose file."
 
 if [[ -r /etc/os-release ]]; then . /etc/os-release; else die "/etc/os-release missing"; fi
 case "${ID:-}" in debian|ubuntu) ;; *) die "Supported OS: Debian/Ubuntu. Found ${ID:-unknown}";; esac
 
+# Detect an existing installation from the runtime that is actually required
+# to run the service. Older v50 releases did not always create PG_ENV, so that
+# file is optional during detection and can be reconstructed safely from the
+# existing runtime DSN or the running TimescaleDB container.
+APP_PRESENT=0; ENV_PRESENT=0; SERVICE_PRESENT=0; PG_ENV_PRESENT=0
+[[ -f "$APP_DIR/app.py" ]] && APP_PRESENT=1
+[[ -r "$ENV_FILE" ]] && ENV_PRESENT=1
+[[ -r "$PG_ENV" ]] && PG_ENV_PRESENT=1
+if [[ -f "$SERVICE_FILE" || -f /lib/systemd/system/bw-monitor.service || -f /usr/lib/systemd/system/bw-monitor.service ]]; then
+  SERVICE_PRESENT=1
+elif command -v systemctl >/dev/null 2>&1 && systemctl cat bw-monitor.service >/dev/null 2>&1; then
+  SERVICE_PRESENT=1
+fi
+
 EXISTING=0
-if [[ -r "$ENV_FILE" && -r "$PG_ENV" ]]; then
+if ((APP_PRESENT && ENV_PRESENT && SERVICE_PRESENT)); then
   EXISTING=1
-  set -a; . "$ENV_FILE"; . "$PG_ENV"; set +a
+fi
+
+if ((UPDATE && !EXISTING)); then
+  missing=()
+  ((APP_PRESENT)) || missing+=("$APP_DIR/app.py")
+  ((ENV_PRESENT)) || missing+=("$ENV_FILE")
+  ((SERVICE_PRESENT)) || missing+=("bw-monitor.service")
+  die "--update could not verify the existing v50 runtime. Missing: ${missing[*]:-unknown runtime marker}."
+fi
+
+if ((EXISTING)); then
+  set -a
+  . "$ENV_FILE"
+  ((PG_ENV_PRESENT)) && . "$PG_ENV"
+  set +a
+
   ((DOMAIN_EXPLICIT)) || DOMAIN="${BW_DOMAIN:-$DOMAIN}"
   [[ -n "$EMAIL" ]] || EMAIL="${BW_LE_EMAIL:-}"
   ((PUBLIC_IP_EXPLICIT)) || PUBLIC_IP="${BW_PUBLIC_IP:-$PUBLIC_IP}"
@@ -125,9 +157,59 @@ if [[ -r "$ENV_FILE" && -r "$PG_ENV" ]]; then
   PG_PASSWORD="${BW_PG_PASSWORD:-$PG_PASSWORD}"
   TIMESCALE_IMAGE="${BW_TIMESCALE_IMAGE:-$TIMESCALE_IMAGE}"
   [[ "${BW_REDIS_ENABLED:-0}" == 1 ]] && REDIS_CACHE=1
+
+  if ((!PG_ENV_PRESENT)); then
+    warn "$PG_ENV is missing; recovering PostgreSQL settings from the existing installation."
+    EXISTING_DSN="${BW_POSTGRES_DSN:-${BW_DATABASE_URL:-}}"
+    if [[ -n "$EXISTING_DSN" ]]; then
+      mapfile -t _pg_parts < <(BW_RECOVER_DSN="$EXISTING_DSN" python3 - <<'PY_DSN'
+import os
+from urllib.parse import unquote, urlsplit
+u = urlsplit(os.environ["BW_RECOVER_DSN"])
+if u.scheme not in {"postgres", "postgresql"}:
+    raise SystemExit("unsupported PostgreSQL DSN")
+print(unquote(u.username or ""))
+print(unquote(u.password or ""))
+print(u.hostname or "")
+print(u.port or 5432)
+print(unquote((u.path or "").lstrip("/")))
+PY_DSN
+      ) || die "Could not parse BW_POSTGRES_DSN/BW_DATABASE_URL from $ENV_FILE."
+      [[ -n "${_pg_parts[0]:-}" ]] && PG_USER="${_pg_parts[0]}"
+      [[ -n "${_pg_parts[1]:-}" ]] && PG_PASSWORD="${_pg_parts[1]}"
+      _pg_host="${_pg_parts[2]:-}"
+      [[ -n "${_pg_parts[3]:-}" ]] && PG_PORT="${_pg_parts[3]}"
+      [[ -n "${_pg_parts[4]:-}" ]] && PG_DATABASE="${_pg_parts[4]}"
+      case "${_pg_host:-127.0.0.1}" in
+        127.0.0.1|localhost|::1) ;;
+        *) die "Existing PostgreSQL DSN points to non-local host $_pg_host; refusing to replace it with the bundled local container.";;
+      esac
+    fi
+
+    if command -v docker >/dev/null 2>&1 && docker inspect bw-timescaledb >/dev/null 2>&1; then
+      _container_image="$(docker inspect -f '{{.Config.Image}}' bw-timescaledb 2>/dev/null || true)"
+      [[ -n "$_container_image" ]] && TIMESCALE_IMAGE="$_container_image"
+      _container_env="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' bw-timescaledb 2>/dev/null || true)"
+      _value="$(awk -F= '$1=="POSTGRES_USER"{sub(/^[^=]*=/,"");print;exit}' <<<"$_container_env")"
+      [[ -n "$_value" ]] && PG_USER="$_value"
+      _value="$(awk -F= '$1=="POSTGRES_DB"{sub(/^[^=]*=/,"");print;exit}' <<<"$_container_env")"
+      [[ -n "$_value" ]] && PG_DATABASE="$_value"
+      if [[ -z "$PG_PASSWORD" ]]; then
+        _value="$(awk -F= '$1=="POSTGRES_PASSWORD"{sub(/^[^=]*=/,"");print;exit}' <<<"$_container_env")"
+        [[ -n "$_value" ]] && PG_PASSWORD="$_value"
+      fi
+      if [[ -z "${BW_PG_PORT:-}" ]]; then
+        _value="$(docker inspect -f '{{with (index .NetworkSettings.Ports "5432/tcp")}}{{(index . 0).HostPort}}{{end}}' bw-timescaledb 2>/dev/null || true)"
+        [[ -n "$_value" ]] && PG_PORT="$_value"
+      fi
+    fi
+
+    [[ -n "$PG_PASSWORD" ]] || die "Could not recover the existing PostgreSQL password. Restore $PG_ENV or BW_DATABASE_URL before updating."
+    RECOVERED_PG_ENV=1
+  fi
 fi
+
 ((UPDATE==0 && EXISTING==1)) && UPDATE=1
-((UPDATE==1 && EXISTING==0)) && die "--update requires an existing v50 installation."
 
 if [[ -n "$DOMAIN" ]]; then
   [[ "$DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || die "Invalid domain: $DOMAIN"
@@ -249,6 +331,7 @@ install -m 0644 "$PG_SRC/sql/007_safe_maintenance_queue.sql" "$APP_DIR/postgres/
 install -m 0644 "$PG_SRC/sql/008_mac_identity_search.sql" "$APP_DIR/postgres/sql/008_mac_identity_search.sql"
 install -m 0644 "$PG_SRC/sql/009_low_io_compat.sql" "$APP_DIR/postgres/sql/009_low_io_compat.sql"
 install -m 0644 "$PG_SRC/sql/010_consumption_inventory_cleanup.sql" "$APP_DIR/postgres/sql/010_consumption_inventory_cleanup.sql"
+install -m 0644 "$PG_SRC/sql/011_node_groups_country_flags.sql" "$APP_DIR/postgres/sql/011_node_groups_country_flags.sql"
 
 log "Start PostgreSQL 17 + TimescaleDB"
 "${COMPOSE[@]}" --env-file "$PG_ENV" -f "$APP_DIR/postgres/docker-compose.yml" pull
@@ -267,6 +350,13 @@ fi
 log "Install full application code"
 install -m 0644 "$APP_SRC/app.py" "$APP_DIR/app.py"
 install -m 0644 "$APP_SRC/bw_pg.py" "$APP_DIR/bw_pg.py"
+install -m 0644 "$APP_SRC/node_groups.py" "$APP_DIR/node_groups.py"
+install -d -m 0755 "$APP_DIR/static/flags/4x3" "$APP_DIR/THIRD_PARTY_LICENSES"
+find "$APP_DIR/static/flags/4x3" -type f -name "*.svg" -delete
+install -m 0644 "$REPO_ROOT/static/flags/4x3/"*.svg "$APP_DIR/static/flags/4x3/"
+install -m 0644 "$REPO_ROOT/static/flags/countries.json" "$APP_DIR/static/flags/countries.json"
+install -m 0644 "$REPO_ROOT/THIRD_PARTY_LICENSES/flag-icons-LICENSE.txt" "$APP_DIR/THIRD_PARTY_LICENSES/flag-icons-LICENSE.txt"
+install -m 0644 "$REPO_ROOT/THIRD_PARTY_NOTICES.md" "$APP_DIR/THIRD_PARTY_NOTICES.md"
 install -m 0644 "$APP_SRC/storage_v2.py" "$APP_DIR/storage_v2.py"
 install -m 0644 "$APP_SRC/maintenance_native.py" "$APP_DIR/maintenance_native.py"
 install -m 0644 "$APP_SRC/maintenance_queue.py" "$APP_DIR/maintenance_queue.py"
@@ -408,6 +498,9 @@ log "Apply low-I/O compatible current-state profile"
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/009_low_io_compat.sql"
 log "Apply fast Consumption rollups and inventory cleanup indexes"
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/010_consumption_inventory_cleanup.sql"
+
+log "Apply additive Node Groups and country flag schema"
+docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/011_node_groups_country_flags.sql"
 
 log "Backfill recent physical Consumption rollups"
 if ! "$APP_DIR/venv/bin/python3" "$APP_DIR/consumption_rollup.py" --hours 48; then

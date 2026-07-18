@@ -1,127 +1,92 @@
-# Báo cáo kiểm thử VirtInfra Monitor 50.5.9 r3
+# Báo cáo kiểm thử VirtInfra Monitor 50.6.0 r1
 
-**Release:** `50.5.9-prod-r3-ui-alignment-overflow-hotfix`  
-**Baseline:** `50.5.9-prod-r2-ui-layout-polish-only`
+**Release:** `50.6.0-prod-r1-node-groups-additive`  
+**Baseline trực tiếp:** `virtinfra-monitor-50.5.9-prod-r3-ui-alignment-overflow-hotfix-production-slim`  
+**SHA-256 baseline:** `1d87021bc61aaeb82c2d5c8a9fe89085eea56ad58dcd167eb559de44e1b1590b`
 
-## Phạm vi sửa
+## Nguyên tắc phát hành
 
-Bản này chỉ sửa lớp trình bày và điều khiển giao diện đã thảo luận:
+Bản này được dựng lại trực tiếp từ baseline r3 slim, không kế thừa source của các bản Node Groups preview/r2 trước đó.
 
-- Dashboard Nodes: căn lại header/số liệu và giữ cột `INTERFACE` trong khung.
-- Top VM: giữ Node/UUID theo cách hiển thị cũ; CPU, RAM và Storage bar cùng chiều dài, cùng tâm.
-- VM Consumption và Node Consumption: colgroup cố định, header hai tầng khớp body, ô Search gọn hơn.
-- Node Health: tăng inset cột Node và thêm vùng cuộn nội bộ.
-- Theme: một ô duy nhất chứa Auto, Light, Dark và toàn bộ theme đã cấu hình; bỏ ô Style khỏi UI thực tế.
-- Bảng rộng: body không cuộn ngang, chỉ `.table-wrap` được cuộn và nội dung không tràn qua viền card.
+`app/app.py` giữ nguyên toàn bộ byte của baseline ở phần đầu file. Phần Node Groups chỉ được nối thêm ở cuối để cài module mới sau khi mọi implementation runtime cũ đã đăng ký xong.
 
-Không thêm tính năng kéo thả, resize, ẩn/hiện cột hoặc cấu hình layout.
+Khi không chọn Group hoặc Node filter mới, các wrapper dữ liệu trả lại đúng object từ implementation cũ. Không đổi endpoint, payload, công thức hoặc luồng Agent hiện có.
 
-## Kiểm tra contract
+## Phần được bổ sung
 
-- Route, endpoint, HTTP method, query parameter, form field/action và sort contract: **PASS**.
-- Agent `deploy/agent/agent.py` so với baseline r2: **byte-for-byte unchanged**.
-- PostgreSQL SQL so với contract baseline: **byte-for-byte unchanged**.
-- Không thêm route hoặc câu lệnh `CREATE/SELECT/INSERT/UPDATE/DELETE` trong lớp r3.
-- Consumption body, sort link, pagination và dữ liệu vẫn được giao cho implementation r2 hiện có; r3 chỉ chèn `colgroup` vào HTML đã render.
-- Node Health vẫn gọi nguyên renderer cũ rồi chỉ bọc bảng bằng `.table-wrap`.
-- LocalStorage key theme cũ được giữ nguyên để tương thích trình duyệt đang dùng.
+- Ba bảng PostgreSQL riêng: `node_groups`, `node_group_memberships`, `node_group_membership_history`.
+- Admin menu: Overview, Nodes, Node Groups, VMs, Maintenance.
+- CRUD Node Group với tên, mô tả, ISO country code, Enabled, Hidden và Default.
+- Assign, Move, Remove Node bằng exact `node_name`; không dùng IP làm quan hệ.
+- VM chỉ kế thừa Group từ Node; không có quan hệ VM → Group trực tiếp.
+- Group/Node filter và cờ quốc gia nhỏ cạnh Node/VM trên giao diện monitor.
+- Group Consumption tính từ physical Node counters; coverage dùng tổng valid/expected, không dùng trung bình phần trăm từng Node.
+- API namespace mới và scope riêng:
+  - `node_groups:read`
+  - `node_groups:write`
+  - `/api/v1/node-groups`
+  - `/api/v1/node-groups/<id>`
+  - `/api/v1/node-groups/<id>/nodes`
+  - `/api/v1/node-groups/<id>/vms`
+  - `/api/v1/node-groups/<id>/consumption`
+  - `/api/v1/nodes/<node_name>/group`
+  - `/api/v1/nodes/ungrouped`
+- 271 SVG 4:3 từ `flag-icons`, được vendor local. UI khóa icon ở `16 × 12 px`.
 
-## Test tự động
+## Contract không thay đổi
 
-Kết quả suite pytest không có live PostgreSQL:
+- Agent `deploy/agent/agent.py`: **byte-for-byte unchanged** so với baseline.
+- Agent key/token, payload `/push`, cadence, retry và queue: **unchanged**.
+- API endpoint và payload cũ: **unchanged**; Group dùng endpoint mới riêng.
+- CPU, RAM, disk, network, PPS, Coverage và Abuse formula: **unchanged**.
+- Retention, cleanup, maintenance queue, hide/restore/purge: **unchanged**.
+- PostgreSQL migration cũ `001` đến `010`: **byte-for-byte unchanged**.
+- Module runtime bảo vệ `bw_pg.py`, Storage V2, retention, maintenance, inventory cleanup và Consumption rollup: **byte-for-byte unchanged**.
+- Không thêm `group_id` vào Node inventory, VM inventory hoặc bảng metric cũ.
+- Không thay đổi Agent hoặc bắt Agent biết Node Group.
 
-```text
-91 passed, 1 skipped
-```
+## Kiểm thử
 
-`1 skipped` là PostgreSQL integration vì không có `BW_TEST_DATABASE_URL` trỏ tới database disposable.
-
-Các kiểm tra riêng của r3:
-
-```text
-7 passed
-```
-
-Bao gồm:
-
-- release identity;
-- một Theme select duy nhất;
-- Consumption colgroup và toolbar;
-- ba resource bar Top VM có cùng chiều dài;
-- Dashboard/Node Health alignment;
-- table overflow containment;
-- không đăng ký route hoặc SQL mới.
-
-## Syntax, parser và final preflight
-
-- `app/app.py` Python `py_compile`: **PASS**.
-- Unified Theme JavaScript `node --check`: **PASS**.
-- CSS r3 `tinycss2`: **90 top-level rules, 0 parse errors**.
-- Bash syntax cho toàn bộ shell script: **PASS**.
-- YAML workflow và Ansible: **PASS**.
-- One-command installer/operations flow: **PASS**.
-- Canonical source manifest với đường dẫn `./...`: **PASS, 156 source files**.
-- `./preflight.sh --use-current-python --skip-live`: **PASS**.
-
-## Browser fixture review
-
-Đã render Chromium bằng đúng ba lớp CSS cuối `V5058R5_UI_CSS`, `V5059R2_UI_CSS`, `V5059R3_UI_CSS` với cấu trúc đại diện cho:
-
-- Theme control;
-- Dashboard Nodes;
-- Top VM;
-- VM Consumption;
-- Node Consumption;
-- Node Health.
-
-Ma trận:
+### Pytest
 
 ```text
-2 themes × 3 viewport × 3 zoom = 18 cases
-Themes: Light, Dark
-Viewport: 1366, 1920, 2048 px
-Zoom: 100%, 125%, 150%
-Failed: 0/18
+101 passed
 ```
 
-Các assertion browser:
+Bao gồm ingest, snapshot, SQL compatibility, maintenance, MAC identity, queue, low-I/O, Consumption, UI r1/r2/r3 và Node Groups additive contract.
 
-- body horizontal overflow bằng 0;
-- mọi `.table-wrap` nằm trong card;
-- Consumption header con khớp đúng biên cột body;
-- CPU/RAM/Storage track có cùng chiều rộng và cùng tâm cell;
-- Dashboard Interface không vượt biên table/wrapper;
-- Node Health có inset trái đúng;
-- chỉ có một `#unified-theme-select` và không có nhãn Style.
-
-Các fixture, ảnh chụp và kết quả browser review đã được dùng trong quá trình kiểm thử nhưng **không được đưa vào gói production slim**. Thư mục `docs/visual-review/` được loại khỏi archive để tránh làm tăng dung lượng; việc này không thay đổi source runtime.
-
-## Giới hạn visual review
-
-**NOT VERIFIED AGAINST THE LIVE AUTHENTICATED APPLICATION**
-
-Fixture không kết nối PostgreSQL thật, không dùng session production và không đại diện cho dữ liệu production đầy đủ. Không deploy và không restart production trong quá trình tạo release.
-
-## Phần không thay đổi
-
-- API endpoint và payload.
-- Agent collection, queue, push cadence và retry.
-- Database schema, migration và SQL nghiệp vụ.
-- CPU, RAM, network, PPS, disk, Coverage và Abuse formula.
-- Search, filter, pagination, refresh và sort behavior.
-- Retention, maintenance, queue, hide/restore/purge.
-- Consumption rollup, cache và timezone behavior.
-
-## Đóng gói production slim
-
-Gói production slim loại trừ duy nhất các thành phần không cần cho runtime:
+### Contract script
 
 ```text
-docs/visual-review/
-__pycache__/
-.pytest_cache/
-*.pyc
-*.pyo
+11/11 PASS
 ```
 
-Ngoài `SHA256SUMS` và nội dung báo cáo kiểm thử được cập nhật để phản ánh gói slim, các file source runtime còn lại giữ nguyên byte-for-byte so với release r3 đầy đủ.
+Bao gồm Agent Consumption, auth, UI, theme, documentation, manifest, repository, Storage V2, v50 contract và hardening.
+
+### Installer và source
+
+- `tools/test-installer-flow.sh`: **PASS**.
+- `tools/test-windows-github-desktop.sh`: **PASS**.
+- Bash syntax toàn bộ shell script: **PASS**.
+- Python compile cho app, Agent, tests và tools: **PASS**, 42 file.
+- YAML workflow và Ansible parse: **PASS**.
+- Canonical manifest đường dẫn `./...`: **PASS**, 434 source files.
+- Không có cache, `pyc`, database dump hoặc secret pattern trong package.
+
+### Preflight
+
+Các stage của preflight đã được chạy độc lập và đều PASS. Lần chạy nguyên khối trong sandbox hoàn thành các stage đầu nhưng bị giới hạn thời gian của công cụ tại bước repository contract; do đó không ghi nhận nguyên khối preflight là PASS.
+
+## PostgreSQL và visual review
+
+- Live PostgreSQL integration: **SKIPPED**, không có `BW_TEST_DATABASE_URL` trỏ tới database disposable.
+- Visual review trên session production và dữ liệu thật: **NOT VERIFIED VISUALLY**.
+- Không deploy và không restart production trong quá trình build.
+
+## Lưu ý Group Consumption
+
+Group Consumption của khoảng thời gian đang xem dùng membership hiện tại của Node để gom physical Node counters. Bảng membership history vẫn được lưu cho audit và thay đổi Group về sau, nhưng release này chưa phân bổ lại từng bucket lịch sử theo `valid_from/valid_to`.
+
+## Cờ local
+
+Database chỉ lưu ISO code uppercase như `JP`, `US`, `SG`. Runtime render file lowercase như `/static/flags/4x3/jp.svg`. Nếu SVG không tồn tại, giao diện fallback emoji quốc gia hoặc `🌐 Global`. Runtime không phụ thuộc GitHub, npm, CDN hoặc upstream.

@@ -108,3 +108,17 @@ virtinfra-monitorctl rollback-storage-v2
 The rollback command only sets `VIRTINFRA_READ_CHART_V2=0` and restarts `bw-monitor.service`. It does not delete V2 rows or restore the database.
 
 The migration is idempotent and installs background Timescale retention jobs. The V2 retention path does not use a periodic multi-million-row delete for these three tables.
+
+## Node Groups
+
+Migration `011_node_groups_country_flags.sql` adds three small PostgreSQL tables without altering current metric, Abuse, Storage or Consumption tables:
+
+| Table | Purpose |
+|---|---|
+| `node_groups` | Group metadata, ISO country code and state |
+| `node_group_memberships` | One current Group per exact Node name |
+| `node_group_membership_history` | Transactional assignment/move/remove history |
+
+The membership table has `node_name` as its primary key, so one Node can belong to at most one Group. It intentionally has no foreign key to `node_inventory`, allowing configuration to remain visible if inventory retention temporarily removes an inactive Node.
+
+VM tables do not receive a `group_id` column. A VM inherits Group information by joining its `node` value to `node_group_memberships.node_name`.

@@ -36431,3 +36431,12 @@ def page(title, content):
     except Exception:
         app.logger.exception("Could not apply v50.5.9 r3 UI alignment layer")
     return response
+
+# ---------------------------------------------------------------------------
+# v50.6.0 additive Node Groups, inherited VM geography and local SVG flags
+# Baseline runtime remains v50.5.9 r3. Existing routes/payloads are not replaced
+# unless a new Group/Node filter or the new Node Groups feature is requested.
+# ---------------------------------------------------------------------------
+V5060_RELEASE = "50.6.0-prod-r1-node-groups-additive"
+import node_groups as _v5060_node_groups
+_v5060_node_groups.install(globals())

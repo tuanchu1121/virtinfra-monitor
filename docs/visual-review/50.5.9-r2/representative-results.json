@@ -1,0 +1,45 @@
+{
+  "dashboard": {
+    "bodyScrollWidth": 1920,
+    "viewport": 1920,
+    "bodyOverflow": false,
+    "tableWidth": 1858,
+    "wrapperScrollWidth": 1858,
+    "wrapperClientWidth": 1858,
+    "statusSnapshotOverlap": false,
+    "statusRight": 311.1875,
+    "snapshotLeft": 342.0625
+  },
+  "topvm": {
+    "bodyScrollWidth": 1920,
+    "viewport": 1920,
+    "bodyOverflow": false,
+    "tableWidth": 1940,
+    "wrapperScrollWidth": 1940,
+    "wrapperClientWidth": 1858,
+    "diskHeaderHeight": 11.34375,
+    "diskHeaderWidth": 166.484375
+  },
+  "consumption-vm": {
+    "bodyScrollWidth": 1920,
+    "viewport": 1920,
+    "bodyOverflow": false,
+    "tableWidth": 1858,
+    "wrapperScrollWidth": 1858,
+    "wrapperClientWidth": 1858
+  },
+  "consumption-node": {
+    "bodyScrollWidth": 1920,
+    "viewport": 1920,
+    "bodyOverflow": false,
+    "tableWidth": 1858,
+    "wrapperScrollWidth": 1858,
+    "wrapperClientWidth": 1858
+  },
+  "node-health": {
+    "bodyScrollWidth": 1920,
+    "viewport": 1920,
+    "bodyOverflow": false,
+    "tableWidth": 1858
+  }
+}

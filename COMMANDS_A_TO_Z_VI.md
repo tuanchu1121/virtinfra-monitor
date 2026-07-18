@@ -1,8 +1,8 @@
 # VirtInfra Monitor - Toàn bộ command triển khai và bảo trì từ A đến Z
 
-> Release: `50.5.9-prod-r1-ui-responsive-theme-chart-gaps`
+> Release: `50.5.9-prod-r2-ui-layout-polish-only`
 
-> Release: `50.5.9-prod-r1-ui-responsive-theme-chart-gaps`
+> Release: `50.5.9-prod-r2-ui-layout-polish-only`
 >
 > Chạy command Monitor bằng `root`. Với node KVM, chạy Agent bằng `root` để Agent đọc được libvirt, interface, disk và host metrics.
 
@@ -107,7 +107,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Kết quả mong đợi:
 
 ```text
-50.5.9-prod-r1-ui-responsive-theme-chart-gaps
+50.5.9-prod-r2-ui-layout-polish-only
 ```
 
 ## 2.2 Update chuẩn, có backup trước

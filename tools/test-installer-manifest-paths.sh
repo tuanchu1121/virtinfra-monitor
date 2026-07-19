@@ -17,6 +17,10 @@ create_fixture() {
   local required=(
     deploy/postgres/install-postgres-native.sh
     app/app.py
+    app/runtime_loader.py
+    app/runtime_layers/manifest.json
+    app/runtime_layers/00_bootstrap_database.py
+    app/runtime_layers/43_node_groups_loader.py
     app/node_groups.py
     app/static/vendor/flag-icons/node-groups.css
     app/static/vendor/flag-icons/LICENSE
@@ -74,12 +78,16 @@ create_fixture "$SOURCE_PLAIN" plain
 run_stage_test "$SOURCE_PLAIN" "$TMP/clean-plain"
 [[ -f "$TMP/clean-plain/.editorconfig" ]]
 [[ -f "$TMP/clean-plain/app/app.py" ]]
+[[ -f "$TMP/clean-plain/app/runtime_loader.py" ]]
+[[ -f "$TMP/clean-plain/app/runtime_layers/manifest.json" ]]
 
 SOURCE_DOT="$TMP/source-dot"
 create_fixture "$SOURCE_DOT" dot
 run_stage_test "$SOURCE_DOT" "$TMP/clean-dot"
 [[ -f "$TMP/clean-dot/.editorconfig" ]]
 [[ -f "$TMP/clean-dot/app/app.py" ]]
+[[ -f "$TMP/clean-dot/app/runtime_loader.py" ]]
+[[ -f "$TMP/clean-dot/app/runtime_layers/manifest.json" ]]
 
 # sha256sum is deliberately allowed to resolve this file, but the staging
 # validator must reject the traversal path before copying it.

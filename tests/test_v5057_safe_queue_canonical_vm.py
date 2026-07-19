@@ -3,7 +3,8 @@ import ast
 from functools import lru_cache
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "app/app.py").read_text(encoding="utf-8")
+from runtime_source import read_app_source
+APP = read_app_source()
 QUEUE = (ROOT / "app/maintenance_queue.py").read_text(encoding="utf-8")
 DISPATCH = (ROOT / "app/maintenance_dispatch.py").read_text(encoding="utf-8")
 RUNNER = (ROOT / "app/maintenance.py").read_text(encoding="utf-8")
@@ -39,7 +40,7 @@ def last_function(source: str, name: str) -> str:
 
 
 def test_release_identity():
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r7-production-minimal-rbac-visibility-ui-hotfix"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r7-modular-runtime-refactor"
 
 
 def test_fifo_queue_allows_waiting_rows_but_only_one_worker():

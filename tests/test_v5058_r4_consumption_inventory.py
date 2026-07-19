@@ -1,7 +1,8 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "app" / "app.py").read_text(encoding="utf-8")
+from runtime_source import read_app_source
+APP = read_app_source()
 AGENT = (ROOT / "deploy" / "agent" / "agent.py").read_text(encoding="utf-8")
 INSTALLER = (ROOT / "deploy" / "postgres" / "install-postgres-native.sh").read_text(encoding="utf-8")
 TIMER = (ROOT / "deploy" / "postgres" / "bw-monitor-inventory-cleanup.timer").read_text(encoding="utf-8")
@@ -10,7 +11,7 @@ VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 
 def test_release_identity():
-    assert VERSION == "50.5.9-prod-r7-production-minimal-rbac-visibility-ui-hotfix"
+    assert VERSION == "50.5.9-prod-r7-modular-runtime-refactor"
     assert VERSION in APP
     assert VERSION in INSTALLER
 

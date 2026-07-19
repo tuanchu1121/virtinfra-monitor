@@ -2,7 +2,8 @@ from pathlib import Path
 import ast
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "app/app.py").read_text(encoding="utf-8")
+from runtime_source import read_app_source
+APP = read_app_source()
 APP_TREE = ast.parse(APP)
 
 
@@ -28,7 +29,7 @@ def compile_function(name: str, index: int = -1, namespace=None):
 
 
 def test_release_identity_and_preflight_dependencies():
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r7-production-minimal-rbac-visibility-ui-hotfix"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r7-modular-runtime-refactor"
     requirements = (ROOT / "requirements.txt").read_text()
     assert "pytest>=8,<9" in requirements
     assert "PyYAML>=6,<7" in requirements

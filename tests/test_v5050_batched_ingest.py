@@ -1,7 +1,8 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "app" / "app.py").read_text(encoding="utf-8")
+from runtime_source import read_app_source
+APP = read_app_source()
 SV2 = (ROOT / "app" / "storage_v2.py").read_text(encoding="utf-8")
 INSTALLER = (ROOT / "deploy" / "postgres" / "install-postgres-native.sh").read_text(encoding="utf-8")
 

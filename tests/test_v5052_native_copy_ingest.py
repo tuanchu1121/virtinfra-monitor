@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from runtime_source import read_app_source
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_PATH = ROOT / "app" / "app.py"
 PG_PATH = ROOT / "app" / "bw_pg.py"
-APP = APP_PATH.read_text(encoding="utf-8")
+APP = read_app_source()
 PG = PG_PATH.read_text(encoding="utf-8")
 INSTALLER = (ROOT / "deploy" / "postgres" / "install-postgres-native.sh").read_text(encoding="utf-8")
 INDEX_PROFILE = (ROOT / "postgres" / "sql" / "005_ingest_write_profile.sql").read_text(encoding="utf-8")
@@ -20,7 +21,7 @@ def _v5052_block() -> str:
 
 
 def test_release_and_native_copy_contract() -> None:
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r7-production-minimal-rbac-visibility-ui-hotfix"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r7-modular-runtime-refactor"
     assert "def copy_rows(" in PG
     assert "cursor.copy(statement)" in PG
     assert "copy.write_row(values)" in PG

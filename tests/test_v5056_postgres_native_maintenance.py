@@ -2,7 +2,8 @@ from pathlib import Path
 import ast
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "app/app.py").read_text(encoding="utf-8")
+from runtime_source import read_app_source
+APP = read_app_source()
 RUNNER = (ROOT / "app/maintenance.py").read_text(encoding="utf-8")
 NATIVE = (ROOT / "app/maintenance_native.py").read_text(encoding="utf-8")
 RETENTION = (ROOT / "app/retention.py").read_text(encoding="utf-8")

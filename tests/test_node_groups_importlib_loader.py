@@ -2,6 +2,7 @@ import importlib.util
 import sys
 import types
 from pathlib import Path
+from runtime_source import read_app_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -10,7 +11,7 @@ MARKER = "# VirtInfra Monitor 50.5.9 prod-r5 - additive Node Groups hotfix"
 
 
 def _loader_source() -> str:
-    source = APP.read_text(encoding="utf-8")
+    source = read_app_source()
     marker_pos = source.index(MARKER)
     block_start = source.rfind("# ---------------------------------------------------------------------------", 0, marker_pos)
     assert block_start >= 0

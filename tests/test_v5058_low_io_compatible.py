@@ -4,7 +4,8 @@ import gzip
 import json
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "app/app.py").read_text(encoding="utf-8")
+from runtime_source import read_app_source
+APP = read_app_source()
 AGENT_PATH = ROOT / "deploy/agent/agent.py"
 AGENT = AGENT_PATH.read_text(encoding="utf-8")
 MIGRATION = (ROOT / "postgres/sql/009_low_io_compat.sql").read_text(encoding="utf-8")

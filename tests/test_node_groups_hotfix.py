@@ -10,12 +10,14 @@ import sys
 
 import pytest
 
+from runtime_source import read_app_source
+
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "app" / "node_groups.py"
 MIGRATION = ROOT / "postgres" / "sql" / "011_node_groups.sql"
 R6_MIGRATION = ROOT / "postgres" / "sql" / "012_node_groups_r6_safety.sql"
 RUNTIME_TOOL = ROOT / "tools" / "node-groups-runtime-validation.py"
-EXPECTED_RELEASE = "50.5.9-prod-r7-production-minimal-rbac-visibility-ui-hotfix"
+EXPECTED_RELEASE = "50.5.9-prod-r7-modular-runtime-refactor"
 
 
 @pytest.fixture(scope="module")
@@ -57,7 +59,7 @@ def test_release_identity():
 
 
 def test_r6_changes_only_the_effective_r5_loader_and_required_baseline_sections():
-    data = (ROOT / "app/app.py").read_text(encoding="utf-8")
+    data = read_app_source()
     marker = "# VirtInfra Monitor 50.5.9 prod-r5 - additive Node Groups hotfix"
     assert data.count(marker) == 1
     connector = data[data.index(marker):]

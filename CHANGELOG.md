@@ -1,10 +1,13 @@
-# 50.5.9-prod-r7-production-minimal-rbac-visibility-ui-hotfix
+# 50.5.9-prod-r7-modular-runtime-refactor
 
-- Correct capability-scoped Admin/Super Admin RBAC and make Change Password update only the signed-in dashboard user.
-- Apply one active-Node-Group visibility source across monitoring lists, searches, detail routes, Storage, Consumption and VM Abuse while retaining hidden inventory in Admin.
-- Replace Admin Node/VM bulk selectors with explicit row actions; add Node sorting and separate Agent versus Group Hidden state.
-- Correct Node Groups search, RAM severity, move-all-to-Ungrouped, Consumption columns/sorting, icon scope and 30-second refresh lifecycle.
-- Preserve endpoints, payloads, database schema, ingest, queue, retention, maintenance, Abuse rules and metric formulas.
+## Modular runtime refactor
+
+- Reduced `app/app.py` from 36,449 lines to a small WSGI loader.
+- Split the canonical runtime into 44 ordered modules under `app/runtime_layers/`.
+- Preserved the original execution order, route map, endpoint names, request keys and override bindings.
+- Added hash-pinned layer manifest and modular architecture regression tests.
+- Updated the installer to deploy the loader and every runtime layer atomically.
+- Updated Node Groups source discovery to read the modular canonical runtime.
 
 # 50.5.9-prod-r6-node-groups-admin-bulk-management-retention-safe-maintenance-hotfix
 

@@ -17,9 +17,12 @@ printf 'legacy sqlite runtime\n' > "$COPY/release/app.py"
 printf 'SQLite WAL bandwidth.db\n' > "$COPY/docs/OLD_V48_STALE.md"
 
 [[ ! -x "$COPY/install.sh" ]] || { echo 'Simulation failed to remove executable mode.' >&2; exit 1; }
+# One canonical bootstrap run is sufficient to validate Windows-lost execute
+# bits. The two legacy aliases are static wrappers around the same installer;
+# executing all three would stage the complete manifest three times.
 bash "$COPY/install.sh" --help >/dev/null
-bash "$COPY/install-enterprise.sh" --help >/dev/null
-bash "$COPY/install-core.sh" --help >/dev/null
+grep -Fq 'exec bash "$DIR/install.sh" "$@"' "$COPY/install-enterprise.sh"
+grep -Fq 'exec bash "$DIR/install.sh" "$@"' "$COPY/install-core.sh"
 bash "$COPY/install-agent.sh" --help >/dev/null
 bash "$COPY/uninstall-agent.sh" --help >/dev/null
 bash "$COPY/preflight.sh" --help >/dev/null

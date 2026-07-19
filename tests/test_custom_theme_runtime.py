@@ -6,10 +6,11 @@ import ast
 import json
 from html import escape
 from pathlib import Path
+from runtime_source import read_app_source
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app" / "app.py"
-TREE = ast.parse(APP.read_text(encoding="utf-8"), filename=str(APP))
+TREE = ast.parse(read_app_source(), filename=str(APP))
 
 ASSIGNMENTS = {
     "V5049_THEME_SETTING_KEY",

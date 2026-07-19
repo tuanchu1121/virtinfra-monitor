@@ -1,9 +1,8 @@
 # VirtInfra Monitor v50 PostgreSQL Native
 
-**Release:** `50.5.9-prod-r7-production-minimal-rbac-visibility-ui-hotfix`
+**Release:** `50.5.9-prod-r7-modular-runtime-refactor`
 Production monitoring for KVM/libvirt nodes and virtual machines. PostgreSQL 17 + TimescaleDB is the only runtime data plane. This repository keeps the complete v48/v49 dashboard, Abuse Engine, storage views, Admin tools, REST API and Agent protocol, while replacing the runtime data store with one PostgreSQL 17 + TimescaleDB database.
 
-> Release: `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
 
 > **Operations source of truth:** [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md)
 >
@@ -33,6 +32,8 @@ KVM/libvirt node
 ```
 
 Runtime data is not split between databases. PostgreSQL stores users, settings, inventory, current metrics, Abuse state/events, storage data and history. TimescaleDB is an extension inside the same PostgreSQL database and is used for time-series history. Redis is optional page cache only, disabled by default, and never stores authoritative data.
+
+The Flask runtime is now modular: `app/app.py` is the WSGI entrypoint, `app/runtime_loader.py` enforces the ordered manifest, and functional/compatibility layers live under `app/runtime_layers/`. See [`MODULAR_RUNTIME_ARCHITECTURE.md`](MODULAR_RUNTIME_ARCHITECTURE.md).
 
 ## Exact sampling and retention
 

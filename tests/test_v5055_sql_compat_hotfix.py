@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from runtime_source import read_app_source
 
 ROOT = Path(__file__).resolve().parents[1]
 PG_PATH = ROOT / "app" / "bw_pg.py"
@@ -17,8 +18,8 @@ def _load_bw_pg():
 
 
 def test_release_identity_and_native_copy_clone_contract() -> None:
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r7-production-minimal-rbac-visibility-ui-hotfix"
-    app = APP_PATH.read_text(encoding="utf-8")
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r7-modular-runtime-refactor"
+    app = read_app_source()
     pg = PG_PATH.read_text(encoding="utf-8")
     assert "(LIKE public.{table} INCLUDING DEFAULTS) ON COMMIT DELETE ROWS" in app
     assert "def _translate_like_operators" in pg

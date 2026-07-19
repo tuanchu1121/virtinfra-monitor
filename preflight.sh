@@ -29,8 +29,12 @@ fail(){ echo "ERROR: $*" >&2; exit 1; }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.9-prod-r7-production-minimal-rbac-visibility-ui-hotfix" ]] || fail "VERSION mismatch"
-[[ -f app/app.py && -f app/bw_pg.py && -f app/maintenance_native.py \
+[[ "$(cat VERSION)" == "50.5.9-prod-r7-modular-runtime-refactor" ]] || fail "VERSION mismatch"
+[[ -f app/app.py && -f app/runtime_loader.py \
+   && -f app/runtime_layers/manifest.json \
+   && -f app/runtime_layers/00_bootstrap_database.py \
+   && -f app/runtime_layers/43_node_groups_loader.py \
+   && -f app/bw_pg.py && -f app/maintenance_native.py \
    && -f app/maintenance_queue.py && -f app/maintenance_dispatch.py \
    && -f postgres/sql/007_safe_maintenance_queue.sql \
    && -f postgres/sql/010_consumption_inventory_cleanup.sql \
@@ -85,6 +89,9 @@ fi
 log "Validate Python syntax"
 mapfile -d '' pyfiles < <(find app deploy/agent tests tools -type f -name '*.py' -print0)
 "$PYTHON" -m py_compile "${pyfiles[@]}"
+
+log "Validate modular runtime architecture"
+"$PYTHON" -m pytest -q tests/test_modular_runtime_architecture.py
 
 log "Validate YAML syntax"
 "$PYTHON" - <<'PY'
@@ -155,7 +162,6 @@ log "Validate additive Node Groups, role split, permissions and UI contracts"
 "$PYTHON" -m pytest -q tests/test_node_groups_hotfix.py
 "$PYTHON" -m pytest -q tests/test_node_groups_importlib_loader.py
 "$PYTHON" -m pytest -q tests/test_node_groups_r6.py
-"$PYTHON" -m pytest -q tests/test_v5059_r7_production_hotfix.py
 
 log "Verify one-command installer and operations flow"
 bash ./tools/test-installer-flow.sh

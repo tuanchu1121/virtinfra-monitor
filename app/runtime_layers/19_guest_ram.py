@@ -1,0 +1,792 @@
+# v48.10.3 guest-aware VM RAM layer
+import re
+#
+# - Guest Used is estimated from libvirt balloon stats: available - usable.
+# - Host RSS stays visible as a separate host-side metric.
+# - Assigned RAM stays visible as the VM allocation.
+# - Missing balloon stats are shown as N/A; RSS is never relabelled as guest use.
+# - Every VM table that displays RAM can sort Guest %, Guest GiB, Host RSS,
+#   and Assigned RAM independently without adding another wide table column.
+# ---------------------------------------------------------------------------
+V48103_VERSION = "48.10.3"
+V48103_RAM_SORT_KEYS = {"ram", "ramguest", "ramused", "ramrss", "ramassigned"}
+
+
+# Add the two balloon fields that the Agent already sends but the bounded current
+# cache did not retain in v48.10.2. The wrapper runs once per worker process.
+_db_v48103_base = db
+_v48103_schema_ready = False
+
+
+def db():
+    global _v48103_schema_ready
+    conn = _db_v48103_base()
+    if not _v48103_schema_ready:
+        for table in ("vm_current_fast", "vm_latest_metrics"):
+            for column in ("ram_unused_kib", "ram_usable_kib"):
+                try:
+                    ensure_column(conn, table, column, "INTEGER NOT NULL DEFAULT 0")
+                except dbapi.OperationalError as exc:
+                    # Multiple Gunicorn workers can race on first boot. A second
+                    # worker may observe the column only after its own PRAGMA.
+                    if "duplicate column" not in str(exc).lower():
+                        raise
+        conn.commit()
+        _v48103_schema_ready = True
+    return conn
+
+
+_refresh_fast_current_state_v48103_base = refresh_fast_current_state
+
+
+def refresh_fast_current_state(conn, node, data_time, interval_seconds, interfaces, vms, node_host, inventory_complete=False):
+    """Keep v48.10.2 behavior, then persist guest balloon fields in current caches."""
+    _refresh_fast_current_state_v48103_base(
+        conn, node, data_time, interval_seconds, interfaces, vms, node_host,
+        inventory_complete=inventory_complete,
+    )
+    for vm_item in vms or []:
+        if not isinstance(vm_item, dict):
+            continue
+        vm_uuid = str(vm_item.get("vm_uuid") or "").strip()
+        if not vm_uuid or vm_uuid == "-":
+            continue
+        unused = max(0, safe_int(vm_item.get("ram_unused_kib"), 0))
+        usable = max(0, safe_int(vm_item.get("ram_usable_kib"), 0))
+        conn.execute(
+            "UPDATE vm_current_fast SET ram_unused_kib=?,ram_usable_kib=? WHERE node=? AND vm_uuid=?",
+            (unused, usable, node, vm_uuid),
+        )
+        conn.execute(
+            "UPDATE vm_latest_metrics SET ram_unused_kib=?,ram_usable_kib=? WHERE node=? AND vm_uuid=?",
+            (unused, usable, node, vm_uuid),
+        )
+
+
+def vm_guest_ram_metrics(current_kib=0, rss_kib=0, available_kib=0, unused_kib=0, usable_kib=0):
+    """Return conservative guest/host/allocation RAM metrics.
+
+    available - usable is an estimate of memory that the guest cannot readily
+    reclaim. A zero value for both usable and unused is treated as missing data,
+    not as 100% guest usage, because older/misconfigured balloon drivers report
+    absent keys as zero through the current Agent compatibility layer.
+    """
+    assigned = max(0.0, safe_float(current_kib, 0.0))
+    rss = max(0.0, safe_float(rss_kib, 0.0))
+    available = max(0.0, safe_float(available_kib, 0.0))
+    unused = max(0.0, safe_float(unused_kib, 0.0))
+    usable = max(0.0, safe_float(usable_kib, 0.0))
+    has_guest = bool(
+        available > 0
+        and (usable > 0 or unused > 0)
+        and usable <= available * 1.05
+    )
+    guest_total = available if has_guest else 0.0
+    guest_used = max(0.0, min(guest_total, guest_total - usable)) if has_guest else 0.0
+    guest_pct = (guest_used * 100.0 / guest_total) if guest_total > 0 else 0.0
+    return {
+        "has_guest": has_guest,
+        "guest_total_kib": guest_total,
+        "guest_used_kib": guest_used,
+        "guest_used_pct": pct_clamp(guest_pct),
+        "assigned_kib": assigned,
+        "rss_kib": rss,
+        "available_kib": available,
+        "unused_kib": unused,
+        "usable_kib": usable,
+    }
+
+
+def _v48103_ram_level(pct, has_guest=True):
+    if not has_guest:
+        return "na"
+    if pct >= 95:
+        return "critical"
+    if pct >= 85:
+        return "hot"
+    if pct >= 70:
+        return "warm"
+    return "normal"
+
+
+def fmt_vm_ram_block(current_kib=0, rss_kib=0, available_kib=0, unused_kib=0, usable_kib=0, compact=False):
+    """Render VM RAM without turning every list row into a telemetry wall.
+
+    Compact tables show only the operator-facing essentials:
+      Guest Used / Assigned, Guest Used %, and Host RSS.
+    The VM detail card keeps the explicit Guest/Host/Assigned labels and the
+    balloon-stat status. RSS is never substituted for missing guest usage.
+    """
+    m = vm_guest_ram_metrics(current_kib, rss_kib, available_kib, unused_kib, usable_kib)
+    level = _v48103_ram_level(m["guest_used_pct"], m["has_guest"])
+    assigned = fmt_kib(m["assigned_kib"]) if m["assigned_kib"] > 0 else "-"
+    rss = fmt_kib(m["rss_kib"]) if m["rss_kib"] > 0 else "-"
+
+    if compact:
+        display_total_kib = m["assigned_kib"] if m["assigned_kib"] > 0 else m["guest_total_kib"]
+        display_total = fmt_kib(display_total_kib) if display_total_kib > 0 else "-"
+        if m["has_guest"]:
+            used = fmt_kib(m["guest_used_kib"])
+            primary = (
+                f'<b class="ram-guest-value">{used} / {display_total}</b>'
+                f'<small class="ram-guest-label">{m["guest_used_pct"]:.1f}% used</small>'
+            )
+            meter = f'<span class="ram-meter"><i style="width:{min(100.0,m["guest_used_pct"]):.1f}%"></i></span>'
+        else:
+            primary = (
+                f'<b class="ram-guest-value">N/A / {display_total}</b>'
+                '<small class="ram-guest-label">guest stats unavailable</small>'
+            )
+            meter = '<span class="ram-meter ram-meter-na"><i style="width:0%"></i></span>'
+        return (
+            f'<div class="vm-ram-block vm-ram-compact ram-{level}">{primary}{meter}'
+            f'<small class="ram-host-line">RSS <b>{rss}</b></small></div>'
+        )
+
+    if m["has_guest"]:
+        used = fmt_kib(m["guest_used_kib"])
+        total = fmt_kib(m["guest_total_kib"])
+        primary = (
+            '<small class="ram-detail-kicker">GUEST USED</small>'
+            f'<b class="ram-guest-value">{used} / {total}</b>'
+            f'<small class="ram-guest-label">{m["guest_used_pct"]:.1f}% used</small>'
+        )
+        meter = f'<span class="ram-meter"><i style="width:{min(100.0,m["guest_used_pct"]):.1f}%"></i></span>'
+        status = '<small class="ram-stat-status ok">Balloon stats OK</small>'
+    else:
+        primary = (
+            '<small class="ram-detail-kicker">GUEST USED</small>'
+            '<b class="ram-guest-value">N/A</b>'
+            '<small class="ram-guest-label">guest stats unavailable</small>'
+        )
+        meter = '<span class="ram-meter ram-meter-na"><i style="width:0%"></i></span>'
+        status = '<small class="ram-stat-status na">Host metrics only · balloon usable/unused missing</small>'
+    return (
+        f'<div class="vm-ram-block vm-ram-detail ram-{level}">{primary}{meter}'
+        f'<small class="ram-host-line">HOST RSS <b>{rss}</b> · ASSIGNED <b>{assigned}</b></small>{status}</div>'
+    )
+
+
+def _v48103_ram_sort_value(current_kib, rss_kib, available_kib, unused_kib, usable_kib, key):
+    m = vm_guest_ram_metrics(current_kib, rss_kib, available_kib, unused_kib, usable_kib)
+    if key in {"ram", "ramguest"}:
+        return m["has_guest"], m["guest_used_pct"]
+    if key == "ramused":
+        return m["has_guest"], m["guest_used_kib"]
+    if key == "ramrss":
+        return m["rss_kib"] > 0, m["rss_kib"]
+    if key == "ramassigned":
+        return m["assigned_kib"] > 0, m["assigned_kib"]
+    return True, 0.0
+
+
+def _v48103_sort_ram_rows(rows, sort_by, order, extractor, tie_extractor=None):
+    valid, missing = [], []
+    for row in rows:
+        current, rss, available, unused, usable = extractor(row)
+        has_value, value = _v48103_ram_sort_value(current, rss, available, unused, usable, sort_by)
+        target = valid if has_value else missing
+        target.append((value, row))
+    reverse = clean_sort_order(order) == "desc"
+    if tie_extractor is None:
+        tie_extractor = lambda _row: 0
+    valid.sort(key=lambda item: (item[0], tie_extractor(item[1])), reverse=reverse)
+    return [row for _value, row in valid] + [row for _value, row in missing]
+
+
+def _v48103_fetch_ram_map(keys, live=True, bucket=0):
+    """Fetch only the VM keys already present in the rendered table, in chunks."""
+    result = {}
+    pairs = sorted({(str(n), str(v)) for n, v in keys if n and v})
+    if not pairs:
+        return result
+    conn = db()
+    try:
+        for pos in range(0, len(pairs), 250):
+            chunk = pairs[pos:pos + 250]
+            where = " OR ".join("(node=? AND vm_uuid=?)" for _ in chunk)
+            params = [value for pair in chunk for value in pair]
+            if live:
+                sql = f"""
+                    SELECT node,vm_uuid,ram_current_kib,ram_rss_kib,ram_available_kib,
+                           ram_unused_kib,ram_usable_kib
+                    FROM vm_current_fast WHERE {where}
+                """
+                rows = conn.execute(sql, params).fetchall()
+            else:
+                sql = f"""
+                    SELECT p.node,p.vm_uuid,p.ram_current_kib,p.ram_rss_kib,
+                           p.ram_available_kib,p.ram_unused_kib,p.ram_usable_kib
+                    FROM vm_perf_stats p
+                    JOIN (
+                        SELECT node,vm_uuid,MAX(time) AS max_time
+                        FROM vm_perf_stats
+                        WHERE bucket=? AND ({where})
+                        GROUP BY node,vm_uuid
+                    ) latest
+                      ON latest.node=p.node AND latest.vm_uuid=p.vm_uuid AND latest.max_time=p.time
+                    WHERE p.bucket=?
+                """
+                rows = conn.execute(sql, [bucket] + params + [bucket]).fetchall()
+            for row in rows:
+                result[(str(row[0]), str(row[1]))] = tuple(safe_float(v, 0) for v in row[2:7])
+    finally:
+        conn.close()
+    return result
+
+
+def _v48103_augment_rows_with_ram(rows, period, selected_bucket, key_indexes):
+    live = _request_target_ts() is None and clean_period(period) == "5m"
+    keys = [(row[key_indexes[0]], row[key_indexes[1]]) for row in rows]
+    ram_map = _v48103_fetch_ram_map(keys, live=live, bucket=selected_bucket)
+    augmented = []
+    for row in rows:
+        key = (str(row[key_indexes[0]]), str(row[key_indexes[1]]))
+        current, rss, available, unused, usable = ram_map.get(
+            key,
+            (
+                safe_float(row[key_indexes[3]], 0),
+                safe_float(row[key_indexes[2]], 0),
+                0.0, 0.0, 0.0,
+            ),
+        )
+        # Existing tuple already contains current/rss. Append only the three
+        # fields that were absent from the v48.10.2 table contract.
+        augmented.append(tuple(row) + (available, unused, usable))
+    return augmented
+
+
+V48104_VERSION = "48.10.4"
+V48104_RAM_SORT_LABELS = {
+    "ram": "Guest %",
+    "ramguest": "Guest %",
+    "ramused": "Used GiB",
+    "ramrss": "Host RSS",
+    "ramassigned": "Assigned",
+}
+
+
+def _v48104_ram_sort_header(main_link, option_links, current_sort, current_order):
+    """Compact RAM header: one primary label plus a collapsed sort menu."""
+    active = V48104_RAM_SORT_LABELS.get(current_sort, "Guest %")
+    arrow = ""
+    if current_sort in V48103_RAM_SORT_KEYS:
+        arrow = " ↓" if clean_sort_order(current_order) == "desc" else " ↑"
+    options = "".join(f'<div class="ram-sort-option">{link}</div>' for link in option_links)
+    return (
+        '<div class="ram-compact-head">'
+        f'<div class="ram-main-sort">{main_link}</div>'
+        '<details class="ram-sort-menu">'
+        f'<summary title="Choose RAM sort">{escape(active)}{arrow} ▾</summary>'
+        f'<div class="ram-sort-options">{options}</div>'
+        '</details></div>'
+    )
+
+
+# ---- Top VM RAM sorting and display ---------------------------------------
+_get_top_vm_rows_v48103_base = get_top_vm_rows
+
+
+def clean_top_sort(sort_by):
+    allowed = {
+        "total", "rx", "tx", "public", "private", "mbps", "peakmbps",
+        "pps", "peakpps", "sample", "drops", "errors", "cpu", "cpufull",
+        "vcpu", "ram", "ramguest", "ramused", "ramrss", "ramassigned",
+        "diskr", "diskw", "last_push", "node", "vm",
+    }
+    return sort_by if sort_by in allowed else "total"
+
+
+def get_top_vm_rows(period, q="", sort_by="total", order="desc", scope="all", limit=100):
+    requested_sort = clean_top_sort(sort_by)
+    requested_order = clean_sort_order(order)
+    requested_limit = max(10, min(1000, safe_int(limit, 100)))
+    ram_sort = requested_sort in V48103_RAM_SORT_KEYS
+    base_sort = "total" if ram_sort else requested_sort
+    fetch_limit = 1000 if ram_sort else requested_limit
+    rows, selected_bucket, latest_bucket, _base_limit = _get_top_vm_rows_v48103_base(
+        period, q=q, sort_by=base_sort, order=requested_order,
+        scope=scope, limit=fetch_limit,
+    )
+    rows = _v48103_augment_rows_with_ram(rows, period, selected_bucket, (0, 1, 24, 25))
+    if ram_sort:
+        rows = _v48103_sort_ram_rows(
+            rows, requested_sort, requested_order,
+            extractor=lambda r: (r[25], r[24], r[32], r[33], r[34]),
+            tie_extractor=lambda r: safe_float(r[7], 0),
+        )
+    return rows[:requested_limit], selected_bucket, latest_bucket, requested_limit
+
+
+def _v48103_top_ram_link(label, key, period, q, current_sort, current_order, scope, limit):
+    return _v48102_top_sort_link(label, key, period, q, current_sort, current_order, scope, limit)
+
+
+def top_vm_table(rows, period, q, sort_by, order, scope, limit):
+    body = ""
+    for rank, row in enumerate(rows, 1):
+        (
+            node, vm_uuid, iface_count, public_total, private_total, rx, tx, total,
+            packets, drops, errors, avg_mbps, peak_mbps, avg_pps, peak_pps,
+            sample_count, sample_expected, sample_max_gap, seconds_over_pps, seconds_over_mbps,
+            sample_quality_rank, cpu_full_percent, vcpu_current, cpu_core_percent,
+            ram_rss_kib, ram_current_kib, disk_read_bps, disk_write_bps,
+            last_push, interval_seconds, public_ipv4, private_ipv4,
+            ram_available_kib, ram_unused_kib, ram_usable_kib,
+        ) = row
+        row_at = (request.args.get("at") or "").strip()
+        href = url_for("node_page", node=node, period=period, q=vm_uuid, **({"at": row_at} if row_at else {}))
+        public_ip = compact_ipv4(public_ipv4)
+        ip_lines = f'<small class="node-ipv4" title="Public IPv4">{escape(public_ip)}</small>' if public_ip else ""
+        sample = network_sample_badge(network_quality_from_rank(sample_quality_rank), sample_count, sample_expected, sample_max_gap)
+        core_value = max(0.0, safe_float(cpu_core_percent, 0.0))
+        full_value = max(0.0, safe_float(cpu_full_percent, 0.0))
+        cpu_level = _v48102_cpu_level(full_value)
+        cpu_bar = min(100.0, full_value)
+        ram_html = fmt_vm_ram_block(ram_current_kib, ram_rss_kib, ram_available_kib, ram_unused_kib, ram_usable_kib, compact=True)
+        body += f"""
+        <tr>
+          <td class="num rank-cell">{rank}</td>
+          <td class="mono"><div class="node-name-cell"><a href="{escape(href,quote=True)}"><b>{escape(node)}</b></a>{ip_lines}</div></td>
+          <td class="mono"><span class="uuid-cell"><a href="{escape(href,quote=True)}" title="{escape(vm_uuid)}">{escape(vm_uuid)}</a><button type="button" class="copy-btn" data-copy="{escape(vm_uuid)}" title="Copy UUID">⧉</button></span></td>
+          <td class="num">{iface_count or 0}</td><td class="num">{human(public_total)}</td><td class="num">{human(private_total)}</td><td class="num"><b>{human(total)}</b></td>
+          <td class="num">{float(avg_mbps or 0):.2f}</td><td class="num"><b>{float(peak_mbps or 0):.2f}</b></td><td class="num">{fmt_pps_value(avg_pps)}</td><td class="num"><b>{fmt_pps_value(peak_pps)}</b></td><td class="num sample-cell">{sample}</td>
+          <td class="num cpu-dual-cell cpu-{cpu_level}"><b class="cpu-core-value">{core_value:.1f}%</b><small class="cpu-full-value">{full_value:.1f}% FULL</small><span class="cpu-meter"><i style="width:{cpu_bar:.1f}%"></i></span></td>
+          <td class="num">{int(vcpu_current or 0)}</td><td class="num ram-cell">{ram_html}</td><td class="num">{human_rate(disk_read_bps)}</td><td class="num">{human_rate(disk_write_bps)}</td><td class="num">{fmt_push(last_push)}</td><td class="num">{int(drops or 0)}</td><td class="num">{int(errors or 0)}</td>
+        </tr>"""
+    if not body:
+        body = '<tr><td colspan="20" class="empty">No VM data at this selected snapshot</td></tr>'
+    h = lambda label, key: top_sort_header(label, key, period, q, sort_by, order, scope, limit)
+    cpu_core_sort = _v48102_top_sort_link("CORE%", "cpu", period, q, sort_by, order, scope, limit)
+    cpu_full_sort = _v48102_top_sort_link("FULL%", "cpufull", period, q, sort_by, order, scope, limit)
+    ram_header = _v48104_ram_sort_header(
+        _v48103_top_ram_link("RAM", "ram", period, q, sort_by, order, scope, limit),
+        [
+            _v48103_top_ram_link("Guest %", "ram", period, q, sort_by, order, scope, limit),
+            _v48103_top_ram_link("Used GiB", "ramused", period, q, sort_by, order, scope, limit),
+            _v48103_top_ram_link("Host RSS", "ramrss", period, q, sort_by, order, scope, limit),
+            _v48103_top_ram_link("Assigned", "ramassigned", period, q, sort_by, order, scope, limit),
+        ],
+        sort_by,
+        order,
+    )
+    return f"""
+    <div class="card vm-table-card top-vm-v48102 top-vm-v48103">
+      <div class="table-title-row"><h3>Top VM Across All Nodes</h3><div class="count-badges"><span>Rows <b>{len(rows)}</b></span><span>Scope <b>{escape(scope)}</b></span><span>Refresh <b>5s partial</b></span><span>Sort <b>{escape(sort_by)} {escape(order)}</b></span></div></div>
+      <div class="table-wrap"><table class="table-top-vm"><colgroup><col class="top-rank"><col class="top-node"><col class="top-uuid"><col class="top-ifaces"><col class="top-public"><col class="top-private"><col class="top-total"><col class="top-mbps"><col class="top-peakmbps"><col class="top-pps"><col class="top-peakpps"><col class="top-sample"><col class="top-cpu"><col class="top-vcpu"><col class="top-ram"><col class="top-diskr"><col class="top-diskw"><col class="top-push"><col class="top-drops"><col class="top-errors"></colgroup>
+      <thead><tr><th>#</th><th>{h('NODE','node')}</th><th>{h('VM UUID','vm')}</th><th>IFACES</th><th class="num-head">{h('PUBLIC','public')}</th><th class="num-head">{h('PRIVATE','private')}</th><th class="num-head">{h('TOTAL','total')}</th><th class="num-head">{h('AVG Mbps','mbps')}</th><th class="num-head">{h('PEAK Mbps','peakmbps')}</th><th class="num-head">{h('AVG PPS','pps')}</th><th class="num-head">{h('PEAK PPS','peakpps')}</th><th class="num-head">{h('SAMPLE','sample')}</th><th class="num-head cpu-dual-head"><div>CPU</div><small>{cpu_core_sort}<span> · </span>{cpu_full_sort}</small></th><th class="num-head">{h('vCPU','vcpu')}</th><th class="num-head ram-compact-sort-head">{ram_header}</th><th class="num-head">{h('DISK R/s','diskr')}</th><th class="num-head">{h('DISK W/s','diskw')}</th><th class="num-head">{h('PUSH','last_push')}</th><th class="num-head">{h('DROPS','drops')}</th><th class="num-head">{h('ERR','errors')}</th></tr></thead><tbody>{body}</tbody></table></div>
+      <div class="table-hint">RAM shows <b>Guest Used / Assigned</b>; <b>RSS</b> is host-side QEMU memory. Use the small RAM menu to change the sort metric. Missing guest stats stay N/A and sort last.</div>
+    </div>"""
+
+
+# ---- Per-node VM/interface table RAM sorting and display ------------------
+_query_node_bridge_v48103_base = query_node_bridge
+
+
+def clean_interface_sort(sort_by):
+    allowed = {
+        "rx", "tx", "total", "mbps", "peakmbps", "pps", "peakpps", "sample",
+        "drops", "errors", "cpu", "vcpu", "ram", "ramguest", "ramused",
+        "ramrss", "ramassigned", "diskr", "diskw",
+    }
+    return sort_by if sort_by in allowed else "total"
+
+
+def query_node_bridge(node, period, bridge, q="", limit=1000, sort_by="total", order="desc", vm_status="active"):
+    requested_sort = clean_interface_sort(sort_by)
+    requested_order = clean_sort_order(order)
+    requested_limit = max(1, min(5000, safe_int(limit, 1000)))
+    ram_sort = requested_sort in V48103_RAM_SORT_KEYS
+    base_sort = "total" if ram_sort else requested_sort
+    fetch_limit = 5000 if ram_sort else requested_limit
+    rows, selected_bucket, latest_bucket = _query_node_bridge_v48103_base(
+        node, period, bridge, q=q, limit=fetch_limit,
+        sort_by=base_sort, order=requested_order, vm_status=vm_status,
+    )
+    # The node table stores iface in row[0], so fetch RAM with the explicit
+    # node argument rather than reusing the Top VM row-key helper.
+    live = _request_target_ts() is None and clean_period(period) == "5m"
+    ram_map = _v48103_fetch_ram_map([(node, r[1]) for r in rows], live=live, bucket=selected_bucket)
+    normalized = []
+    for row in rows:
+        base = tuple(row[:31])
+        current, rss, available, unused, usable = ram_map.get(
+            (str(node), str(row[1])),
+            (safe_float(row[24],0), safe_float(row[23],0), 0.0, 0.0, 0.0),
+        )
+        normalized.append(base + (available, unused, usable))
+    rows = normalized
+    if ram_sort:
+        rows = _v48103_sort_ram_rows(
+            rows, requested_sort, requested_order,
+            extractor=lambda r: (r[24], r[23], r[31], r[32], r[33]),
+            tie_extractor=lambda r: safe_float(r[4], 0),
+        )
+    return rows[:requested_limit], selected_bucket, latest_bucket
+
+
+def interface_table(title, bridge, node, rows, period, q="", sort_by="total", order="desc", vm_status="active"):
+    body = ""
+    for row in rows:
+        (
+            iface, vm_uuid, rx, tx, total, rx_packets, tx_packets, packets, drops, errors,
+            avg_mbps, peak_mbps, avg_pps, peak_pps, sample_count, sample_expected,
+            sample_max_gap_seconds, seconds_over_pps, seconds_over_mbps, sample_quality_rank,
+            cpu_percent, vcpu_current, core_cpu_percent, ram_rss_kib, ram_current_kib,
+            disk_read_bps, disk_write_bps, row_vm_status, last_push, vm_last_seen,
+            interval_seconds, ram_available_kib, ram_unused_kib, ram_usable_kib,
+        ) = row
+        row_at = (request.args.get("at") or "").strip()
+        href = url_for("vm_page", node=node, vm_uuid=vm_uuid, bridge=bridge, iface=iface, period=period, **({"at": row_at} if row_at else {}))
+        href_e = escape(href, quote=True)
+        live = vm_live_status(vm_last_seen)
+        row_status = clean_vm_status(row_vm_status)
+        row_cls = "clickable stale-row" if (live == "stale" or row_status != "active") else "clickable"
+        state_html = vm_status_badge(row_status, live)
+        vm_uuid_e = escape(vm_uuid)
+        quality = network_quality_from_rank(sample_quality_rank)
+        sample_html = network_sample_badge(quality, sample_count, sample_expected, sample_max_gap_seconds)
+        ram_html = fmt_vm_ram_block(ram_current_kib, ram_rss_kib, ram_available_kib, ram_unused_kib, ram_usable_kib, compact=True)
+        body += f"""
+        <tr class="{row_cls}" onclick="if (!event.target.closest('a, button, input, select, textarea, label, form')) window.location='{href_e}'">
+          <td>{state_html}</td><td class="mono"><a href="{href_e}"><b>{escape(iface)}</b></a></td><td class="mono"><span class="uuid-cell"><a href="{href_e}" title="{vm_uuid_e}">{vm_uuid_e}</a><button type="button" class="copy-btn" data-copy="{vm_uuid_e}" title="Copy UUID">⧉</button></span></td>
+          <td class="num">{human(rx)}</td><td class="num">{human(tx)}</td><td class="num"><b>{human(total)}</b></td><td class="num">{float(avg_mbps or 0):.2f}</td><td class="num"><b>{float(peak_mbps or 0):.2f}</b></td><td class="num">{fmt_pps_value(avg_pps)}</td><td class="num"><b>{fmt_pps_value(peak_pps)}</b></td><td class="num sample-cell">{sample_html}<small class="metric-subline">{int(seconds_over_pps or 0)}s PPS · {int(seconds_over_mbps or 0)}s Mbps</small></td>
+          <td class="num"><b>{fmt_vm_cpu(cpu_percent,vcpu_current)}</b><small class="metric-subline">{float(cpu_percent or 0):.1f}% full</small></td><td class="num">{int(vcpu_current or 0)}</td><td class="num ram-cell">{ram_html}</td><td class="num">{human_rate(disk_read_bps)}</td><td class="num">{human_rate(disk_write_bps)}</td><td class="num">{int(drops or 0)}</td><td class="num">{int(errors or 0)}</td>
+        </tr>"""
+    if not body:
+        body = '<tr><td colspan="18" class="empty">No data in this selected snapshot</td></tr>'
+    hs = {
+        "rx": sort_header("RX","rx",node,period,q,sort_by,order,vm_status),
+        "tx": sort_header("TX","tx",node,period,q,sort_by,order,vm_status),
+        "total": sort_header("TOTAL","total",node,period,q,sort_by,order,vm_status),
+        "mbps": sort_header("AVG Mbps","mbps",node,period,q,sort_by,order,vm_status),
+        "peakmbps": sort_header("PEAK Mbps","peakmbps",node,period,q,sort_by,order,vm_status),
+        "pps": sort_header("AVG PPS","pps",node,period,q,sort_by,order,vm_status),
+        "peakpps": sort_header("PEAK PPS","peakpps",node,period,q,sort_by,order,vm_status),
+        "sample": sort_header("SAMPLE","sample",node,period,q,sort_by,order,vm_status),
+        "cpu": sort_header("CPU Core%","cpu",node,period,q,sort_by,order,vm_status),
+        "vcpu": sort_header("vCPU","vcpu",node,period,q,sort_by,order,vm_status),
+        "diskr": sort_header("DISK R/s","diskr",node,period,q,sort_by,order,vm_status),
+        "diskw": sort_header("DISK W/s","diskw",node,period,q,sort_by,order,vm_status),
+        "drops": sort_header("DROPS","drops",node,period,q,sort_by,order,vm_status),
+        "errors": sort_header("ERR","errors",node,period,q,sort_by,order,vm_status),
+    }
+    ram_header = _v48104_ram_sort_header(
+        sort_header("RAM","ram",node,period,q,sort_by,order,vm_status),
+        [
+            sort_header("Guest %","ram",node,period,q,sort_by,order,vm_status),
+            sort_header("Used GiB","ramused",node,period,q,sort_by,order,vm_status),
+            sort_header("Host RSS","ramrss",node,period,q,sort_by,order,vm_status),
+            sort_header("Assigned","ramassigned",node,period,q,sort_by,order,vm_status),
+        ],
+        sort_by,
+        order,
+    )
+    return f"""
+    <div class="card vm-table-card"><div class="table-title-row"><h3>{escape(title)}</h3><div class="count-badges"><span>VM rows <b>{len(rows)}</b></span><span>Snapshot <b>exact</b></span></div></div><div class="table-wrap"><table class="table-vm"><colgroup><col class="col-state"><col class="col-iface"><col class="col-uuid"><col class="col-rx"><col class="col-tx"><col class="col-total"><col class="col-mbps"><col class="col-peakmbps"><col class="col-pps"><col class="col-peakpps"><col class="col-sample"><col class="col-cpu"><col class="col-vcpu"><col class="col-ram"><col class="col-diskr"><col class="col-diskw"><col class="col-drops"><col class="col-errors"></colgroup>
+      <thead><tr><th>STATE</th><th>INTERFACE</th><th>VM UUID</th><th class="num-head">{hs['rx']}</th><th class="num-head">{hs['tx']}</th><th class="num-head">{hs['total']}</th><th class="num-head">{hs['mbps']}</th><th class="num-head">{hs['peakmbps']}</th><th class="num-head">{hs['pps']}</th><th class="num-head">{hs['peakpps']}</th><th class="num-head">{hs['sample']}</th><th class="num-head">{hs['cpu']}</th><th class="num-head">{hs['vcpu']}</th><th class="num-head ram-compact-sort-head">{ram_header}</th><th class="num-head">{hs['diskr']}</th><th class="num-head">{hs['diskw']}</th><th class="num-head">{hs['drops']}</th><th class="num-head">{hs['errors']}</th></tr></thead><tbody>{body}</tbody></table></div>
+      <div class="table-hint">RAM shows estimated <b>Guest Used / Assigned</b>. <b>RSS</b> is host-side; N/A means balloon guest statistics are unavailable.</div>
+    </div>"""
+
+
+# ---- VM charts and VM detail RAM card ------------------------------------
+def query_vm_perf_chart(node, vm_uuid, period):
+    start, end = range_for_period(period)
+    conn = db()
+    try:
+        raw = conn.execute("""
+            SELECT bucket,cpu_percent,vcpu_current,ram_current_kib,ram_maximum_kib,ram_rss_kib,
+                   ram_available_kib,ram_unused_kib,ram_usable_kib,
+                   disk_read_delta,disk_write_delta,disk_read_reqs_delta,disk_write_reqs_delta,
+                   time,COALESCE(interval_seconds,?)
+            FROM vm_perf_stats
+            WHERE node=? AND vm_uuid=? AND bucket>=? AND bucket<?
+            ORDER BY bucket,time
+        """, (CACHE_BUCKET_SECONDS,node,vm_uuid,start,end)).fetchall()
+    finally:
+        conn.close()
+    by = {int(r[0]): r for r in raw}
+    rows = []
+    for bucket in sorted(by):
+        r = by[bucket]
+        interval = max(1, int(r[14] or CACHE_BUCKET_SECONDS))
+        rd, wd = int(r[9] or 0), int(r[10] or 0)
+        ram = vm_guest_ram_metrics(r[3], r[5], r[6], r[7], r[8])
+        rows.append({
+            "bucket": bucket, "label": fmt_chart_label(bucket, interval),
+            "cpu_percent": float(r[1] or 0), "vcpu_current": int(r[2] or 0),
+            "cpu_core_percent": vm_core_cpu_percent(r[1], r[2]),
+            "ram_current_bytes": float(r[3] or 0) * 1024,
+            "ram_maximum_bytes": float(r[4] or 0) * 1024,
+            "ram_rss_bytes": float(r[5] or 0) * 1024,
+            "ram_available_bytes": float(r[6] or 0) * 1024,
+            "ram_unused_bytes": float(r[7] or 0) * 1024,
+            "ram_usable_bytes": float(r[8] or 0) * 1024,
+            "guest_used_bytes": ram["guest_used_kib"] * 1024 if ram["has_guest"] else 0,
+            "guest_total_bytes": ram["guest_total_kib"] * 1024 if ram["has_guest"] else 0,
+            "guest_used_percent": ram["guest_used_pct"] if ram["has_guest"] else 0,
+            "guest_stats_available": 1 if ram["has_guest"] else 0,
+            "disk_read_delta": rd, "disk_write_delta": wd,
+            "disk_read_bps": rd / interval, "disk_write_bps": wd / interval,
+            "disk_read_reqs": int(r[11] or 0), "disk_write_reqs": int(r[12] or 0),
+            "last_push": int(r[13] or 0),
+        })
+    gaps = [rows[i]["bucket"]-rows[i-1]["bucket"] for i in range(1,len(rows)) if rows[i]["bucket"]>rows[i-1]["bucket"]]
+    return rows, start, end, (min(gaps) if gaps else chart_step_seconds(period))
+
+
+def _v48103_latest_ram(node, vm_uuid):
+    target = _request_target_ts()
+    conn = db()
+    try:
+        if target is None:
+            row = conn.execute("""
+                SELECT ram_current_kib,ram_rss_kib,ram_available_kib,ram_unused_kib,ram_usable_kib,last_seen
+                FROM vm_current_fast WHERE node=? AND vm_uuid=?
+            """, (node,vm_uuid)).fetchone()
+            if row:
+                return row
+        max_time = int(target) if target is not None else now_ts()
+        return conn.execute("""
+            SELECT ram_current_kib,ram_rss_kib,ram_available_kib,ram_unused_kib,ram_usable_kib,time
+            FROM vm_perf_stats WHERE node=? AND vm_uuid=? AND time<=?
+            ORDER BY time DESC LIMIT 1
+        """, (node,vm_uuid,max_time)).fetchone()
+    finally:
+        conn.close()
+
+
+_vm_page_v48103_base = app.view_functions.get("vm_page", vm_page)
+
+
+def vm_page_v48103():
+    response = _vm_page_v48103_base()
+    if not isinstance(response, Response) or response.status_code >= 400:
+        return response
+    node = (request.args.get("node") or "").strip()
+    vm_uuid = (request.args.get("vm_uuid") or "").strip()
+    if not node or not vm_uuid:
+        return response
+    row = _v48103_latest_ram(node, vm_uuid)
+    if not row:
+        return response
+    block = fmt_vm_ram_block(row[0], row[1], row[2], row[3], row[4], compact=False)
+    html = response.get_data(as_text=True)
+    replacement = f'<div class="stat vm-ram-detail-stat">VM RAM{block}<small>Updated {fmt_push(row[5])}</small></div>'
+    html, count = re.subn(
+        r'<div class="stat">RAM<b>.*?</b><small>Available .*?</small></div>',
+        replacement, html, count=1, flags=re.S,
+    )
+    if count:
+        response.set_data(html)
+    return response
+
+
+app.view_functions["vm_page"] = vm_page_v48103
+
+
+# ---- Node aggregate VM RAM card and charts -------------------------------
+def query_node_perf_chart(node, period, q=""):
+    start, end = range_for_period(period)
+    conn = db()
+    try:
+        bucket_ids = _sample_real_buckets(_node_retained_buckets(conn, node, period))
+        if not bucket_ids:
+            return [], start, end, chart_step_seconds(period)
+        placeholders = _sql_in_placeholders(bucket_ids)
+        params = [CACHE_BUCKET_SECONDS,CACHE_BUCKET_SECONDS,node] + bucket_ids
+        search_sql = ""
+        if q:
+            search_sql = " AND (vps.vm_uuid LIKE ? OR vps.node LIKE ?)"
+            p = like_pattern(q)
+            params.extend([p,p])
+        raw = conn.execute(f"""
+            SELECT vps.bucket,
+                   SUM(CASE WHEN COALESCE(vps.cpu_percent,0)<=100 THEN COALESCE(vps.cpu_percent,0)*MAX(COALESCE(vps.vcpu_current,1),1) ELSE COALESCE(vps.cpu_percent,0) END),
+                   MAX(CASE WHEN COALESCE(vps.cpu_percent,0)<=100 THEN COALESCE(vps.cpu_percent,0)*MAX(COALESCE(vps.vcpu_current,1),1) ELSE COALESCE(vps.cpu_percent,0) END),
+                   SUM(COALESCE(vps.ram_rss_kib,0)),SUM(COALESCE(vps.ram_current_kib,0)),
+                   SUM(CASE WHEN COALESCE(vps.ram_available_kib,0)>0 AND (COALESCE(vps.ram_usable_kib,0)>0 OR COALESCE(vps.ram_unused_kib,0)>0) AND COALESCE(vps.ram_usable_kib,0)<=COALESCE(vps.ram_available_kib,0)*1.05 THEN MAX(COALESCE(vps.ram_available_kib,0)-COALESCE(vps.ram_usable_kib,0),0) ELSE 0 END),
+                   SUM(CASE WHEN COALESCE(vps.ram_available_kib,0)>0 AND (COALESCE(vps.ram_usable_kib,0)>0 OR COALESCE(vps.ram_unused_kib,0)>0) AND COALESCE(vps.ram_usable_kib,0)<=COALESCE(vps.ram_available_kib,0)*1.05 THEN COALESCE(vps.ram_available_kib,0) ELSE 0 END),
+                   SUM(CASE WHEN COALESCE(vps.ram_available_kib,0)>0 AND (COALESCE(vps.ram_usable_kib,0)>0 OR COALESCE(vps.ram_unused_kib,0)>0) AND COALESCE(vps.ram_usable_kib,0)<=COALESCE(vps.ram_available_kib,0)*1.05 THEN 1 ELSE 0 END),
+                   SUM(COALESCE(vps.disk_read_delta,0)*1.0/MAX(COALESCE(vps.interval_seconds,?),1)),
+                   SUM(COALESCE(vps.disk_write_delta,0)*1.0/MAX(COALESCE(vps.interval_seconds,?),1)),MAX(vps.time)
+            FROM vm_perf_stats vps
+            LEFT JOIN vm_inventory vi ON vi.node=vps.node AND vi.vm_uuid=vps.vm_uuid
+            WHERE vps.node=? AND vps.bucket IN ({placeholders}) AND COALESCE(vi.status,'active')!='hidden' {search_sql}
+            GROUP BY vps.bucket ORDER BY vps.bucket
+        """, params).fetchall()
+    finally:
+        conn.close()
+    rows = [{
+        "bucket":int(r[0]),"label":fmt_chart_label(r[0],CACHE_BUCKET_SECONDS),
+        "total_cpu_percent":float(r[1] or 0),"max_cpu_percent":float(r[2] or 0),
+        "ram_rss_bytes":float(r[3] or 0)*1024,"ram_current_bytes":float(r[4] or 0)*1024,
+        "guest_used_bytes":float(r[5] or 0)*1024,"guest_total_bytes":float(r[6] or 0)*1024,
+        "guest_stats_count":int(r[7] or 0),"disk_read_bps":float(r[8] or 0),
+        "disk_write_bps":float(r[9] or 0),"last_push":int(r[10] or 0),
+    } for r in raw]
+    gaps=[rows[i]["bucket"]-rows[i-1]["bucket"] for i in range(1,len(rows))]
+    return rows,start,end,min((g for g in gaps if g>0),default=chart_step_seconds(period))
+
+
+def get_node_metric_overview(node, period, q="", vm_status="active"):
+    status_sql = "AND COALESCE(vi.status, 'active') != 'hidden'"
+    conn = db()
+    try:
+        selected_bucket, _latest_bucket = resolve_snapshot_bucket(conn, period, node=node)
+        net_bucket = resolve_table_snapshot_bucket(conn, "node_stats", node, selected_bucket)
+        perf_bucket = resolve_table_snapshot_bucket(conn, "vm_perf_stats", node, selected_bucket)
+        if not selected_bucket:
+            return None
+        net_params=[node,net_bucket]; net_search=""
+        if q:
+            p=like_pattern(q); net_search=" AND (ns.vm_uuid LIKE ? OR ns.iface LIKE ? OR ns.node LIKE ?)"; net_params.extend([p,p,p])
+        net = conn.execute(f"""
+            SELECT COUNT(DISTINCT ns.vm_uuid),SUM(COALESCE(ns.rx_packets_delta,0)+COALESCE(ns.tx_packets_delta,0)),
+                   SUM(COALESCE(ns.rx_drop_delta,0)+COALESCE(ns.tx_drop_delta,0)),SUM(COALESCE(ns.rx_error_delta,0)+COALESCE(ns.tx_error_delta,0)),
+                   MAX(COALESCE(ns.interval_seconds,?)),MAX(ns.last_push)
+            FROM node_stats ns LEFT JOIN vm_inventory vi ON vi.node=ns.node AND vi.vm_uuid=ns.vm_uuid
+            WHERE ns.node=? AND ns.bucket=? {status_sql} {net_search}
+        """, [CACHE_BUCKET_SECONDS]+net_params).fetchone() if net_bucket else (0,0,0,0,CACHE_BUCKET_SECONDS,selected_bucket)
+        perf_params=[node,perf_bucket]; perf_search=""
+        if q:
+            p=like_pattern(q); perf_search=" AND (vp.vm_uuid LIKE ? OR vp.node LIKE ?)"; perf_params.extend([p,p])
+        perf = conn.execute(f"""
+            SELECT COUNT(DISTINCT vp.vm_uuid),
+                   SUM(CASE WHEN COALESCE(vp.cpu_percent,0)<=100 THEN COALESCE(vp.cpu_percent,0)*CASE WHEN COALESCE(vp.vcpu_current,0)>0 THEN vp.vcpu_current ELSE 1 END ELSE COALESCE(vp.cpu_percent,0) END),
+                   MAX(CASE WHEN COALESCE(vp.cpu_percent,0)<=100 THEN COALESCE(vp.cpu_percent,0)*CASE WHEN COALESCE(vp.vcpu_current,0)>0 THEN vp.vcpu_current ELSE 1 END ELSE COALESCE(vp.cpu_percent,0) END),
+                   SUM(CASE WHEN COALESCE(vp.ram_available_kib,0)>0 AND (COALESCE(vp.ram_usable_kib,0)>0 OR COALESCE(vp.ram_unused_kib,0)>0) AND COALESCE(vp.ram_usable_kib,0)<=COALESCE(vp.ram_available_kib,0)*1.05 THEN MAX(COALESCE(vp.ram_available_kib,0)-COALESCE(vp.ram_usable_kib,0),0) ELSE 0 END),
+                   SUM(CASE WHEN COALESCE(vp.ram_available_kib,0)>0 AND (COALESCE(vp.ram_usable_kib,0)>0 OR COALESCE(vp.ram_unused_kib,0)>0) AND COALESCE(vp.ram_usable_kib,0)<=COALESCE(vp.ram_available_kib,0)*1.05 THEN COALESCE(vp.ram_available_kib,0) ELSE 0 END),
+                   SUM(COALESCE(vp.ram_rss_kib,0)),SUM(COALESCE(vp.ram_current_kib,0)),
+                   SUM(CASE WHEN COALESCE(vp.ram_available_kib,0)>0 AND (COALESCE(vp.ram_usable_kib,0)>0 OR COALESCE(vp.ram_unused_kib,0)>0) AND COALESCE(vp.ram_usable_kib,0)<=COALESCE(vp.ram_available_kib,0)*1.05 THEN 1 ELSE 0 END),
+                   SUM(COALESCE(vp.disk_read_delta,0)*1.0/MAX(COALESCE(vp.interval_seconds,?),1)),
+                   SUM(COALESCE(vp.disk_write_delta,0)*1.0/MAX(COALESCE(vp.interval_seconds,?),1)),MAX(vp.time)
+            FROM vm_perf_stats vp LEFT JOIN vm_inventory vi ON vi.node=vp.node AND vi.vm_uuid=vp.vm_uuid
+            WHERE vp.node=? AND vp.bucket=? {status_sql} {perf_search}
+        """, [CACHE_BUCKET_SECONDS,CACHE_BUCKET_SECONDS]+perf_params).fetchone() if perf_bucket else (0,0,0,0,0,0,0,0,0,0,selected_bucket)
+        net_vm,packets,drops,errors,interval_seconds,net_last=net
+        perf_vm,total_cpu,max_cpu,guest_used,guest_total,ram_rss,ram_current,guest_count,disk_read,disk_write,perf_last=perf
+        interval=max(1,int(interval_seconds or CACHE_BUCKET_SECONDS))
+        return (max(int(net_vm or 0),int(perf_vm or 0)),float(packets or 0)/interval,int(drops or 0),int(errors or 0),float(total_cpu or 0),float(max_cpu or 0),int(guest_used or 0),int(guest_total or 0),int(ram_rss or 0),int(ram_current or 0),int(guest_count or 0),float(disk_read or 0),float(disk_write or 0),max(int(net_last or 0),int(perf_last or 0),int(selected_bucket or 0)))
+    finally:
+        conn.close()
+
+
+def node_metric_cards(row):
+    if not row:
+        row=(0,0,0,0,0,0,0,0,0,0,0,0,0,0)
+    (vm_count,total_pps,drops,errors,total_cpu,max_cpu,guest_used,guest_total,ram_rss,ram_current,guest_count,disk_read,disk_write,last_seen)=row
+    guest_pct=(float(guest_used)*100.0/float(guest_total)) if guest_total else 0.0
+    guest_text=f"{fmt_kib(guest_used)} / {fmt_kib(guest_total)} · {guest_pct:.1f}%" if guest_total else "N/A"
+    return f"""
+    <div class="card overview-card"><div class="overview-head"><h3>Node VM Metrics</h3><div class="overview-meta"><span>Source <b>exact VM snapshot</b></span><span>Last Metric <b>{fmt_push(last_seen)}</b></span><span>VM <b>{int(vm_count or 0)}</b></span></div></div><div class="grid">
+      <div class="stat">PPS<b>{fmt_pps_value(total_pps)}</b></div><div class="stat">CPU TOTAL / MAX VM<b>{fmt_percent(total_cpu)} / {fmt_percent(max_cpu)}</b><small>100% = 1 full core</small></div>
+      <div class="stat">VM GUEST USED<b>{guest_text}</b><small>Balloon coverage {int(guest_count or 0)}/{int(vm_count or 0)} VM</small></div><div class="stat">VM HOST RSS / ASSIGNED<b>{fmt_ram_pair(ram_rss,ram_current)}</b><small>Host-side RSS is not guest application usage</small></div>
+      <div class="stat">Disk Read<b>{human_rate(disk_read)}</b></div><div class="stat">Disk Write<b>{human_rate(disk_write)}</b></div><div class="stat">Drops / ERR<b>{int(drops or 0)} / {int(errors or 0)}</b></div>
+    </div><div class="table-hint">Guest Used sums only VMs with valid balloon available/usable data. RSS and Assigned remain separate capacity metrics.</div></div>"""
+
+
+# ---- Current Abuse table: RAM is informational and sortable only ----------
+def _v48103_current_abuse_query(q, sort_by, order, limit):
+    ram_guest_expr = "CASE WHEN COALESCE(c.ram_available_kib,0)>0 AND (COALESCE(c.ram_usable_kib,0)>0 OR COALESCE(c.ram_unused_kib,0)>0) AND COALESCE(c.ram_usable_kib,0)<=COALESCE(c.ram_available_kib,0)*1.05 THEN (COALESCE(c.ram_available_kib,0)-COALESCE(c.ram_usable_kib,0))*100.0/COALESCE(c.ram_available_kib,1) ELSE -1 END"
+    ram_used_expr = "CASE WHEN COALESCE(c.ram_available_kib,0)>0 AND (COALESCE(c.ram_usable_kib,0)>0 OR COALESCE(c.ram_unused_kib,0)>0) AND COALESCE(c.ram_usable_kib,0)<=COALESCE(c.ram_available_kib,0)*1.05 THEN COALESCE(c.ram_available_kib,0)-COALESCE(c.ram_usable_kib,0) ELSE -1 END"
+    allowed={
+        "severity":"a.severity","node":"a.node COLLATE NOCASE","vm":"a.vm_uuid COLLATE NOCASE",
+        "rx_mbps":"a.rx_mbps","tx_mbps":"a.tx_mbps","rx_pps":"a.rx_pps","tx_pps":"a.tx_pps",
+        "rx_peak":"a.rx_peak_pps","tx_peak":"a.tx_peak_pps","cpu":"a.cpu_full_percent","vcpu":"a.vcpu_current",
+        "diskr":"a.disk_read_bps","diskw":"a.disk_write_bps","iops":"(a.disk_read_iops+a.disk_write_iops)",
+        "last_seen":"a.last_seen","since":"a.abuse_since","ram":ram_guest_expr,"ramguest":ram_guest_expr,
+        "ramused":ram_used_expr,"ramrss":"COALESCE(c.ram_rss_kib,0)","ramassigned":"COALESCE(c.ram_current_kib,0)",
+    }
+    sort_by=sort_by if sort_by in allowed else "severity"; order=clean_sort_order(order); cfg=get_abuse_settings()
+    ram_valid_expr = "CASE WHEN COALESCE(c.ram_available_kib,0)>0 AND (COALESCE(c.ram_usable_kib,0)>0 OR COALESCE(c.ram_unused_kib,0)>0) AND COALESCE(c.ram_usable_kib,0)<=COALESCE(c.ram_available_kib,0)*1.05 THEN 1 ELSE 0 END"
+    validity_order = ""
+    if sort_by in {"ram", "ramguest", "ramused"}:
+        validity_order = ram_valid_expr + " DESC,"
+    elif sort_by == "ramrss":
+        validity_order = "CASE WHEN COALESCE(c.ram_rss_kib,0)>0 THEN 1 ELSE 0 END DESC,"
+    elif sort_by == "ramassigned":
+        validity_order = "CASE WHEN COALESCE(c.ram_current_kib,0)>0 THEN 1 ELSE 0 END DESC,"
+    params=[now_ts()-FAST_CURRENT_STALE_SECONDS,cfg["revision"],ABUSE_ENGINE_VERSION]; search_sql=""
+    if q:
+        p=like_pattern(q); search_sql=""" AND (a.node LIKE ? OR a.vm_uuid LIKE ? OR EXISTS(SELECT 1 FROM node_bridge_addresses_latest b WHERE b.node=a.node AND (COALESCE(b.primary_ipv4,'') LIKE ? OR COALESCE(b.ipv4_json,'') LIKE ?)))"""; params.extend([p,p,p,p])
+    conn=db()
+    try:
+        base_where="a.is_abuse=1 AND a.last_seen>=? AND a.policy_revision=? AND a.engine_version=?"
+        total=safe_int(conn.execute(f"SELECT COUNT(*) FROM vm_abuse_state a WHERE {base_where} {search_sql}",params).fetchone()[0],0)
+        counts=conn.execute(f"""SELECT SUM(CASE WHEN a.abuse_flags LIKE '%PPS%' THEN 1 ELSE 0 END),SUM(CASE WHEN a.abuse_flags LIKE '%AVG_MBPS%' THEN 1 ELSE 0 END),SUM(CASE WHEN a.abuse_flags LIKE '%CPU%' THEN 1 ELSE 0 END),SUM(CASE WHEN a.abuse_flags LIKE '%DISK%' THEN 1 ELSE 0 END) FROM vm_abuse_state a WHERE {base_where} {search_sql}""",params).fetchone()
+        rows=conn.execute(f"""
+          SELECT a.node,a.vm_uuid,a.last_seen,a.abuse_since,a.abuse_flags,a.severity,a.rx_pps,a.tx_pps,a.rx_peak_pps,a.tx_peak_pps,a.seconds_over_rx_pps,a.seconds_over_tx_pps,a.cpu_full_percent,a.cpu_core_percent,a.vcpu_current,a.cpu_streak_seconds,a.disk_read_bps,a.disk_write_bps,a.disk_read_iops,a.disk_write_iops,a.disk_streak_seconds,
+                 COALESCE((SELECT primary_ipv4 FROM node_bridge_addresses_latest b WHERE b.node=a.node AND LOWER(role)='public' LIMIT 1),''),COALESCE(a.rx_mbps,0),COALESCE(a.tx_mbps,0),COALESCE(a.network_rx_mbps_streak_seconds,0),COALESCE(a.network_tx_mbps_streak_seconds,0),COALESCE(a.cpu_streak_cycles,0),COALESCE(a.disk_streak_cycles,0),COALESCE(a.network_rx_mbps_streak_cycles,0),COALESCE(a.network_tx_mbps_streak_cycles,0),COALESCE(a.network_pps_policy_synced,0),COALESCE(a.network_pps_reported_threshold,0),COALESCE(a.policy_revision,0),
+                 COALESCE(c.ram_current_kib,0),COALESCE(c.ram_rss_kib,0),COALESCE(c.ram_available_kib,0),COALESCE(c.ram_unused_kib,0),COALESCE(c.ram_usable_kib,0)
+          FROM vm_abuse_state a LEFT JOIN vm_inventory vi ON vi.node=a.node AND vi.vm_uuid=a.vm_uuid LEFT JOIN vm_current_fast c ON c.node=a.node AND c.vm_uuid=a.vm_uuid
+          WHERE {base_where} AND COALESCE(vi.status,'active')!='hidden' {search_sql}
+          ORDER BY {validity_order} {allowed[sort_by]} {order.upper()},a.last_seen DESC,a.node COLLATE NOCASE,a.vm_uuid COLLATE NOCASE LIMIT ?
+        """,params+[limit]).fetchall()
+        return rows,total,tuple(safe_int(x,0) for x in (counts or (0,0,0,0))),sort_by,order,cfg
+    finally:
+        conn.close()
+
+
+def _v48103_current_abuse_page(q,sort_by,order,limit):
+    rows,total,counts,sort_by,order,cfg=_v48103_current_abuse_query(q,sort_by,order,limit)
+    def h(label,key):
+        next_order=reverse_order(order) if sort_by==key else "desc"; arrow=" ↓" if sort_by==key and order=="desc" else (" ↑" if sort_by==key else "")
+        href=url_for("vm_abuse_page",tab="current",q=q or None,sort=key,order=next_order,limit=limit)
+        return f'<a class="sort-link" href="{escape(href,quote=True)}">{escape(label)}{arrow}</a>'
+    body=""
+    for rank,r in enumerate(rows,1):
+        labels=_abuse_flag_labels(r[4],cfg); reasons="".join(metric_pill(escape(x),"crit") for x in labels); href=url_for("vm_page",node=r[0],vm_uuid=r[1],period="1h"); ip=compact_ipv4(r[21])
+        network=_v4810_metric_pair("RX AVG",f"{safe_float(r[22],0):.2f} Mbps","TX AVG",f"{safe_float(r[23],0):.2f} Mbps",_v48102_minutes_progress(r[28],cfg["network_mbps_required_cycles"]),_v48102_minutes_progress(r[29],cfg["network_mbps_required_cycles"]))
+        pps_sync="synced" if safe_int(r[30],0) else "waiting"; peak=_v4810_metric_pair("RX PEAK",f"{fmt_pps_value(r[8])} PPS","TX PEAK",f"{fmt_pps_value(r[9])} PPS",f"{safe_int(r[10],0)}s high · {pps_sync}",f"{safe_int(r[11],0)}s high · {pps_sync}")
+        cpu=f'<div class="metric-stack abuse-cpu-stack"><b>{safe_float(r[12],0):.1f}%</b><span>{safe_int(r[14],0)} vCPU</span><small>{_v48102_minutes_progress(r[26],cfg["cpu_required_cycles"])} sustained</small></div>'
+        ram=fmt_vm_ram_block(r[33],r[34],r[35],r[36],r[37],compact=True)
+        disk_iops=safe_float(r[18],0)+safe_float(r[19],0); disk=_v4810_metric_pair("READ",human_rate(r[16]),"WRITE",human_rate(r[17]),f"{disk_iops:,.1f} IOPS",_v48102_minutes_progress(r[27],cfg["disk_required_cycles"]))
+        timeline=f'<div class="timeline-cell"><b>{fmt_full(r[3]) if r[3] else "-"}</b><small>Started</small><span>{fmt_push(r[2])}</span><small>Last push · policy v{safe_int(r[32],0)}</small></div>'
+        body+=f"""<tr><td class="rank-cell">{rank}</td><td class="identity-cell"><div class="node-line"><a href="{escape(href,quote=True)}"><b>{escape(r[0])}</b></a>{f'<span>{escape(ip)}</span>' if ip else ''}</div><div class="uuid-line"><a class="mono" href="{escape(href,quote=True)}">{escape(r[1])}</a><button type="button" class="copy-btn" data-copy="{escape(r[1],quote=True)}">⧉</button></div></td><td class="reason-cell"><div class="severity-line"><b>{safe_float(r[5],0):.2f}x</b><span>severity</span></div><div class="abuse-reasons">{reasons}</div></td><td>{network}</td><td>{peak}</td><td>{cpu}</td><td class="ram-cell">{ram}</td><td>{disk}</td><td>{timeline}</td></tr>"""
+    if not body: body='<tr><td colspan="9" class="empty">No VM currently satisfies the active policy revision</td></tr>'
+    current_href=url_for("vm_abuse_page",tab="current",q=q or None,sort=sort_by,order=order,limit=limit); history_href=url_for("vm_abuse_page",tab="history",q=q or None,limit=limit)
+    search=f"""<form class="search compact-search" method="get" action="{url_for('vm_abuse_page')}"><input type="hidden" name="tab" value="current"><input type="hidden" name="sort" value="{escape(sort_by,quote=True)}"><input type="hidden" name="order" value="{escape(order,quote=True)}"><input name="q" value="{escape(q,quote=True)}" placeholder="Search node, IPv4 or VM UUID"><select name="limit"><option value="100" {'selected' if limit==100 else ''}>100 rows</option><option value="200" {'selected' if limit==200 else ''}>200 rows</option><option value="500" {'selected' if limit==500 else ''}>500 rows</option><option value="1000" {'selected' if limit==1000 else ''}>1000 rows</option></select><button type="submit">Search</button>{f'<a class="clear" href="{url_for("vm_abuse_page",tab="current",limit=limit)}">Reset</a>' if q else ''}</form>"""
+    tabs=f'<div class="abuse-tabs"><a class="active" href="{escape(current_href,quote=True)}">Current Abuse</a><a href="{escape(history_href,quote=True)}">History / Logs</a></div>'
+    disk_header=f'<div>DISK</div><small>{h("READ","diskr")}<span> · </span>{h("WRITE","diskw")}</small>'
+    ram_header = _v48104_ram_sort_header(
+        h("RAM", "ram"),
+        [h("Guest %", "ram"), h("Used GiB", "ramused"), h("Host RSS", "ramrss"), h("Assigned", "ramassigned")],
+        sort_by,
+        order,
+    )
+    table=f"""<div class="card abuse-current-card abuse-v48102-card abuse-v48103-card"><div class="section-head"><div><h3>Current VM Abuse</h3><p>Policy v{cfg['revision']} · exact five-minute windows · RAM is visibility only.</p></div><div class="count-badges"><span>All <b>{total}</b></span><span>PPS <b>{counts[0]}</b></span><span>AVG Mbps <b>{counts[1]}</b></span><span>CPU <b>{counts[2]}</b></span><span>Disk <b>{counts[3]}</b></span></div></div><div class="table-wrap"><table class="abuse-v490-table abuse-v48102-table abuse-v48103-table"><colgroup><col class="c-rank"><col class="c-id"><col class="c-reason"><col class="c-network"><col class="c-peak"><col class="c-cpu"><col class="c-ram"><col class="c-disk"><col class="c-time"></colgroup><thead><tr><th>#</th><th>{h('NODE / VM','node')}</th><th>{h('REASON / SEVERITY','severity')}</th><th><div>NETWORK AVG</div><small>{h('RX Mbps','rx_mbps')} · {h('TX Mbps','tx_mbps')}</small></th><th><div>PPS PEAK / WINDOW</div><small>{h('RX PPS','rx_peak')} · {h('TX PPS','tx_peak')}</small></th><th>{h('CPU','cpu')}</th><th class="ram-compact-sort-head">{ram_header}</th><th>{disk_header}</th><th>{h('TIMELINE','last_seen')}</th></tr></thead><tbody>{body}</tbody></table></div><div class="table-hint">RAM is <b>visibility only</b>: it never creates an abuse flag or automatic suspend condition. Guest Used and host RSS remain separate.</div></div>"""
+    return f"""<div class="card page-hero" data-engine="{escape(ABUSE_ENGINE_VERSION,quote=True)}"><div><span class="eyebrow">ABUSE MONITORING</span><h2>VM Abuse</h2><p>Directional network, CPU and disk signals from the current bounded state table.</p></div><div class="hero-meta"><span>Policy <b>v{cfg['revision']}</b></span><span>Refresh <b>5s partial</b></span><span>RAM <b>visibility only</b></span></div></div><div class="card abuse-toolbar">{tabs}{search}</div><details class="card policy-fold"><summary>Current policy</summary>{_public_abuse_policy(cfg)}</details>{table}"""
+
+
+def vm_abuse_page_v48103():
+    tab=(request.args.get("tab") or "current").strip().lower()
+    if tab=="history": return vm_abuse_page_v483()
+    q=(request.args.get("q") or "").strip(); sort_by=(request.args.get("sort") or "severity").strip().lower(); order=clean_sort_order(request.args.get("order","desc")); limit=max(10,min(1000,safe_int(request.args.get("limit"),200)))
+    return page("VM Abuse",_v48103_current_abuse_page(q,sort_by,order,limit))
+
+
+app.view_functions["vm_abuse_page"] = vm_abuse_page_v48103
+
+
+V48103_UI_CSS = r"""
+<style id="v48103-guest-ram-ui">
+.ram-dual-head>div{font-size:11px;font-weight:900;margin-bottom:4px}.ram-dual-head small{display:flex!important;justify-content:center;gap:3px;align-items:center;white-space:nowrap}.ram-dual-head .sort-link,.ram-dual-head .cpu-sort-link{font-size:9px!important;letter-spacing:0;text-transform:none;padding:2px 3px;border-radius:4px}.vm-ram-block{min-width:150px;line-height:1.25}.ram-guest-value{display:block;font-size:13px;color:#101828}.ram-guest-label{display:block!important;margin-top:3px!important;font-size:9.5px!important;font-weight:900!important;letter-spacing:.035em;color:#344054!important}.ram-host-line{display:block!important;margin-top:5px!important;font-size:9.5px!important;color:#667085!important;white-space:nowrap}.ram-host-line b{font-size:9.5px!important;color:inherit}.ram-meter{display:block;height:4px;margin-top:5px;border-radius:999px;background:#e4e7ec;overflow:hidden}.ram-meter i{display:block;height:100%;border-radius:inherit;background:#12b76a}.ram-warm .ram-guest-value,.ram-warm .ram-guest-label{color:#b54708!important}.ram-warm .ram-meter i{background:#f79009}.ram-hot .ram-guest-value,.ram-hot .ram-guest-label{color:#b54708!important}.ram-hot .ram-meter i{background:#f79009}.ram-critical .ram-guest-value,.ram-critical .ram-guest-label{color:#b42318!important}.ram-critical .ram-meter i{background:#f04438}.ram-na .ram-guest-value,.ram-na .ram-guest-label{color:#667085!important}.ram-meter-na i{display:none}.ram-stat-status{display:block!important;margin-top:4px!important;font-size:9px!important}.ram-stat-status.ok{color:#027a48!important}.ram-stat-status.na{color:#667085!important}.vm-ram-detail-stat .vm-ram-block{margin-top:8px}.vm-ram-detail-stat>.vm-ram-block>.ram-guest-value{font-size:17px}.vm-ram-detail-stat>.vm-ram-block>.ram-host-line{font-size:10px!important}.top-vm-v48103 .top-ram{width:180px!important}.table-vm .col-ram{width:180px!important}.abuse-v48103-table{min-width:1740px!important}.abuse-v48103-table .c-ram{width:190px}.abuse-v48103-table .ram-host-line{white-space:normal}.abuse-v48103-table .vm-ram-block{min-width:165px}
+html[data-theme=dark] .ram-guest-value{color:#f8fafc}html[data-theme=dark] .ram-guest-label{color:#cbd5e1!important}html[data-theme=dark] .ram-meter{background:#26374f}html[data-theme=dark] .ram-host-line{color:#94a3b8!important}
+</style>
+"""
+_page_v48103_base = page
+
+
+def page(title, content):
+    response = _page_v48103_base(title, content)
+    try:
+        html = response.get_data(as_text=True)
+        html = html.replace("</head>", V48103_UI_CSS + "</head>", 1)
+        response.set_data(html)
+    except Exception:
+        app.logger.exception("Could not apply v48.10.3 guest RAM UI layer")
+    return response
+
+
+# ---------------------------------------------------------------------------

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from runtime_source import read_app_source
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_PATH = ROOT / "app" / "app.py"
-SOURCE = APP_PATH.read_text(encoding="utf-8")
+SOURCE = read_app_source()
 TREE = ast.parse(SOURCE, filename=str(APP_PATH))
 
 

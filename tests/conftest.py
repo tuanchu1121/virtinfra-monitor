@@ -3,8 +3,8 @@
 The files listed in ``collect_ignore`` are executable source-contract scripts,
 not pytest test modules.  ``preflight.sh`` runs each of them directly so their
 module-level assertions still execute.  Ignoring them during pytest discovery
-prevents pytest from retaining several complete ASTs of the 2 MB monolithic
-application at the same time.
+prevents pytest from retaining several complete ASTs of the combined modular
+runtime source at the same time.
 """
 from __future__ import annotations
 

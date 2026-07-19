@@ -5,6 +5,7 @@ import hashlib
 import json
 from collections import Counter
 from pathlib import Path
+from runtime_source import read_app_source
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app" / "app.py"
@@ -22,7 +23,7 @@ def attr_chain(node):
 
 
 def current_contract():
-    tree = ast.parse(APP.read_text(encoding="utf-8"), filename=str(APP))
+    tree = ast.parse(read_app_source(), filename=str(APP))
     routes, overrides, args, forms, values, url_endpoints, sort_maps = [], [], [], [], [], [], []
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):

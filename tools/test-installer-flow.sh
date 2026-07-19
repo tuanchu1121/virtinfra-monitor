@@ -8,7 +8,7 @@ for f in "$ROOT/install.sh" "$ROOT/update.sh" "$I" "$ROOT/deploy/postgres/bw-mon
   bash -n "$f"
 done
 
-grep -q 'RELEASE="50.5.9-prod-r7-production-minimal-rbac-visibility-ui-hotfix"' "$I" || fail "release marker missing"
+grep -q 'RELEASE="50.5.9-prod-r7-modular-runtime-refactor"' "$I" || fail "release marker missing"
 CANONICAL='tuanchu1121/virtinfra-monitor'
 [[ "$(cat "$ROOT/CANONICAL_REPOSITORY")" == "$CANONICAL" ]] || fail "canonical repository contract is wrong"
 for repo_file in \
@@ -67,6 +67,8 @@ grep -q '010_consumption_inventory_cleanup.sql' "$I" || fail "Consumption/invent
 grep -q '011_node_groups.sql' "$I" || fail "Node Groups migration is not installed"
 grep -q '012_node_groups_r6_safety.sql' "$I" || fail "r6 Node Groups safety migration is not installed"
 grep -q 'node_groups.py' "$I" || fail "Node Groups runtime module is not installed"
+grep -q 'runtime_loader.py' "$I" || fail "modular runtime loader is not installed"
+grep -q 'runtime_layers' "$I" || fail "modular runtime layers are not installed"
 grep -q 'static/vendor/flag-icons/node-groups.css' "$I" || fail "local Node Group flag CSS is not installed"
 grep -q 'static/vendor/flag-icons/flags/4x3' "$I" || fail "local Node Group SVG assets are not installed"
 grep -q 'static/flags' "$I" || fail "r6 local /static/flags assets are not installed"

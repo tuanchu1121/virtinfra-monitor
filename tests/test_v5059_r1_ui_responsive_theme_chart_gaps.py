@@ -1,11 +1,12 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "app" / "app.py").read_text(encoding="utf-8")
+from runtime_source import read_app_source
+APP = read_app_source()
 
 
 def test_release_marker():
-    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "50.5.9-prod-r7-production-minimal-rbac-visibility-ui-hotfix"
+    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "50.5.9-prod-r7-modular-runtime-refactor"
     assert 'V5059R2_RELEASE = "50.5.9-prod-r3-ui-alignment-overflow-hotfix"' in APP
 
 

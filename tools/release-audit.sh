@@ -40,7 +40,11 @@ bash ./tools/test-windows-github-desktop.sh
 
 printf '\n==> Verify no duplicate/stale runtime trees\n'
 [[ ! -e release && ! -e enterprise && ! -e deploy/monitor && ! -e deploy/enterprise ]]
-[[ -f app/app.py && -f app/bw_pg.py && -f app/maintenance.py \
+[[ -f app/app.py && -f app/runtime_loader.py \
+   && -f app/runtime_layers/manifest.json \
+   && -f app/runtime_layers/00_bootstrap_database.py \
+   && -f app/runtime_layers/43_node_groups_loader.py \
+   && -f app/bw_pg.py && -f app/maintenance.py \
    && -f app/maintenance_native.py && -f app/maintenance_queue.py \
    && -f app/maintenance_dispatch.py && -f app/retention.py ]]
 [[ -f deploy/agent/agent.py && -f deploy/agent/install-agent.sh && -f deploy/agent/fix-agent-uuid.sh ]]

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE="50.5.9-prod-r7-production-minimal-rbac-visibility-ui-hotfix"
+RELEASE="50.5.9-prod-r7-modular-runtime-refactor"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 APP_SRC="$REPO_ROOT/app"
@@ -268,6 +268,12 @@ fi
 
 log "Install full application code"
 install -m 0644 "$APP_SRC/app.py" "$APP_DIR/app.py"
+install -m 0644 "$APP_SRC/runtime_loader.py" "$APP_DIR/runtime_loader.py"
+rm -rf -- "$APP_DIR/runtime_layers"
+install -d -m 0755 "$APP_DIR/runtime_layers"
+find "$APP_SRC/runtime_layers" -maxdepth 1 -type f \
+  \( -name '*.py' -o -name 'manifest.json' \) \
+  -exec install -m 0644 {} "$APP_DIR/runtime_layers/" \;
 install -m 0644 "$APP_SRC/node_groups.py" "$APP_DIR/node_groups.py"
 install -d -m 0755 "$APP_DIR/static/vendor/flag-icons/flags/4x3"
 install -m 0644 "$APP_SRC/static/vendor/flag-icons/node-groups.css" "$APP_DIR/static/vendor/flag-icons/node-groups.css"

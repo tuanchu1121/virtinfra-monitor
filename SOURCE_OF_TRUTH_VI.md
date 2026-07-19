@@ -1,10 +1,9 @@
 # SOURCE OF TRUTH VẬN HÀNH
 
-> Release: `50.5.9-prod-r7-production-minimal-rbac-visibility-ui-hotfix`
+> Release: `50.5.9-prod-r7-modular-runtime-refactor`
 
-> Release: `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
 >
-> Tài liệu này được đối chiếu trực tiếp với `install.sh`, `deploy/postgres/*`, `deploy/agent/*`, `postgres/docker-compose.yml`, `app/app.py` và các test contract hiện tại.
+> Tài liệu này được đối chiếu trực tiếp với `install.sh`, `deploy/postgres/*`, `deploy/agent/*`, `postgres/docker-compose.yml`, `app/app.py`, `app/runtime_loader.py`, `app/runtime_layers/` và các test contract hiện tại.
 
 ## 1. Data plane hiện tại
 

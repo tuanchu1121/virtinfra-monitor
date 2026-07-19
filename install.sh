@@ -18,6 +18,10 @@ repo_complete() {
   for path in \
     deploy/postgres/install-postgres-native.sh \
     app/app.py \
+    app/runtime_loader.py \
+    app/runtime_layers/manifest.json \
+    app/runtime_layers/00_bootstrap_database.py \
+    app/runtime_layers/43_node_groups_loader.py \
     app/node_groups.py \
     app/static/vendor/flag-icons/node-groups.css \
     app/static/vendor/flag-icons/LICENSE \

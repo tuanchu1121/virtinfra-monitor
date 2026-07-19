@@ -8,9 +8,10 @@ def need(cond: bool, message: str) -> None:
         raise AssertionError(message)
 
 version = (ROOT / "VERSION").read_text().strip()
-need(version == "50.5.9-prod-r7-production-minimal-rbac-visibility-ui-hotfix", f"unexpected VERSION: {version}")
+need(version == "50.5.9-prod-r7-modular-runtime-refactor", f"unexpected VERSION: {version}")
 
-app = (ROOT / "app/app.py").read_text()
+from runtime_source import read_app_source
+app = read_app_source()
 pg = (ROOT / "app/bw_pg.py").read_text()
 agent = (ROOT / "deploy/agent/agent.py").read_text()
 playbook = (ROOT / "ansible/deploy-agent.yml").read_text()

@@ -3,10 +3,12 @@
 ## Runtime source
 
 ```text
-app/app.py          complete existing UI, routes, Abuse Engine and operations logic
-app/bw_pg.py        psycopg 3 pool plus isolated compatibility adapter
-app/maintenance.py queued maintenance/purge worker
-app/retention.py   bounded 2-day raw / 7-day hourly retention runner
+app/app.py                         small WSGI entrypoint
+app/runtime_loader.py              ordered runtime loader and source reader
+app/runtime_layers/00_*.py..43_*.py UI, routes, Abuse Engine, storage, API and compatibility layers
+app/bw_pg.py                       psycopg 3 pool plus isolated compatibility adapter
+app/maintenance.py                queued maintenance/purge worker
+app/retention.py                  bounded 2-day raw / 7-day hourly retention runner
 ```
 
 The compatibility adapter lets the mature application logic move to PostgreSQL without running a second database or rewriting the UI in one risky cutover. It translates only the database API/SQL forms used by this application. Persistent rows are PostgreSQL-only.

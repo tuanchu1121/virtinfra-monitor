@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 from pathlib import Path
 root=Path(__file__).resolve().parents[1]
-app=(root/'app/app.py').read_text()
+from runtime_source import read_app_source
+app=read_app_source()
 agent=(root/'deploy/agent/agent.py').read_text()
-assert (root/'VERSION').read_text().strip() == '50.5.9-prod-r7-production-minimal-rbac-visibility-ui-hotfix'
+assert (root/'VERSION').read_text().strip() == '50.5.9-prod-r7-modular-runtime-refactor'
 assert 'VirtInfra Monitor' in app
 assert 'WAL reserved/recycled' in app
 assert 'SHM {human' not in app

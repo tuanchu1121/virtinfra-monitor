@@ -44,3 +44,13 @@ Migration `postgres/sql/012_node_groups_r6_safety.sql` is additive and idempoten
 ## Deployment safety
 
 The package does not deploy, restart services or run a production migration automatically. Those actions occur only when an operator explicitly runs the installer or update command.
+
+## Installer manifest fixture correction
+
+- Updates `tools/test-installer-manifest-paths.sh` so its synthetic repository includes the four required r6 files:
+  - `app/static/flags/node-groups.css`
+  - `app/static/flags/neutral.svg`
+  - `app/static/flags/vn.svg`
+  - `postgres/sql/012_node_groups_r6_safety.sql`
+- Fixes the false `Downloaded repository is incomplete` result during preflight and update validation.
+- Does not modify application runtime, Node Groups behavior, database behavior, Agent behavior, UI or service configuration.

@@ -22,6 +22,9 @@ create_fixture() {
     app/static/vendor/flag-icons/LICENSE
     app/static/vendor/flag-icons/SOURCE.md
     app/static/vendor/flag-icons/flags/4x3/vn.svg
+    app/static/flags/node-groups.css
+    app/static/flags/neutral.svg
+    app/static/flags/vn.svg
     app/bw_pg.py
     app/storage_v2.py
     app/maintenance_native.py
@@ -32,6 +35,7 @@ create_fixture() {
     postgres/sql/006_postgres_native_maintenance.sql
     postgres/sql/007_safe_maintenance_queue.sql
     postgres/sql/011_node_groups.sql
+    postgres/sql/012_node_groups_r6_safety.sql
     requirements.txt
     VERSION
     CANONICAL_REPOSITORY

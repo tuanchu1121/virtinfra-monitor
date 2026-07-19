@@ -75,12 +75,14 @@ assert ".bwcons-groups" in css
 assert "--vi-chart-line" in css
 
 selector = namespace["_v5049_theme_selector_html"](settings)
-assert selector.count('<option value="') == 9
-assert 'id="core-theme-mode-select"' in selector
-assert '<option value="auto">Auto</option>' in selector
-assert '<option value="dark">Dark</option>' in selector
-assert '<option value="light">Light</option>' in selector
-assert 'id="simple-theme-select"' in selector
+assert selector.count('<option value="') == 8
+assert 'id="unified-theme-select"' in selector
+assert '<option value="mode:auto">Auto</option>' in selector
+assert '<option value="mode:dark">Dark</option>' in selector
+assert '<option value="mode:light">Light</option>' in selector
+assert 'id="simple-theme-select"' not in selector
+assert '<span>Style</span>' not in selector
+assert '<optgroup label="Themes">' in selector
 
 custom_settings = namespace["_v5049_normalize_theme_settings"]({
     "enabled_presets": ["midnight-signal"],
@@ -126,7 +128,7 @@ assert "simple-custom" in early
 assert "bw-theme-mode" in runtime
 
 hidden = namespace["_v5049_normalize_theme_settings"]({"enabled_presets": [], "custom_enabled": False})
-assert namespace["_v5049_theme_selector_html"](hidden).count('<option value="') == 4
+assert namespace["_v5049_theme_selector_html"](hidden).count('<option value="') == 3
 assert 'data-custom-theme="' not in namespace["_v5049_theme_css"](hidden)
 
 print("PASS: professional preset suite, responsive CSS, migration, one Custom and browser choice")

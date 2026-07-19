@@ -1,6 +1,6 @@
 # Consumption VM/Node
 
-Release: `50.5.9-prod-r1-ui-responsive-theme-chart-gaps`
+Release: `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
 
 ## Scope
 

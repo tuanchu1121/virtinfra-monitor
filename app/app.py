@@ -13,7 +13,6 @@ import json
 import gzip
 import io
 import subprocess
-import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from html import escape
@@ -6950,13 +6949,15 @@ def page(title, content):
             }});
         }});
 
-        // Quiet 5-second content refresh for live operational pages only.
+        // Quiet 30-second content refresh for live operational pages only.
         // It never reloads the browser document, never overlaps requests, and
         // pauses while the operator is editing a form.
-        const BW_AUTO_REFRESH_MS = 5000;
+        const BW_AUTO_REFRESH_MS = 30000;
         function bwIsLivePage() {{
             const p = window.location.pathname;
-            return p === '/' || p === '/top' || p === '/top/nodes' || p === '/abuse/vms'
+            return p === '/' || p === '/top' || p === '/top/nodes'
+                || p === '/health/nodes' || p === '/storage'
+                || p === '/bandwidth-consumption' || p === '/abuse/vms'
                 || p.startsWith('/node/') || p.startsWith('/vm/');
         }}
         function bwOperatorIsEditing() {{
@@ -7065,7 +7066,6 @@ def dashboard_login():
             <input name="password" type="password" autocomplete="current-password">
             <button type="submit">Login</button>
         </form>
-     <div class="admin-note">default login credentials: Greencloud / Green@1234</div>  
     </div>
     """
     return page("Dashboard Login", content)
@@ -28832,7 +28832,7 @@ def api_v1_performance_v48140():
             try: redis_ok = bool(client.ping())
             except Exception: redis_ok = False
         return jsonify({
-            "version":"50.5.9-prod-r1-ui-responsive-theme-chart-gaps",
+            "version":"50.5.9-prod-r3-ui-alignment-overflow-hotfix",
             "database":{
                 "engine":"PostgreSQL + TimescaleDB",
                 "database":pg.get("database"),
@@ -29137,7 +29137,7 @@ def page(title, content):
 # protocol. Agents submit one compact node aggregate for each completed local
 # 2-hour bucket. VM UUIDs and per-VM history are deliberately not stored.
 
-V5030_RELEASE = "50.5.9-prod-r1-ui-responsive-theme-chart-gaps"
+V5030_RELEASE = "50.5.9-prod-r3-ui-alignment-overflow-hotfix"
 V5030_BW_TABLE = "node_bandwidth_consumption_2h"
 V5030_BW_BUCKET_SECONDS = 2 * 3600
 V5030_BW_RETENTION_SECONDS = 7 * 86400
@@ -29813,34 +29813,9 @@ _v5030_admin_overview_base = _v490_admin_overview
 
 
 def _v490_admin_overview(stats):
-    base = _v5030_admin_overview_base(stats)
-    try:
-        item = _v5030_bandwidth_admin_stats()
-        token = escape(csrf_token(), quote=True)
-        card = """
-        <div class="card admin-section">
-          <div class="section-head"><div><span class="eyebrow">CONSUMPTION</span><h3>2-hour node accounting storage</h3><p>Direct idempotent ingestion. No monitor-side queue and no per-VM UUID rows.</p></div><a class="btn" href="%s">Open page</a></div>
-          <div class="admin-kpis">
-            <div><small>RETENTION</small><b>7 days</b></div><div><small>ROWS</small><b>%s</b></div><div><small>TABLE + INDEX</small><b>%s</b></div>
-            <div><small>REPORTING VISIBLE NODES</small><b>%s / %s</b></div><div><small>MISSING</small><b>%s</b></div><div><small>LAST RECEIVED</small><b>%s</b></div>
-            <div><small>OLDEST BUCKET</small><b>%s</b></div><div><small>NEWEST BUCKET</small><b>%s</b></div>
-          </div>
-          <div class="bulk-bar">
-            <form method="post" action="%s"><input type="hidden" name="csrf_token" value="%s"><input type="hidden" name="action" value="cleanup"><button type="submit">Run cleanup now</button></form>
-            <form method="post" action="%s" onsubmit="return confirm('Delete all Consumption history?');"><input type="hidden" name="csrf_token" value="%s"><input type="hidden" name="action" value="clear"><input name="confirm_text" placeholder="CLEAR BANDWIDTH HISTORY"><button class="btn-danger" type="submit">Clear history</button></form>
-          </div>
-          <div class="table-hint">Nuclear operational reset clears this table and advances a reset epoch, so old Agent-local retry buckets cannot restore deleted history.</div>
-        </div>
-        """ % (
-            url_for("bandwidth_consumption_page"), f"{item['rows']:,}", human(item["size"]), item["reporting"], item["visible_nodes"], item["missing"],
-            fmt_full(item["last_received"]), fmt_full(item["oldest"]), fmt_full(item["newest"]),
-            url_for("admin_bandwidth_consumption_action"), token,
-            url_for("admin_bandwidth_consumption_action"), token,
-        )
-        return base + card
-    except Exception as exc:
-        app.logger.exception("Consumption Admin card failed")
-        return base + '<div class="card"><h3>Consumption</h3><div class="error-box">%s</div></div>' % escape(str(exc))
+    # r6: accounting/RETENTION7 controls live only under Maintenance.
+    return _v5030_admin_overview_base(stats)
+
 
 
 @app.route("/admin/bandwidth-consumption", methods=["POST"])
@@ -32645,7 +32620,7 @@ def valid_agent_token(value):
 # ---------------------------------------------------------------------------
 # 50.5.7 safe FIFO maintenance + canonical VM detail correctness
 # ---------------------------------------------------------------------------
-V5057_VERSION = "50.5.9-prod-r1-ui-responsive-theme-chart-gaps"
+V5057_VERSION = "50.5.9-prod-r3-ui-alignment-overflow-hotfix"
 
 
 def enqueue_maintenance_job(action, parameters, actor):
@@ -32884,6 +32859,20 @@ def database_maintenance_card(message="", error=""):
         )
     except Exception:
         pass
+    try:
+        item = _v5030_bandwidth_admin_stats()
+        token = escape(csrf_token(), quote=True)
+        accounting = """
+      <div class="card admin-section" id="accounting-storage">
+        <div class="section-head"><div><span class="eyebrow">MAINTENANCE</span><h3>2-hour Node Accounting Storage</h3><p>Direct idempotent ingestion. No monitor-side queue and no per-VM UUID rows.</p></div><a class="btn" href="%s">Open Consumption</a></div>
+        <div class="admin-kpis"><div><small>RETENTION</small><b>7 days</b></div><div><small>ROWS</small><b>%s</b></div><div><small>TABLE + INDEX</small><b>%s</b></div><div><small>REPORTING VISIBLE NODES</small><b>%s / %s</b></div><div><small>MISSING</small><b>%s</b></div><div><small>LAST INGESTION</small><b>%s</b></div><div><small>OLDEST BUCKET</small><b>%s</b></div><div><small>NEWEST BUCKET</small><b>%s</b></div></div>
+        <div class="bulk-bar"><form method="post" action="%s"><input type="hidden" name="csrf_token" value="%s"><input type="hidden" name="action" value="cleanup"><button type="submit">Run RETENTION7 cleanup</button></form><form method="post" action="%s" onsubmit="return confirm('Delete all Consumption history?');"><input type="hidden" name="csrf_token" value="%s"><input type="hidden" name="action" value="clear"><input name="confirm_text" placeholder="CLEAR BANDWIDTH HISTORY"><button class="btn-danger" type="submit">Clear accounting history</button></form></div>
+        <div class="table-hint">These controls only affect node_bandwidth_consumption_2h. Node Groups, memberships and membership history are configuration data and are not part of RETENTION7.</div>
+      </div>
+        """ % (url_for("bandwidth_consumption_page"), f"{item['rows']:,}", human(item["size"]), item["reporting"], item["visible_nodes"], item["missing"], fmt_full(item["last_received"]), fmt_full(item["oldest"]), fmt_full(item["newest"]), url_for("admin_bandwidth_consumption_action"), token, url_for("admin_bandwidth_consumption_action"), token)
+        html += accounting
+    except Exception:
+        app.logger.exception("Could not render accounting maintenance card")
     return html
 
 
@@ -34427,7 +34416,7 @@ _v48140_cached_endpoint("bandwidth_consumption_page", V48140_PAGE_CACHE_TTL)
 import threading as _v5058r4_threading
 import random as _v5058r4_random
 
-V5058R4_RELEASE = "50.5.9-prod-r1-ui-responsive-theme-chart-gaps"
+V5058R4_RELEASE = "50.5.9-prod-r3-ui-alignment-overflow-hotfix"
 V5058R4_SUMMARY_CACHE_TTL = 60
 V5058R4_INVENTORY_BATCH = max(50, min(2000, safe_int(os.environ.get("BW_INVENTORY_CLEANUP_BATCH", "500"), 500)))
 V5058R4_INVENTORY_MAX_BATCHES = max(1, min(1000, safe_int(os.environ.get("BW_INVENTORY_CLEANUP_MAX_BATCHES", "200"), 200)))
@@ -35253,6 +35242,7 @@ _v5058r4_purge_node_data_base = purge_node_data
 
 def purge_node_data(conn, node):
     result = dict(_v5058r4_purge_node_data_base(conn, node) or {})
+    result["node_group_membership_history"] = _delete_count(conn, "DELETE FROM node_group_membership_history WHERE node=?", (node,))
     result["node_consumption_hourly"] = _delete_count(conn, "DELETE FROM node_consumption_hourly WHERE node=?", (node,))
     result["node_consumption_daily"] = _delete_count(conn, "DELETE FROM node_consumption_daily WHERE node=?", (node,))
     return result
@@ -35296,9 +35286,9 @@ if _v5058r4_push_view_base is not None:
     app.view_functions["push"] = push_v5058r4_deadlock_retry
 
 # ---------------------------------------------------------------------------
-# v50.5.9 r1 responsive UI, theme and chart-gap release
+# v50.5.9 r2 layout-polish-only release based on r1
 # ---------------------------------------------------------------------------
-V5059R1_RELEASE = "50.5.9-prod-r1-ui-responsive-theme-chart-gaps"
+V5059R2_RELEASE = "50.5.9-prod-r3-ui-alignment-overflow-hotfix"
 
 
 def _v5058r5_is_transient_iface(value):
@@ -35945,6 +35935,132 @@ body.endpoint-vm-abuse-page .table-hint{display:none!important}
 </style>
 '''
 
+V5059R2_UI_CSS = r'''
+<style id="v5059r2-layout-polish-only">
+/* 50.5.9 r2: presentation-only layout corrections. No data, URL or behavior changes. */
+
+/* Dashboard: reserve real space for live status and snapshot so text cannot overlap. */
+body.endpoint-index .node-dashboard-table{
+  width:100%;min-width:1768px!important;table-layout:fixed!important
+}
+body.endpoint-index .node-dashboard-table th,
+body.endpoint-index .node-dashboard-table td{vertical-align:middle!important;box-sizing:border-box}
+body.endpoint-index .node-dashboard-table th:nth-child(1),body.endpoint-index .node-dashboard-table td:nth-child(1){width:148px!important;padding-left:12px!important}
+body.endpoint-index .node-dashboard-table th:nth-child(2),body.endpoint-index .node-dashboard-table td:nth-child(2){width:148px!important;min-width:148px!important;max-width:148px!important;overflow:hidden}
+body.endpoint-index .node-dashboard-table th:nth-child(3),body.endpoint-index .node-dashboard-table td:nth-child(3){width:146px!important;min-width:146px!important;max-width:146px!important;text-align:center!important;white-space:nowrap!important}
+body.endpoint-index .node-dashboard-table th:nth-child(4),body.endpoint-index .node-dashboard-table td:nth-child(4){width:50px!important}
+body.endpoint-index .node-dashboard-table th:nth-child(5),body.endpoint-index .node-dashboard-table td:nth-child(5){width:150px!important}
+body.endpoint-index .node-dashboard-table th:nth-child(6),body.endpoint-index .node-dashboard-table td:nth-child(6){width:82px!important}
+body.endpoint-index .node-dashboard-table th:nth-child(7),body.endpoint-index .node-dashboard-table td:nth-child(7),body.endpoint-index .node-dashboard-table th:nth-child(8),body.endpoint-index .node-dashboard-table td:nth-child(8){width:76px!important}
+body.endpoint-index .node-dashboard-table th:nth-child(9),body.endpoint-index .node-dashboard-table td:nth-child(9),body.endpoint-index .node-dashboard-table th:nth-child(10),body.endpoint-index .node-dashboard-table td:nth-child(10){width:94px!important}
+body.endpoint-index .node-dashboard-table th:nth-child(11),body.endpoint-index .node-dashboard-table td:nth-child(11),body.endpoint-index .node-dashboard-table th:nth-child(12),body.endpoint-index .node-dashboard-table td:nth-child(12),body.endpoint-index .node-dashboard-table th:nth-child(13),body.endpoint-index .node-dashboard-table td:nth-child(13){width:92px!important}
+body.endpoint-index .node-dashboard-table th:nth-child(14),body.endpoint-index .node-dashboard-table td:nth-child(14),body.endpoint-index .node-dashboard-table th:nth-child(15),body.endpoint-index .node-dashboard-table td:nth-child(15){width:90px!important}
+body.endpoint-index .node-dashboard-table th:nth-child(16),body.endpoint-index .node-dashboard-table td:nth-child(16){width:58px!important}
+body.endpoint-index .node-dashboard-table th:nth-child(17),body.endpoint-index .node-dashboard-table td:nth-child(17){width:48px!important}
+body.endpoint-index .node-dashboard-table th:nth-child(18),body.endpoint-index .node-dashboard-table td:nth-child(18){width:142px!important}
+body.endpoint-index .node-dashboard-table td:nth-child(2) .status{
+  display:inline-block!important;max-width:100%;font-size:13.5px!important;line-height:1.25!important;
+  white-space:normal!important;overflow:hidden;overflow-wrap:normal;vertical-align:middle
+}
+body.endpoint-index .node-dashboard-table td:nth-child(3){font-size:11px!important;letter-spacing:-.015em}
+body.endpoint-index .node-dashboard-table .node-name-cell{min-width:0}
+body.endpoint-index .node-dashboard-table .node-name-cell>a,
+body.endpoint-index .node-dashboard-table .node-name-cell small{max-width:100%;overflow:hidden;text-overflow:ellipsis}
+body.endpoint-index .node-dashboard-table .dashboard-load-col{width:150px!important;min-width:150px!important;max-width:150px!important}
+body.endpoint-index .node-dashboard-table .dashboard-load-pill{width:138px!important;min-width:138px!important;max-width:138px!important;margin-inline:auto}
+
+/* Top VM: compact leading columns and keep compound headers on one centered line. */
+body.endpoint-top-page .table-top-vm{width:100%;min-width:1940px!important;table-layout:fixed!important}
+body.endpoint-top-page .table-top-vm col.top-rank{width:30px!important}
+body.endpoint-top-page .table-top-vm col.top-node{width:132px!important}
+body.endpoint-top-page .table-top-vm col.top-uuid{width:220px!important}
+body.endpoint-top-page .table-top-vm col.top-ifaces{width:50px!important}
+body.endpoint-top-page .table-top-vm col.top-public,body.endpoint-top-page .table-top-vm col.top-private{width:76px!important}
+body.endpoint-top-page .table-top-vm col.top-total{width:86px!important}
+body.endpoint-top-page .table-top-vm col.top-mbps{width:70px!important}
+body.endpoint-top-page .table-top-vm col.top-peakmbps{width:74px!important}
+body.endpoint-top-page .table-top-vm col.top-pps{width:76px!important}
+body.endpoint-top-page .table-top-vm col.top-peakpps{width:80px!important}
+body.endpoint-top-page .table-top-vm col.top-sample{width:90px!important}
+body.endpoint-top-page .table-top-vm col.top-cpu{width:114px!important}
+body.endpoint-top-page .table-top-vm col.top-vcpu{width:46px!important}
+body.endpoint-top-page .table-top-vm col.top-ram{width:180px!important}
+body.endpoint-top-page .table-top-vm col.top-diskcap{width:220px!important}
+body.endpoint-top-page .table-top-vm col.top-diskr,body.endpoint-top-page .table-top-vm col.top-diskw{width:84px!important}
+body.endpoint-top-page .table-top-vm col.top-push{width:60px!important}
+body.endpoint-top-page .table-top-vm col.top-drops{width:46px!important}
+body.endpoint-top-page .table-top-vm col.top-errors{width:42px!important}
+body.endpoint-top-page .table-top-vm th,body.endpoint-top-page .table-top-vm td{vertical-align:middle!important}
+body.endpoint-top-page .table-top-vm th:first-child,body.endpoint-top-page .table-top-vm td:first-child{padding-left:3px!important;padding-right:3px!important;text-align:center!important}
+body.endpoint-top-page .table-top-vm th:nth-child(2),body.endpoint-top-page .table-top-vm td:nth-child(2){padding-left:7px!important}
+body.endpoint-top-page .cpu-dual-head,body.endpoint-top-page .ram-compact-sort-head,body.endpoint-top-page .disk-capacity-sort-head{text-align:center!important}
+body.endpoint-top-page .cpu-dual-head>div,body.endpoint-top-page .ram-compact-head,body.endpoint-top-page .disk-cap-compact-head{width:100%;justify-items:center;align-items:center;text-align:center}
+body.endpoint-top-page .cpu-dual-head small,
+body.endpoint-top-page .disk-cap-compact-head small{
+  display:inline-flex!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:center!important;
+  gap:4px!important;width:auto!important;max-width:100%;white-space:nowrap!important;line-height:1.1!important
+}
+body.endpoint-top-page .disk-cap-compact-head>div{font-size:9.5px!important;white-space:nowrap!important}
+body.endpoint-top-page .disk-cap-sort-link{font-size:8.5px!important;padding:1px 2px!important;white-space:nowrap!important}
+body.endpoint-top-page .cpu-dual-cell,body.endpoint-top-page .ram-cell,body.endpoint-top-page .disk-cap-cell{text-align:center!important}
+body.endpoint-top-page .cpu-dual-cell .cpu-meter{width:96px;max-width:100%;margin:6px auto 0!important}
+body.endpoint-top-page .vm-ram-compact{margin-inline:auto!important;text-align:center!important;min-width:0!important;width:156px;max-width:100%}
+body.endpoint-top-page .vm-ram-compact .ram-meter{width:100%;margin-left:auto!important;margin-right:auto!important}
+body.endpoint-top-page .top-disk-capacity{text-align:center!important;margin-inline:auto;max-width:194px}
+body.endpoint-top-page .top-disk-capacity .disk-cap-meter{margin-left:auto;margin-right:auto}
+
+/* Consumption: explicit identity/metric proportions and a toolbar grid matching each tab. */
+body.endpoint-bandwidth-consumption-page .v5058c-toolbar:has(select[name="node"]){grid-template-columns:minmax(360px,1.45fr) minmax(185px,.72fr) minmax(175px,.68fr) auto auto auto!important}
+body.endpoint-bandwidth-consumption-page .v5058c-toolbar:not(:has(select[name="node"])){grid-template-columns:minmax(360px,1.6fr) minmax(190px,.72fr) auto auto auto!important}
+body.endpoint-bandwidth-consumption-page .v5058c-table{width:100%!important;table-layout:auto!important}
+body.endpoint-bandwidth-consumption-page .v5058c-vm-table{min-width:1340px!important}
+body.endpoint-bandwidth-consumption-page .v5058c-node-table{min-width:1180px!important}
+body.endpoint-bandwidth-consumption-page .v5058c-vm-table thead tr:first-child th:nth-child(1),body.endpoint-bandwidth-consumption-page .v5058c-vm-table tbody td:nth-child(1){width:220px!important;min-width:220px!important;max-width:260px!important}
+body.endpoint-bandwidth-consumption-page .v5058c-vm-table thead tr:first-child th:nth-child(2),body.endpoint-bandwidth-consumption-page .v5058c-vm-table tbody td:nth-child(2){width:190px!important;min-width:190px!important;max-width:230px!important}
+body.endpoint-bandwidth-consumption-page .v5058c-vm-table thead tr:first-child th:nth-child(3),body.endpoint-bandwidth-consumption-page .v5058c-vm-table thead tr:first-child th:nth-child(4){min-width:330px!important}
+body.endpoint-bandwidth-consumption-page .v5058c-vm-table tbody td:nth-child(n+3):nth-child(-n+8){width:108px!important;min-width:96px!important}
+body.endpoint-bandwidth-consumption-page .v5058c-vm-table thead tr:first-child th:nth-child(5),body.endpoint-bandwidth-consumption-page .v5058c-vm-table tbody td:nth-child(9){width:100px!important;min-width:100px!important}
+body.endpoint-bandwidth-consumption-page .v5058c-vm-table thead tr:first-child th:nth-child(6),body.endpoint-bandwidth-consumption-page .v5058c-vm-table tbody td:nth-child(10){width:150px!important;min-width:150px!important}
+body.endpoint-bandwidth-consumption-page .v5058c-node-table thead tr:first-child th:nth-child(1),body.endpoint-bandwidth-consumption-page .v5058c-node-table tbody td:nth-child(1){width:200px!important;min-width:200px!important;max-width:250px!important}
+body.endpoint-bandwidth-consumption-page .v5058c-node-table thead tr:first-child th:nth-child(2),body.endpoint-bandwidth-consumption-page .v5058c-node-table thead tr:first-child th:nth-child(3){min-width:330px!important}
+body.endpoint-bandwidth-consumption-page .v5058c-node-table tbody td:nth-child(n+2):nth-child(-n+7){width:108px!important;min-width:96px!important}
+body.endpoint-bandwidth-consumption-page .v5058c-node-table thead tr:first-child th:nth-child(4),body.endpoint-bandwidth-consumption-page .v5058c-node-table tbody td:nth-child(8){width:100px!important;min-width:100px!important}
+body.endpoint-bandwidth-consumption-page .v5058c-node-table thead tr:first-child th:nth-child(5),body.endpoint-bandwidth-consumption-page .v5058c-node-table tbody td:nth-child(9){width:150px!important;min-width:150px!important}
+body.endpoint-bandwidth-consumption-page .v5058c-table th{padding-left:8px!important;padding-right:8px!important}
+body.endpoint-bandwidth-consumption-page .v5058c-table td{padding-left:10px!important;padding-right:10px!important}
+body.endpoint-bandwidth-consumption-page .v5058c-table .v5058c-uuid .uuid-cell{max-width:none!important;min-width:0}
+body.endpoint-bandwidth-consumption-page .v5058c-table .v5058c-node>a b{font-size:12.5px;line-height:1.15}
+body.endpoint-bandwidth-consumption-page .v5058c-table .v5058c-total{text-align:right!important}
+body.endpoint-bandwidth-consumption-page .v5058c-table td:nth-last-child(2){text-align:center!important}
+body.endpoint-bandwidth-consumption-page .v5058c-table td:nth-last-child(2) .status{font-size:13px!important;font-weight:850!important;line-height:1.15!important;white-space:nowrap!important}
+body.endpoint-bandwidth-consumption-page .v5058c-latest{text-align:right!important;padding-right:14px!important}
+body.endpoint-bandwidth-consumption-page .v5058c-latest .v5058c-time{font-size:10.5px!important;white-space:nowrap}
+body.endpoint-bandwidth-consumption-page .v5058c-na{display:inline-block;min-width:78px;text-align:center;opacity:.78}
+
+/* Node Health: comfortable first-column inset and balanced operational columns. */
+body.endpoint-node-health-page .top-card{padding:14px 16px!important}
+body.endpoint-node-health-page .top-card .top-grid{gap:18px!important}
+body.endpoint-node-health-page .top-card .search{max-width:520px;margin-top:10px!important}
+body.endpoint-node-health-page .card>table{width:100%;table-layout:fixed}
+body.endpoint-node-health-page .card>table th,body.endpoint-node-health-page .card>table td{vertical-align:middle!important}
+body.endpoint-node-health-page .card>table th:nth-child(1),body.endpoint-node-health-page .card>table td:nth-child(1){width:220px!important;padding-left:18px!important}
+body.endpoint-node-health-page .card>table th:nth-child(2),body.endpoint-node-health-page .card>table td:nth-child(2){width:130px!important}
+body.endpoint-node-health-page .card>table th:nth-child(3),body.endpoint-node-health-page .card>table td:nth-child(3){width:170px!important;white-space:nowrap}
+body.endpoint-node-health-page .card>table th:nth-child(4),body.endpoint-node-health-page .card>table td:nth-child(4){width:90px!important}
+body.endpoint-node-health-page .card>table th:nth-child(5),body.endpoint-node-health-page .card>table td:nth-child(5){width:110px!important;text-align:center}
+body.endpoint-node-health-page .card>table th:nth-child(6),body.endpoint-node-health-page .card>table td:nth-child(6){width:70px!important;text-align:center}
+body.endpoint-node-health-page .card>table th:nth-child(7),body.endpoint-node-health-page .card>table td:nth-child(7){width:90px!important;text-align:center}
+body.endpoint-node-health-page .card>table th:nth-child(8),body.endpoint-node-health-page .card>table td:nth-child(8){width:120px!important;text-align:right;padding-right:18px!important}
+body.endpoint-node-health-page .card>table .node-name-cell>a b{font-size:14px}
+body.endpoint-node-health-page .card>table .node-name-cell small{margin-top:3px!important}
+
+@media(max-width:1500px){
+  body.endpoint-bandwidth-consumption-page .v5058c-toolbar:has(select[name="node"]){grid-template-columns:minmax(280px,1fr) minmax(145px,.52fr) minmax(145px,.5fr) auto auto auto!important}
+  body.endpoint-bandwidth-consumption-page .v5058c-toolbar:not(:has(select[name="node"])){grid-template-columns:minmax(300px,1fr) minmax(170px,.6fr) auto auto auto!important}
+}
+</style>
+'''
+
 
 _page_v5058r5_base = page
 
@@ -35955,8 +36071,381 @@ def page(title, content):
         html = response.get_data(as_text=True)
         # Remove transient guestfs names from rendered output only.
         html = re.sub(r'guestfs-[A-Za-z0-9_.:-]+', '-', html, flags=re.I)
-        html = html.replace('</head>', V5058R5_UI_CSS + V5059R1_A11Y_SCRIPT + '</head>', 1)
+        html = html.replace('</head>', V5058R5_UI_CSS + V5059R2_UI_CSS + V5059R1_A11Y_SCRIPT + '</head>', 1)
         response.set_data(html)
     except Exception:
         app.logger.exception("Could not apply r5 professional UI layer")
     return response
+
+
+# ---------------------------------------------------------------------------
+# v50.5.9 r3 UI alignment and overflow hotfix
+# ---------------------------------------------------------------------------
+# Presentation-only layer. It preserves routes, query parameters, payloads,
+# database statements, sort/filter behavior, refresh cadence and Agent flow.
+V5059R3_RELEASE = "50.5.9-prod-r4-dead-code-cleanup"
+
+
+# One appearance selector contains the three core modes plus every configured
+# saved theme. Existing localStorage keys stay compatible with older releases.
+def _v5049_theme_selector_html(settings=None):
+    theme_options = []
+    for theme in _v5049_available_themes(settings):
+        theme_options.append(
+            '<option value="theme:%s">%s</option>' % (
+                escape(theme["id"], quote=True), escape(theme["name"]),
+            )
+        )
+    saved_group = (
+        '<optgroup label="Themes">%s</optgroup>' % ''.join(theme_options)
+        if theme_options else ''
+    )
+    return '''
+    <div class="appearance-controls appearance-controls-r5 appearance-controls-r3" aria-label="Theme">
+      <label class="appearance-select appearance-select-r3"><span>Theme</span>
+        <select id="unified-theme-select" aria-label="Theme">
+          <optgroup label="Display">
+            <option value="mode:auto">Auto</option>
+            <option value="mode:light">Light</option>
+            <option value="mode:dark">Dark</option>
+          </optgroup>
+          %s
+        </select>
+      </label>
+    </div>''' % saved_group
+
+
+def _v5049_runtime_theme_script(settings=None):
+    payload = json.dumps(_v5049_theme_client_payload(settings), separators=(",", ":"), sort_keys=True)
+    return f'''
+<script id="v5059r3-unified-theme-runtime">
+(function(){{
+  var themes={payload};
+  var customKey="{V5049_THEME_SELECTION_KEY}";
+  var select=document.getElementById("unified-theme-select");
+  function readCustom(){{try{{return localStorage.getItem(customKey)||""}}catch(e){{return""}}}}
+  function writeCustom(id){{try{{if(id)localStorage.setItem(customKey,id);else localStorage.removeItem(customKey)}}catch(e){{}}}}
+  function coreMode(){{try{{var mode=localStorage.getItem("bw-theme-mode")||"auto";return mode==="dark"||mode==="light"?mode:"auto"}}catch(e){{return"auto"}}}}
+  function selectValue(value){{if(select)select.value=value}}
+  function useCore(mode,persist){{
+    mode=(mode==="dark"||mode==="light")?mode:"auto";
+    writeCustom("");
+    document.documentElement.removeAttribute("data-custom-theme");
+    if(typeof applyTheme==="function")applyTheme(mode,!!persist);
+    else{{
+      try{{if(persist)localStorage.setItem("bw-theme-mode",mode)}}catch(e){{}}
+      document.documentElement.setAttribute("data-theme-mode",mode);
+      var resolved=mode;
+      if(mode==="auto"&&window.matchMedia)resolved=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";
+      document.documentElement.setAttribute("data-theme",resolved);
+    }}
+    selectValue("mode:"+mode);
+  }}
+  function useCustom(id,persist){{
+    if(!themes[id]){{useCore(coreMode(),false);return}}
+    if(persist)writeCustom(id);
+    document.documentElement.setAttribute("data-custom-theme",id);
+    document.documentElement.setAttribute("data-theme",themes[id]);
+    document.documentElement.setAttribute("data-theme-mode","custom");
+    selectValue("theme:"+id);
+  }}
+  function applySelection(value,persist){{
+    if(value&&value.indexOf("theme:")===0)useCustom(value.slice(6),persist);
+    else useCore(value&&value.indexOf("mode:")===0?value.slice(5):"auto",persist);
+  }}
+  if(select)select.addEventListener("change",function(){{applySelection(this.value,true)}});
+  window.addEventListener("storage",function(ev){{
+    if(ev.key===customKey||ev.key==="bw-theme-mode"){{
+      var id=readCustom();if(id&&themes[id])useCustom(id,false);else useCore(coreMode(),false);
+    }}
+  }});
+  var current=readCustom();if(current&&themes[current])useCustom(current,false);else useCore(coreMode(),false);
+}})();
+</script>
+'''
+
+
+# Add fixed column definitions to the already-rendered Consumption tables.
+# The table body, links, sort keys and values are delegated byte-for-byte to
+# the existing implementation.
+_v5059r3_vm_consumption_table_base = _v5058c_vm_table
+_v5059r3_node_consumption_table_base = _v5058c_node_table
+
+
+def _v5058c_vm_table(rows, common, sort_by, order):
+    html = _v5059r3_vm_consumption_table_base(rows, common, sort_by, order)
+    return html.replace(
+        '<table class="v5058c-table v5058c-vm-table">',
+        '<table class="v5058c-table v5058c-vm-table">'
+        '<colgroup>'
+        '<col class="v5059r3-cons-vm"><col class="v5059r3-cons-node">'
+        '<col class="v5059r3-cons-metric"><col class="v5059r3-cons-metric"><col class="v5059r3-cons-metric">'
+        '<col class="v5059r3-cons-metric"><col class="v5059r3-cons-metric"><col class="v5059r3-cons-metric">'
+        '<col class="v5059r3-cons-coverage"><col class="v5059r3-cons-latest">'
+        '</colgroup>',
+        1,
+    )
+
+
+def _v5058c_node_table(rows, common, sort_by, order):
+    html = _v5059r3_node_consumption_table_base(rows, common, sort_by, order)
+    return html.replace(
+        '<table class="v5058c-table v5058c-node-table">',
+        '<table class="v5058c-table v5058c-node-table">'
+        '<colgroup>'
+        '<col class="v5059r3-cons-node-only">'
+        '<col class="v5059r3-cons-node-metric"><col class="v5059r3-cons-node-metric"><col class="v5059r3-cons-node-metric">'
+        '<col class="v5059r3-cons-node-metric"><col class="v5059r3-cons-node-metric"><col class="v5059r3-cons-node-metric">'
+        '<col class="v5059r3-cons-node-coverage"><col class="v5059r3-cons-node-latest">'
+        '</colgroup>',
+        1,
+    )
+
+
+# Node Health was the last operational list without an internal scroll frame.
+# Only the returned markup is wrapped; the original renderer and its data are
+# untouched.
+_v5059r3_node_health_table_base = node_health_table
+
+
+def node_health_table(rows, q="", sort_by="status", order="asc"):
+    html = _v5059r3_node_health_table_base(rows, q=q, sort_by=sort_by, order=order)
+    html = html.replace('<table>', '<div class="table-wrap node-health-table-wrap"><table class="node-health-table">', 1)
+    html = html.replace('</table>', '</table></div>', 1)
+    return html
+
+
+V5059R3_UI_CSS = r'''
+<style id="v5059r3-ui-alignment-overflow-hotfix">
+/* Keep page chrome fixed while wide data tables scroll inside their cards. */
+html,body{max-width:100%;overflow-x:hidden!important}
+.wrap,main,.card,.table-wrap{min-width:0;box-sizing:border-box}
+.table-wrap{
+  width:100%;max-width:100%;overflow-x:auto!important;overflow-y:hidden!important;
+  overscroll-behavior-inline:contain;scrollbar-gutter:stable;isolation:isolate;
+  border-radius:9px;clip-path:inset(0 round 9px)
+}
+.table-wrap>table{max-width:none;margin:0}
+.table-wrap th,.table-wrap td{box-sizing:border-box}
+.table-wrap td>*{max-width:100%;box-sizing:border-box}
+.table-wrap .uuid-cell,.table-wrap .node-name-cell,.table-wrap .dashboard-interface-wrap,
+.table-wrap .vm-ram-block,.table-wrap .top-disk-capacity{min-width:0;max-width:100%}
+.table-wrap .copy-btn{flex:0 0 auto}
+
+/* One Theme control. There is no separate Style control in the rendered UI. */
+.appearance-controls-r3{display:flex!important;justify-content:flex-end!important;gap:0!important}
+.appearance-select-r3{grid-template-columns:auto minmax(124px,190px)!important;gap:7px!important}
+.appearance-select-r3 select{width:100%;min-width:124px!important;max-width:190px!important}
+
+/* Dashboard: align metric headers and values, and keep Interface inside the edge. */
+body.endpoint-index .node-dashboard-table{min-width:1740px!important;table-layout:fixed!important}
+body.endpoint-index .node-dashboard-table th,
+body.endpoint-index .node-dashboard-table td{overflow:hidden;text-overflow:ellipsis;vertical-align:middle!important}
+body.endpoint-index .node-dashboard-table th:nth-child(1),
+body.endpoint-index .node-dashboard-table td:nth-child(1){text-align:left!important;padding-left:12px!important}
+body.endpoint-index .node-dashboard-table th:nth-child(2),
+body.endpoint-index .node-dashboard-table td:nth-child(2),
+body.endpoint-index .node-dashboard-table th:nth-child(3),
+body.endpoint-index .node-dashboard-table td:nth-child(3){text-align:center!important}
+body.endpoint-index .node-dashboard-table th:nth-child(n+4),
+body.endpoint-index .node-dashboard-table td:nth-child(n+4){text-align:center!important;font-variant-numeric:tabular-nums lining-nums}
+body.endpoint-index .node-dashboard-table th:nth-child(18),
+body.endpoint-index .node-dashboard-table td:nth-child(18){
+  width:158px!important;min-width:158px!important;max-width:158px!important;
+  padding-left:10px!important;padding-right:14px!important;text-align:center!important
+}
+body.endpoint-index .dashboard-interface-wrap{
+  width:100%;display:flex!important;flex-direction:column;align-items:center;justify-content:center;
+  gap:3px;overflow:hidden;text-align:center
+}
+body.endpoint-index .dashboard-interface-wrap .vm-state{max-width:100%;white-space:nowrap}
+body.endpoint-index .dashboard-interface-wrap small{
+  display:block;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center
+}
+body.endpoint-index .dashboard-load-pill{margin-inline:auto!important}
+
+/* Top VM: preserve the established Node/UUID cells and equalize all resource tracks. */
+body.endpoint-top-page .table-top-vm{min-width:2010px!important;table-layout:fixed!important}
+body.endpoint-top-page .table-top-vm col.top-rank{width:30px!important}
+body.endpoint-top-page .table-top-vm col.top-node{width:135px!important}
+body.endpoint-top-page .table-top-vm col.top-uuid{width:290px!important}
+body.endpoint-top-page .table-top-vm col.top-cpu{width:164px!important}
+body.endpoint-top-page .table-top-vm col.top-vcpu{width:48px!important}
+body.endpoint-top-page .table-top-vm col.top-ram{width:190px!important}
+body.endpoint-top-page .table-top-vm col.top-diskcap{width:190px!important}
+body.endpoint-top-page .table-top-vm th:nth-child(13),body.endpoint-top-page .table-top-vm td:nth-child(13),
+body.endpoint-top-page .table-top-vm th:nth-child(15),body.endpoint-top-page .table-top-vm td:nth-child(15),
+body.endpoint-top-page .table-top-vm th:nth-child(16),body.endpoint-top-page .table-top-vm td:nth-child(16){text-align:center!important}
+body.endpoint-top-page .cpu-dual-head>div,
+body.endpoint-top-page .cpu-dual-head>small,
+body.endpoint-top-page .ram-compact-head,
+body.endpoint-top-page .disk-cap-compact-head,
+body.endpoint-top-page .disk-cap-compact-head>small{
+  width:100%!important;max-width:100%;margin-inline:auto;align-items:center!important;
+  justify-content:center!important;justify-items:center!important;text-align:center!important
+}
+body.endpoint-top-page .disk-cap-compact-head>small{display:flex!important;flex-wrap:nowrap!important;gap:3px!important}
+body.endpoint-top-page .cpu-dual-cell,
+body.endpoint-top-page .ram-cell,
+body.endpoint-top-page .disk-cap-cell{padding-left:8px!important;padding-right:8px!important;text-align:center!important}
+body.endpoint-top-page .cpu-dual-cell .cpu-core-value,
+body.endpoint-top-page .vm-ram-compact .ram-guest-value,
+body.endpoint-top-page .top-disk-capacity>b{
+  display:flex!important;align-items:center;justify-content:center;min-height:16px;margin:0!important;
+  white-space:nowrap;text-align:center
+}
+body.endpoint-top-page .cpu-dual-cell .cpu-full-value,
+body.endpoint-top-page .vm-ram-compact .ram-guest-label{display:block!important;min-height:12px;margin-top:2px!important;text-align:center!important}
+body.endpoint-top-page .cpu-dual-cell .cpu-meter,
+body.endpoint-top-page .vm-ram-compact .ram-meter,
+body.endpoint-top-page .top-disk-capacity .disk-cap-meter{
+  display:block!important;width:136px!important;min-width:136px!important;max-width:136px!important;
+  height:5px!important;margin-left:auto!important;margin-right:auto!important
+}
+body.endpoint-top-page .cpu-dual-cell .cpu-meter{margin-top:5px!important}
+body.endpoint-top-page .vm-ram-compact{width:164px!important;margin-inline:auto!important;text-align:center!important}
+body.endpoint-top-page .vm-ram-compact .ram-meter{margin-top:4px!important}
+body.endpoint-top-page .vm-ram-compact .ram-host-line{display:block!important;text-align:center!important;white-space:nowrap}
+body.endpoint-top-page .top-disk-capacity{width:164px!important;margin-inline:auto!important;text-align:center!important}
+body.endpoint-top-page .top-disk-capacity>b{margin-bottom:16px!important}
+body.endpoint-top-page .top-disk-capacity .disk-cap-meter{margin-top:0!important}
+body.endpoint-top-page .top-disk-capacity small{display:block!important;text-align:center!important;white-space:nowrap}
+
+/* Consumption toolbar: search stays useful without swallowing the entire row. */
+body.endpoint-bandwidth-consumption-page .v5058c-toolbar{
+  justify-content:start!important;justify-items:stretch;align-items:center!important;column-gap:8px!important
+}
+body.endpoint-bandwidth-consumption-page .v5058c-toolbar:has(select[name="node"]){
+  grid-template-columns:minmax(320px,520px) minmax(220px,360px) minmax(180px,240px) auto auto auto!important
+}
+body.endpoint-bandwidth-consumption-page .v5058c-toolbar:not(:has(select[name="node"])){ 
+  grid-template-columns:minmax(300px,460px) minmax(180px,240px) auto auto auto!important
+}
+body.endpoint-bandwidth-consumption-page .v5058c-search{width:100%;max-width:520px}
+body.endpoint-bandwidth-consumption-page .v5058c-toolbar:not(:has(select[name="node"])) .v5058c-search{max-width:460px}
+
+/* Consumption: fixed columns make both header tiers share the body grid. */
+body.endpoint-bandwidth-consumption-page .v5058c-table{
+  width:100%!important;table-layout:fixed!important;border-collapse:separate;border-spacing:0
+}
+body.endpoint-bandwidth-consumption-page .v5058c-vm-table{min-width:1320px!important}
+body.endpoint-bandwidth-consumption-page .v5058c-node-table{min-width:1180px!important}
+body.endpoint-bandwidth-consumption-page .v5058c-vm-table col.v5059r3-cons-vm{width:17%}
+body.endpoint-bandwidth-consumption-page .v5058c-vm-table col.v5059r3-cons-node{width:14%}
+body.endpoint-bandwidth-consumption-page .v5058c-vm-table col.v5059r3-cons-metric{width:9%}
+body.endpoint-bandwidth-consumption-page .v5058c-vm-table col.v5059r3-cons-coverage{width:6%}
+body.endpoint-bandwidth-consumption-page .v5058c-vm-table col.v5059r3-cons-latest{width:9%}
+body.endpoint-bandwidth-consumption-page .v5058c-node-table col.v5059r3-cons-node-only{width:18%}
+body.endpoint-bandwidth-consumption-page .v5058c-node-table col.v5059r3-cons-node-metric{width:10.5%}
+body.endpoint-bandwidth-consumption-page .v5058c-node-table col.v5059r3-cons-node-coverage{width:7%}
+body.endpoint-bandwidth-consumption-page .v5058c-node-table col.v5059r3-cons-node-latest{width:12%}
+body.endpoint-bandwidth-consumption-page .v5058c-table.v5058c-vm-table thead tr>th:nth-child(n),
+body.endpoint-bandwidth-consumption-page .v5058c-table.v5058c-vm-table tbody tr>td:nth-child(n),
+body.endpoint-bandwidth-consumption-page .v5058c-table.v5058c-node-table thead tr>th:nth-child(n),
+body.endpoint-bandwidth-consumption-page .v5058c-table.v5058c-node-table tbody tr>td:nth-child(n){
+  width:auto!important;min-width:0!important;max-width:none!important;box-sizing:border-box
+}
+body.endpoint-bandwidth-consumption-page .v5058c-table thead th{
+  vertical-align:middle!important;overflow:hidden;padding-left:9px!important;padding-right:9px!important
+}
+body.endpoint-bandwidth-consumption-page .v5058c-table thead tr:first-child>th[colspan]{text-align:center!important}
+body.endpoint-bandwidth-consumption-page .v5058c-table thead tr:nth-child(2)>th,
+body.endpoint-bandwidth-consumption-page .v5058c-table thead tr:nth-child(2)>th .sort-link{
+  text-align:right!important;justify-content:flex-end!important
+}
+body.endpoint-bandwidth-consumption-page .v5058c-table thead .sort-link{
+  display:flex!important;width:100%;max-width:100%;align-items:center;box-sizing:border-box;white-space:nowrap
+}
+body.endpoint-bandwidth-consumption-page .v5058c-vm-table thead tr:first-child>th:nth-child(1),
+body.endpoint-bandwidth-consumption-page .v5058c-vm-table thead tr:first-child>th:nth-child(2),
+body.endpoint-bandwidth-consumption-page .v5058c-node-table thead tr:first-child>th:nth-child(1){text-align:left!important}
+body.endpoint-bandwidth-consumption-page .v5058c-vm-table thead tr:first-child>th:nth-child(1) .sort-link,
+body.endpoint-bandwidth-consumption-page .v5058c-vm-table thead tr:first-child>th:nth-child(2) .sort-link,
+body.endpoint-bandwidth-consumption-page .v5058c-node-table thead tr:first-child>th:nth-child(1) .sort-link{justify-content:flex-start!important;text-align:left!important}
+body.endpoint-bandwidth-consumption-page .v5058c-vm-table thead tr:first-child>th:nth-last-child(2),
+body.endpoint-bandwidth-consumption-page .v5058c-node-table thead tr:first-child>th:nth-last-child(2){text-align:center!important}
+body.endpoint-bandwidth-consumption-page .v5058c-vm-table thead tr:first-child>th:nth-last-child(2) .sort-link,
+body.endpoint-bandwidth-consumption-page .v5058c-node-table thead tr:first-child>th:nth-last-child(2) .sort-link{justify-content:center!important;text-align:center!important}
+body.endpoint-bandwidth-consumption-page .v5058c-vm-table thead tr:first-child>th:last-child,
+body.endpoint-bandwidth-consumption-page .v5058c-node-table thead tr:first-child>th:last-child{text-align:right!important}
+body.endpoint-bandwidth-consumption-page .v5058c-vm-table thead tr:first-child>th:last-child .sort-link,
+body.endpoint-bandwidth-consumption-page .v5058c-node-table thead tr:first-child>th:last-child .sort-link{justify-content:flex-end!important;text-align:right!important}
+body.endpoint-bandwidth-consumption-page .v5058c-table tbody td{overflow:hidden;text-overflow:ellipsis}
+body.endpoint-bandwidth-consumption-page .v5058c-table tbody td:nth-last-child(2){text-align:center!important}
+body.endpoint-bandwidth-consumption-page .v5058c-table .v5058c-latest{text-align:right!important;padding-right:12px!important}
+body.endpoint-bandwidth-consumption-page .v5058c-table .v5058c-uuid .uuid-cell{width:100%;max-width:100%!important;overflow:hidden}
+body.endpoint-bandwidth-consumption-page .v5058c-table .v5058c-uuid .uuid-cell>a{min-width:0;overflow:hidden;text-overflow:ellipsis}
+
+/* Node Health: balanced first column and contained table scrolling. */
+body.endpoint-node-health-page .node-health-table-wrap{margin:0;border-radius:0 0 9px 9px}
+body.endpoint-node-health-page .node-health-table{width:100%;min-width:1040px;table-layout:fixed}
+body.endpoint-node-health-page .node-health-table th,
+body.endpoint-node-health-page .node-health-table td{vertical-align:middle!important;box-sizing:border-box}
+body.endpoint-node-health-page .node-health-table th:nth-child(1),body.endpoint-node-health-page .node-health-table td:nth-child(1){width:22%!important;padding-left:18px!important;text-align:left!important}
+body.endpoint-node-health-page .node-health-table th:nth-child(2),body.endpoint-node-health-page .node-health-table td:nth-child(2){width:12%!important;text-align:center!important}
+body.endpoint-node-health-page .node-health-table th:nth-child(3),body.endpoint-node-health-page .node-health-table td:nth-child(3){width:17%!important;text-align:center!important;white-space:nowrap}
+body.endpoint-node-health-page .node-health-table th:nth-child(4),body.endpoint-node-health-page .node-health-table td:nth-child(4){width:8%!important;text-align:center!important}
+body.endpoint-node-health-page .node-health-table th:nth-child(5),body.endpoint-node-health-page .node-health-table td:nth-child(5){width:12%!important;text-align:center!important}
+body.endpoint-node-health-page .node-health-table th:nth-child(6),body.endpoint-node-health-page .node-health-table td:nth-child(6){width:7%!important;text-align:center!important}
+body.endpoint-node-health-page .node-health-table th:nth-child(7),body.endpoint-node-health-page .node-health-table td:nth-child(7){width:9%!important;text-align:center!important}
+body.endpoint-node-health-page .node-health-table th:nth-child(8),body.endpoint-node-health-page .node-health-table td:nth-child(8){width:13%!important;text-align:right!important;padding-right:18px!important}
+
+@media(max-width:1500px){
+  body.endpoint-bandwidth-consumption-page .v5058c-toolbar:has(select[name="node"]){
+    grid-template-columns:minmax(280px,440px) minmax(190px,300px) minmax(160px,210px) auto auto auto!important
+  }
+  body.endpoint-bandwidth-consumption-page .v5058c-toolbar:not(:has(select[name="node"])){ 
+    grid-template-columns:minmax(280px,420px) minmax(160px,210px) auto auto auto!important
+  }
+}
+@media(max-width:1050px){
+  body.endpoint-bandwidth-consumption-page .v5058c-toolbar:has(select[name="node"]),
+  body.endpoint-bandwidth-consumption-page .v5058c-toolbar:not(:has(select[name="node"])){display:flex!important;flex-wrap:wrap}
+  body.endpoint-bandwidth-consumption-page .v5058c-search{flex:1 1 320px;max-width:none}
+  body.endpoint-bandwidth-consumption-page .v5058c-toolbar select[name="node"],
+  body.endpoint-bandwidth-consumption-page .v5058c-toolbar select[name="coverage"]{flex:1 1 190px}
+}
+</style>
+'''
+
+
+_page_v5059r3_base = page
+
+
+def page(title, content):
+    response = _page_v5059r3_base(title, content)
+    try:
+        html = response.get_data(as_text=True)
+        html = html.replace('</head>', V5059R3_UI_CSS + '</head>', 1)
+        response.set_data(html)
+    except Exception:
+        app.logger.exception("Could not apply v50.5.9 r3 UI alignment layer")
+    return response
+
+# ---------------------------------------------------------------------------
+# VirtInfra Monitor 50.5.9 prod-r5 - additive Node Groups hotfix
+# Release: 50.5.9-prod-r7-rbac-node-groups-node-vm-ui-refresh-hotfix-r1
+# Installed only after all existing append-only runtime implementations are
+# registered, so baseline wrappers and view functions remain intact.
+# ---------------------------------------------------------------------------
+import sys as _node_groups_sys
+import node_groups as _node_groups_hotfix
+
+
+class _NodeGroupsModuleProxy:
+    """Forward module attribute access to this exec_module() globals mapping."""
+
+    def __getattr__(self, name):
+        try:
+            return globals()[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+
+    def __setattr__(self, name, value):
+        globals()[name] = value
+
+
+_node_groups_module = _node_groups_sys.modules.get(__name__)
+if _node_groups_module is None:
+    _node_groups_module = _NodeGroupsModuleProxy()
+_node_groups_hotfix.install(_node_groups_module)

@@ -1,0 +1,54 @@
+Runtime source
+- app/app.py
+  - Change the shared operational auto-refresh interval from 5 seconds to 30 seconds.
+  - Include Node Health, Storage I/O and Consumption in the existing live-page refresh allow-list.
+- app/node_groups.py
+  - Correct Admin/Super Admin capability boundaries and own-account password changes.
+  - Apply canonical hidden-group visibility to monitoring/search/detail helpers.
+  - Fix Move all to Ungrouped and direct Node/VM action navigation.
+  - Replace broad Admin Node/VM HTML injection with scoped table renderers.
+  - Remove obsolete Node/VM bulk selectors and add direct row actions and safe sorting.
+  - Restrict Node Group icons to Node identity links.
+  - Correct Node Groups and Node Group Consumption search, columns, sort and refresh behavior.
+
+Targeted regression coverage
+- tools/node-groups-runtime-validation.py
+- tests/test_node_groups_hotfix.py
+
+Release identity and installer gates
+- VERSION
+- app/app.py
+- deploy/postgres/install-postgres-native.sh
+- preflight.sh
+- tools/test-installer-flow.sh
+- tests/test_v5052_native_copy_ingest.py
+- tests/test_v5054_snapshot_detail_correctness.py
+- tests/test_v5055_sql_compat_hotfix.py
+- tests/test_v5057_mac_identity_search.py
+- tests/test_v5057_safe_queue_canonical_vm.py
+- tests/test_v5058_r4_consumption_inventory.py
+- tests/test_v5059_r1_ui_responsive_theme_chart_gaps.py
+- tests/test_v5059_r2_ui_layout_polish_only.py
+- tests/test_v5059_r3_ui_alignment_overflow_hotfix.py
+- tests/test_v50_contract.py
+- tests/test_virtinfra_hardening.py
+
+Current-version documentation
+- CHANGELOG.md
+- README.md
+- START_HERE_VI.md
+- SOURCE_OF_TRUTH_VI.md
+- GITHUB_DESKTOP_VI.md
+- COMMANDS_A_TO_Z_VI.md
+
+New release documentation
+- RELEASE_NOTES_R7.md
+- UPGRADE_GUIDE_R7.md
+- ROLLBACK_NOTES_R7.md
+- TEST_RESULTS_R7.txt
+- FILES_CHANGED_R7.txt
+- DIFF_SUMMARY_R7.md
+
+Generated after validation
+- SHA256SUMS
+- dist/ archive checksums (not included inside the source manifest)

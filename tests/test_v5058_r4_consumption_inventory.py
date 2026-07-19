@@ -10,7 +10,7 @@ VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 
 def test_release_identity():
-    assert VERSION == "50.5.9-prod-r1-ui-responsive-theme-chart-gaps"
+    assert VERSION == "50.5.9-prod-r7-rbac-node-groups-node-vm-ui-refresh-hotfix-r1"
     assert VERSION in APP
     assert VERSION in INSTALLER
 

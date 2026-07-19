@@ -1,0 +1,84 @@
+VirtInfra Monitor 50.5.9 prod-r6 validation
+===========================================
+
+Worktree:
+virtinfra-monitor-50.5.9-prod-r5-node-groups-hotfix-additive-schema-import-fix-production-slim
+
+Python compile:
+PASS
+Command: python3 -m compileall -q app deploy tools tests
+Exit code: 0
+
+Bash syntax:
+PASS
+Files checked: 45
+Exit code: 0
+
+Per-file isolation:
+PASS for all pytest test files with real test items.
+Script-style contract files completed without hanging; when invoked directly through pytest they may report 0 collected items and exit code 5 by design.
+PostgreSQL integration files skipped cleanly because BW_TEST_DATABASE_URL was not set.
+
+Full pytest:
+117 passed, 1 skipped in 66.04 seconds
+Exit code: 0
+Timeout ceiling: 600 seconds
+Command: python -m pytest -vv -s tests
+
+Apparent hang investigation:
+No test, fixture, thread, subprocess, lock or server remained alive.
+tests/test_v5057_mac_identity_search.py completed with 10 passed, exit code 0 in 35.57 seconds under detached supervision.
+The earlier timeout was caused by the foreground command runner limit, not pytest teardown.
+
+Browser regression:
+Not rerun in this validation cycle, per operator instruction.
+Existing browser regression artifacts were not modified.
+
+
+Installer manifest fixture correction
+=====================================
+
+Changed file:
+tools/test-installer-manifest-paths.sh
+
+Runtime source changed:
+No
+
+Python compile:
+PASS
+
+Bash syntax:
+PASS
+Files checked: 45
+
+Targeted installer fixture test:
+PASS
+Command: bash tools/test-installer-manifest-paths.sh
+Result: installer accepts safe relative manifest paths, rejects traversal and includes all required r6 assets/migration files.
+
+Full pytest after fixture correction:
+117 passed, 1 skipped in 66.00 seconds
+Exit code: 0
+Timeout ceiling: 600 seconds
+
+Skipped test:
+PostgreSQL live integration because BW_TEST_DATABASE_URL was not set.
+
+
+Final package validation
+========================
+
+Full pytest on final runtime/test tree:
+117 passed, 1 skipped in 66.00 seconds
+Exit code: 0
+Supervisor duration: 71 seconds
+
+Full preflight:
+PASS
+Exit code: 0
+Duration: 119 seconds
+
+Installer checks included in preflight:
+- v50 GitHub/new-server/domain/operations installer flow: PASS
+- safe relative manifest paths and traversal rejection: PASS
+- required r6 local flag assets and migration 012 fixture coverage: PASS

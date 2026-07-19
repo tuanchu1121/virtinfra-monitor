@@ -29,11 +29,16 @@ fail(){ echo "ERROR: $*" >&2; exit 1; }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.9-prod-r1-ui-responsive-theme-chart-gaps" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.5.9-prod-r7-rbac-node-groups-node-vm-ui-refresh-hotfix-r1" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/bw_pg.py && -f app/maintenance_native.py \
    && -f app/maintenance_queue.py && -f app/maintenance_dispatch.py \
    && -f postgres/sql/007_safe_maintenance_queue.sql \
    && -f postgres/sql/010_consumption_inventory_cleanup.sql \
+   && -f postgres/sql/011_node_groups.sql && -f postgres/sql/012_node_groups_r6_safety.sql && -f app/node_groups.py \
+   && -f app/static/vendor/flag-icons/node-groups.css \
+   && -f app/static/vendor/flag-icons/LICENSE \
+   && -f app/static/vendor/flag-icons/SOURCE.md \
+   && -f app/static/flags/node-groups.css && -f app/static/flags/neutral.svg \
    && -f app/inventory_cleanup.py && -f app/consumption_rollup.py \
    && -f deploy/postgres/bw-monitor-inventory-cleanup.timer \
    && -f deploy/agent/agent.py && -f deploy/agent/fix-agent-uuid.sh ]] \
@@ -110,6 +115,7 @@ log "Validate v50.5.7 safe FIFO queue and canonical VM detail"
 
 log "Validate standalone repository contract"
 "$PYTHON" tests/test_repository_contract.py
+"$PYTHON" tests/test_virtinfra_hardening.py
 
 log "Run storage V2 contract and multi-NIC regression"
 "$PYTHON" tests/test_storage_v2_contract.py
@@ -139,13 +145,26 @@ log "Validate v50.5.9 r1 responsive UI, theme and chart-gap contract"
 log "Validate route, endpoint, query, form, sort, Agent and SQL equivalence"
 "$PYTHON" -m pytest -q tests/test_v5059_r1_contract_equivalence.py
 
+log "Validate v50.5.9 r2 presentation-only layout polish"
+"$PYTHON" -m pytest -q tests/test_v5059_r2_ui_layout_polish_only.py
+
+log "Validate v50.5.9 r3 UI alignment, unified theme and contained table overflow"
+"$PYTHON" -m pytest -q tests/test_v5059_r3_ui_alignment_overflow_hotfix.py
+
+log "Validate additive Node Groups, role split, permissions and UI contracts"
+"$PYTHON" -m pytest -q tests/test_node_groups_hotfix.py
+"$PYTHON" -m pytest -q tests/test_node_groups_importlib_loader.py
+"$PYTHON" -m pytest -q tests/test_node_groups_r6.py
+
 log "Verify one-command installer and operations flow"
 bash ./tools/test-installer-flow.sh
+bash ./tools/test-installer-manifest-paths.sh
 
 if ((SKIP_LIVE)); then
   log "Skip live PostgreSQL integration by request"
 elif [[ -n "${BW_TEST_DATABASE_URL:-}" ]]; then
   log "Run full application integration against disposable PostgreSQL"
+  "$PYTHON" -m pytest -q tests/test_node_groups_postgres_integration.py
   "$PYTHON" tests/test_v50_postgres_integration.py
 else
   log "Skip live PostgreSQL integration because BW_TEST_DATABASE_URL is not set"

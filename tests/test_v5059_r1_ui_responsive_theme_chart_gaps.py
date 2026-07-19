@@ -5,8 +5,8 @@ APP = (ROOT / "app" / "app.py").read_text(encoding="utf-8")
 
 
 def test_release_marker():
-    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "50.5.9-prod-r1-ui-responsive-theme-chart-gaps"
-    assert 'V5059R1_RELEASE = "50.5.9-prod-r1-ui-responsive-theme-chart-gaps"' in APP
+    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "50.5.9-prod-r7-rbac-node-groups-node-vm-ui-refresh-hotfix-r1"
+    assert 'V5059R2_RELEASE = "50.5.9-prod-r3-ui-alignment-overflow-hotfix"' in APP
 
 
 def test_storage_filtered_node_query_has_inventory_join():

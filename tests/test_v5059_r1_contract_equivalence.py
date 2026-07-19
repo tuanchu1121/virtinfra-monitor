@@ -96,5 +96,14 @@ def test_agent_is_byte_for_byte_unchanged():
     assert actual == CONTRACT["agent_sha256"]
 
 
-def test_postgresql_sql_is_byte_for_byte_unchanged():
-    assert digest_tree((ROOT / "postgres" / "sql").glob("*.sql")) == CONTRACT["postgres_sql_tree_sha256"]
+def test_existing_postgresql_sql_is_byte_for_byte_unchanged():
+    paths = [path for path in (ROOT / "postgres" / "sql").glob("*.sql") if path.name not in {"011_node_groups.sql", "012_node_groups_r6_safety.sql"}]
+    assert digest_tree(paths) == CONTRACT["postgres_sql_tree_sha256"]
+
+
+def test_node_groups_schema_is_additive_migration_011():
+    path = ROOT / "postgres" / "sql" / "011_node_groups.sql"
+    text = path.read_text(encoding="utf-8")
+    assert "CREATE TABLE IF NOT EXISTS node_groups" in text
+    assert "CREATE TABLE IF NOT EXISTS node_group_memberships" in text
+    assert "CREATE TABLE IF NOT EXISTS node_group_membership_history" in text

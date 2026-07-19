@@ -1,8 +1,8 @@
 # SOURCE OF TRUTH VẬN HÀNH
 
-> Release: `50.5.9-prod-r1-ui-responsive-theme-chart-gaps`
+> Release: `50.5.9-prod-r7-rbac-node-groups-node-vm-ui-refresh-hotfix-r1`
 
-> Release: `50.5.9-prod-r1-ui-responsive-theme-chart-gaps`
+> Release: `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
 >
 > Tài liệu này được đối chiếu trực tiếp với `install.sh`, `deploy/postgres/*`, `deploy/agent/*`, `postgres/docker-compose.yml`, `app/app.py` và các test contract hiện tại.
 

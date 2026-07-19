@@ -1,32 +1,68 @@
-# 50.5.9-prod-r1-ui-responsive-theme-chart-gaps
+# 50.5.9-prod-r7-rbac-node-groups-node-vm-ui-refresh-hotfix-r1
 
-- Production release identity for the responsive UI, consolidated theme controls and gap-aware charts.
-- Runtime behavior is contract-equivalent to the reviewed r5 source, apart from release metadata.
-- Keeps the Storage filtered-node SQL hotfix and the r4 inventory/Consumption fixes.
+- Fix Admin capability boundaries: User Management, Theme Settings, Account Logs, Node Logs and System Health are available to Admin, while Queue, PostgreSQL Data and privileged maintenance remain Super Admin-only.
+- Change Password now verifies and updates only the account stored in the current session, preserving username and role; Admin cannot view or manage Super Admin accounts.
+- Apply one canonical hidden-Node-Group visibility rule across monitoring, search, details, Storage, Consumption and VM Abuse while keeping hidden inventory manageable in Admin.
+- Fix Move all to Ungrouped so the backend resolves the system group automatically and records membership history without requiring a target selection.
+- Restore direct per-row Node and VM Hide, Restore and Purge actions, remove obsolete bulk selectors, preserve the existing purge queue and return operators to the correct Admin tab.
+- Replace broad Admin table injection with scoped renderers, align header/data cells, add safe sort keys, keep Group Hidden distinct from agent state and read Node CPU/RAM/Disk/Network from the existing current cache.
+- Remove Node Group icons from VM UUID and metric labels, correct Node Group and Consumption table mapping, retain Search/Clear and Apply/Reset order, and set operational auto-refresh to 30 seconds.
+- No metric formula, agent payload, ingest cadence, abuse threshold, queue architecture, retention logic or database schema change.
 
-## Runtime changes
+# 50.5.9-prod-r6-node-groups-admin-bulk-management-retention-safe-maintenance-hotfix
 
-- Preserves the r4 inventory deadlock fix, five-minute Consumption pipeline and server rollups.
-- Fixes `/storage?view=nodes&mount=...` HTTP 500 by adding the missing `node_inventory ni` join to the filtered Node Storage query.
-- Adds a final UI-only presentation layer for Dashboard, Node, VM UUID, Consumption, Top VM and VM Abuse.
-- Hides transient `guestfs-*` interface names from rendered pages without changing collection or database rows.
-- Keeps real zero values on charts and breaks lines across missing retained time buckets.
-- Removes the long VM RAM chart implementation note.
-- Makes real/retained snapshot tables collapsed by default while preserving sorting and pagination.
-- Replaces the three theme buttons with compact Mode and Theme selects in the upper-right header.
+- Harden Node Groups administration, bulk membership management, monitoring summaries and role boundaries.
+- Preserve Node Group configuration during ordinary retention and cleanup; Nuclear reset recreates Ungrouped atomically.
+- Remove fixed credential text, restore baseline login controls and keep the original `/push` view untouched.
+- Add local flag assets, responsive UI regression coverage and PostgreSQL migration 012.
 
-## Previous r4 notes
+# 50.5.9-prod-r5-node-groups-hotfix-additive
 
-- Removed broad `auto_cleanup_inventory()` writes from all web/read and auto-refresh paths. The compatibility symbol now returns without writing.
-- Added `bw-monitor-inventory-cleanup.timer`, scheduled every ten minutes around `:02`, with one global advisory lock, ordered 500-row batches, `FOR UPDATE SKIP LOCKED`, sticky hidden rows and bounded deadlock retry.
-- Preserved current expiry thresholds: VM stale after 3 days, VM soft-delete after 15 days and node soft-delete after 7 days.
-- Added whole-transaction `/push` retry for residual PostgreSQL `40P01` deadlocks; failed attempts roll back before retry and `push_receipts` remains authoritative.
-- Updated the Agent to v15. It keeps the established five-minute payload and durable pending retry, but removes the separate local two-hour Consumption accumulator and delivery request.
-- Added server-side physical `node_consumption_hourly` and `node_consumption_daily` rollups in the accepted `/push` transaction, plus a recent raw-data backfill during Monitor upgrade.
-- Reworked Consumption rolling ranges so complete days/hours use compact rollups and only incomplete hour edges read five-minute rows. The `2H` UI range remains available.
-- Combined table rows and count with `COUNT(*) OVER()`, cached range summary totals for 60 seconds, pre-aggregated inventory metadata and corrected coverage to count one accepted sample instead of one row per NIC.
-- Retained `/push/bandwidth-consumption` and `node_bandwidth_consumption_2h` only for staged-upgrade and pre-v15 history compatibility; Agent v15 does not call them.
-- Kept Abuse behavior, CPU/RAM/Disk formulas, Storage I/O, queue semantics, API authentication, timezone and all non-Consumption pages unchanged.
+Baseline trực tiếp: `50.5.9-prod-r4-dead-code-cleanup`.
+
+## Thay đổi riêng của r5
+
+- Bổ sung Node Groups theo module additive được nạp sau implementation runtime cuối cùng; `app/app.py` baseline giữ nguyên byte-for-byte và chỉ nối loader ở cuối file.
+- Thêm quản lý Node Groups, membership một-node-một-group, Ungrouped bất biến, VM kế thừa group từ node, audit history và filter Group trên các trang được yêu cầu.
+- Tách role cũ `admin` thành `super_admin` bằng migration có marker idempotent; role `admin` mới bị chặn khỏi Maintenance, API Keys, Theme, Retention, reset và cấu hình hệ thống nguy hiểm.
+- Thêm migration PostgreSQL `011_node_groups.sql`; không sửa bảng metric, công thức, agent payload, cadence, retention, abuse engine hoặc queue.
+- Vendor cục bộ flag-icons 7.5.0 MIT; không CDN, npm hay download runtime.
+- Group=All hoặc không truyền group gọi lại implementation baseline và giữ HTML/data behavior cũ.
+
+# 50.5.9-prod-r3-ui-alignment-overflow-hotfix
+
+Baseline trực tiếp: `50.5.9-prod-r2-ui-layout-polish-only`.
+
+## Thay đổi riêng của r3
+
+- Theme: gộp Auto, Light, Dark và toàn bộ theme đã cấu hình vào một ô `Theme`; giao diện không còn ô `Style`. Giữ nguyên các localStorage key cũ để không làm mất lựa chọn của trình duyệt.
+- Dashboard Nodes: căn cùng trục header và số liệu, cân lại phần cuối bảng, giữ `INTERFACE` trong khung và không để nội dung tràn qua viền khi cuộn.
+- Top VM: giữ cách hiển thị Node/UUID của code cũ; căn giữa CPU, RAM và Allocated/Assigned; đặt ba progress bar cùng chiều dài 136 px và cùng tâm cột.
+- VM Consumption và Node Consumption: thêm colgroup trình bày cố định để hai tầng header khớp tuyệt đối với body; thu gọn ô Search và cân lại toolbar.
+- Node Health: bọc bảng trong vùng cuộn nội bộ, tăng inset cột Node và cân lại tám cột hiện có.
+- Tất cả bảng rộng: chỉ vùng `.table-wrap` cuộn ngang; body không tràn ngang, cell và phần tử con bị giới hạn trong viền bảng.
+- Không thêm tính năng mới, không đổi route, endpoint, query parameter, sort key, form action, payload, SQL, công thức, retention, queue, Abuse, Agent hay luồng push.
+
+# 50.5.9-prod-r2-ui-layout-polish-only
+
+Baseline trực tiếp: `50.5.9-prod-r1-ui-responsive-theme-chart-gaps`.
+
+## Thay đổi riêng của r2
+
+- Chỉ bổ sung một lớp CSS presentation cuối cùng, không thêm JavaScript, route, endpoint, form, query parameter, sort key, SQL, API hay luồng backend mới.
+- Dashboard: dành đủ chiều rộng cho `STATUS` và `SNAPSHOT`, loại bỏ hiện tượng chữ đè nhau; giữ nguyên 18 cột và thứ tự hiện tại.
+- Top VM: thu gọn cột `#`, Node, UUID và IFACES; căn giữa CPU/RAM/Disk Capacity; giữ `ALLOC · ASSIGNED · % · SLOTS` trên một hàng.
+- VM Consumption: nới VM/UUID và Node/IP, cân lại sáu cột Public/Private, Coverage và Latest Sample; toolbar vẫn dùng nguyên form/action/parameter.
+- Node Consumption: cân lại Node/IP, Physical Public/Private, Coverage, Latest Sample và grid toolbar không có Node filter.
+- Node Health: tăng khoảng cách mép trái cho Node/IP và cân lại tám cột hiện có.
+- Không thêm tính năng kéo thả, resize, ẩn/hiện cột hoặc cấu hình layout.
+
+## Phần kế thừa nguyên vẹn từ r1
+
+- Theme Auto/Light/Dark, chart gap segmentation, snapshot collapse và presentation filter `guestfs-*`.
+- Inventory deadlock cleanup worker/timer và `/push` deadlock retry.
+- Agent v15, five-minute metrics, Consumption rollups và Storage filtered-node hotfix.
+- Abuse, CPU/RAM/network/PPS/disk formula, retention, queue, authentication và API contract.
 
 # 50.5.8-prod-r3-consumption-vm-node
 

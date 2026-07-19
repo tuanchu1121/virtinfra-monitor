@@ -1,25 +1,3 @@
-## r7 — hotfix: RBAC, auto-refresh, token security, search UX
-
-### Fixes
-1. **move_all_ungrouped**: action no longer returns "Select a Node Group" — target is now auto-set to Ungrouped system group
-2. **RBAC — Admin 403 Forbidden**: Admin role can now access User Management (view only), Theme Settings, Account/Node Logs, System Health — Super Admin-only actions (create/edit/delete super_admin accounts) remain gated in their handlers
-3. **Auto-refresh**: changed from 5 s to 30 s (`BW_AUTO_REFRESH_MS = 30000`) across all monitoring pages
-4. **Default token removed**: `BW_MONITOR_TOKEN` and `BW_AGENT_TOKEN`/`VIRTINFRA_AGENT_TOKEN` no longer fall back to `"123456"` — must be set explicitly via environment variable
-5. **Duplicate search box**: Node Groups monitoring page now has a single search box (was two: "Search group" + "Search node") — searches group name and node name together
-
-### Files changed
-- `app/node_groups.py` — fixes 1, 2, 3, 5, 6, 7
-- `app/app.py` — fix 3 (auto-refresh)
-- `deploy/agent/agent.py` — fix 4 (token default)
-
-### No behavior changes to
-- Metric formulas (CPU, RAM, disk, network, PPS, bandwidth, consumption, abuse)
-- Database schema
-- API endpoints or payloads
-- Agent ingest cycle
-- Maintenance/retention logic
-- UI layout, theme, colors, navigation
-
 # 50.5.9-prod-r6-node-groups-admin-bulk-management-retention-safe-maintenance-hotfix
 
 - Harden Node Groups administration, bulk membership management, monitoring summaries and role boundaries.

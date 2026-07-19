@@ -35,11 +35,6 @@ ADMIN_ALLOWED_ENDPOINTS = {
     "admin_change_password", "admin_logout",
     "admin_node_groups_create", "admin_node_groups_update",
     "admin_node_groups_action", "admin_node_groups_assign", "admin_node_groups_bulk",
-    # Admin capability: user management (viewer/admin only, super_admin gated in handler)
-    "admin_users_page", "admin_create_user", "admin_user_action",
-    # Admin capability: theme, logs, system health
-    "admin_theme_manager", "admin_logs_page", "admin_system_health_page",
-    "admin_api_system_health",
 }
 
 
@@ -1319,7 +1314,8 @@ def admin_users_page():
     deny = require_admin()
     if deny:
         return deny
-    # Admin can view user list; super_admin actions are gated in admin_create_user / admin_user_action
+    if not is_super_admin():
+        return m.Response("Forbidden\n", status=403, mimetype="text/plain")
     return _BASE["admin_users_page_view"]()
 
 
@@ -1926,7 +1922,7 @@ def _filtered_sorted_group_summaries():
     m = _m()
     rows = _node_group_summary_data()
     q = str(m.request.args.get("q") or "").strip().lower()
-    node_q = str(m.request.args.get("node_q") or q or "").strip().lower()
+    node_q = str(m.request.args.get("node_q") or "").strip().lower()
     status = str(m.request.args.get("status") or "").strip().lower()
     abuse = str(m.request.args.get("abuse") or "").strip().lower()
     online = str(m.request.args.get("online") or "").strip().lower()
@@ -2009,7 +2005,7 @@ def node_groups_page():
     m=_m(); deny=m.require_dashboard()
     if deny:return deny
     rows=_filtered_sorted_group_summaries(); role=current_role()
-    toolbar=f'''<form class="search node-group-filters" method="get"><input type="hidden" name="sort" value="{m.escape(m.request.args.get('sort') or 'status',quote=True)}"><input type="hidden" name="order" value="{m.escape(m.request.args.get('order') or 'asc',quote=True)}"><input name="q" value="{m.escape(m.request.args.get('q') or m.request.args.get('node_q') or '',quote=True)}" placeholder="Search group or node"><select name="status"><option value="">All statuses</option>{''.join('<option value="%s"%s>%s</option>'%(s,' selected' if m.request.args.get('status')==s else '',s.title()) for s in ('offline','critical','warning','healthy','empty','unknown'))}</select><select name="abuse"><option value="">All abuse</option><option value="yes"{' selected' if m.request.args.get('abuse')=='yes' else ''}>Has current abuse</option><option value="no"{' selected' if m.request.args.get('abuse')=='no' else ''}>No current abuse</option></select><select name="online"><option value="">All connectivity</option><option value="online"{' selected' if m.request.args.get('online')=='online' else ''}>Online</option><option value="offline"{' selected' if m.request.args.get('online')=='offline' else ''}>Offline</option></select><button type="submit">Apply</button><a class="btn" href="{m.url_for('node_groups_page')}">Reset</a></form>'''
+    toolbar=f'''<form class="search node-group-filters" method="get"><input type="hidden" name="sort" value="{m.escape(m.request.args.get('sort') or 'status',quote=True)}"><input type="hidden" name="order" value="{m.escape(m.request.args.get('order') or 'asc',quote=True)}"><input name="q" value="{m.escape(m.request.args.get('q') or '',quote=True)}" placeholder="Search group"><input name="node_q" value="{m.escape(m.request.args.get('node_q') or '',quote=True)}" placeholder="Search node"><select name="status"><option value="">All statuses</option>{''.join('<option value="%s"%s>%s</option>'%(s,' selected' if m.request.args.get('status')==s else '',s.title()) for s in ('offline','critical','warning','healthy','empty','unknown'))}</select><select name="abuse"><option value="">All abuse</option><option value="yes"{' selected' if m.request.args.get('abuse')=='yes' else ''}>Has current abuse</option><option value="no"{' selected' if m.request.args.get('abuse')=='no' else ''}>No current abuse</option></select><select name="online"><option value="">All connectivity</option><option value="online"{' selected' if m.request.args.get('online')=='online' else ''}>Online</option><option value="offline"{' selected' if m.request.args.get('online')=='offline' else ''}>Offline</option></select><button type="submit">Apply</button><a class="btn" href="{m.url_for('node_groups_page')}">Reset</a></form>'''
     header=f'''<div class="card"><div class="section-head"><div><span class="eyebrow">MONITORING</span><h2>Node Groups</h2><p>Current group health from existing node cache, inventory and Current Abuse state.</p></div>{'<a class="btn" href="'+m.url_for('admin_page',section='groups')+'">Manage groups</a>' if role in {'admin','super_admin'} else ''}</div>{toolbar}<div class="table-hint">Sort: {_sort_link('Group','name')} · {_sort_link('Nodes','nodes')} · {_sort_link('VMs','vms')} · {_sort_link('Abuse','abuse')} · {_sort_link('Last Update','updated')} · {_sort_link('Status','status')}</div></div>'''
     script = r'''<script>(function(){
 const key='virtinfra-node-groups-r6';
@@ -2139,7 +2135,7 @@ def admin_node_groups_bulk():
     m=_m(); deny=require_admin()
     if deny:return deny
     action=str(m.request.form.get('action') or '').strip().lower(); scope=str(m.request.form.get('selection_scope') or 'selected').strip().lower(); target=m.safe_int(m.request.form.get('group_id'),0)
-    if action in {'remove_group','move_ungrouped','move_all_ungrouped'}:target=system_group_id()
+    if action in {'remove_group','move_ungrouped'}:target=system_group_id()
     if action=='move_all_ungrouped':
         source=m.safe_int(m.request.form.get('source_group_id'),0); row=group_row(source)
         if not row or row[5]:return m.Response('Invalid source group\n',status=400,mimetype='text/plain')

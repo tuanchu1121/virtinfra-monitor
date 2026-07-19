@@ -40,7 +40,7 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_COMPRESSED_PUSH_BYTES
 # v48.4.7: unified node/IP/UUID/interface search across dashboard pages
 # 50.5.7-prod-r2: retain VM/uplink MAC identity, search by MAC, show MAC on VM/Node detail
 
-TOKEN = os.environ.get("BW_MONITOR_TOKEN") or ""  # no default; must be set via env
+TOKEN = os.environ.get("BW_MONITOR_TOKEN", "123456")
 DB = os.environ.get("BW_MONITOR_DB", "/var/lib/bw-monitor/postgresql")
 DATABASE_URL = os.environ.get("BW_DATABASE_URL") or os.environ.get("BW_POSTGRES_DSN", "")
 
@@ -6952,7 +6952,7 @@ def page(title, content):
         // Quiet 5-second content refresh for live operational pages only.
         // It never reloads the browser document, never overlaps requests, and
         // pauses while the operator is editing a form.
-        const BW_AUTO_REFRESH_MS = 30000;
+        const BW_AUTO_REFRESH_MS = 5000;
         function bwIsLivePage() {{
             const p = window.location.pathname;
             return p === '/' || p === '/top' || p === '/top/nodes' || p === '/abuse/vms'

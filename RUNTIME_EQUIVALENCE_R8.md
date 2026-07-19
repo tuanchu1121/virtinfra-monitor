@@ -2,7 +2,7 @@
 
 Release: `50.5.9-prod-r8-safe-dead-code-prune`
 
-Compared directly against `50.5.9-prod-r7-modular-runtime-refactor` using the repository's SQLite DB-API test shim with background workers disabled.
+Compared directly against `50.5.9-prod-r7-modular-runtime-refactor` using the repository's isolated DB-API compatibility test shim with background workers disabled.
 
 ## Exact before/after result
 

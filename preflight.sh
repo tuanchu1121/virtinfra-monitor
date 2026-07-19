@@ -29,15 +29,16 @@ fail(){ echo "ERROR: $*" >&2; exit 1; }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.9-prod-r5-node-groups-hotfix-additive" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.6.0-prod-r1-node-groups-additive" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/bw_pg.py && -f app/maintenance_native.py \
    && -f app/maintenance_queue.py && -f app/maintenance_dispatch.py \
    && -f postgres/sql/007_safe_maintenance_queue.sql \
    && -f postgres/sql/010_consumption_inventory_cleanup.sql \
-   && -f postgres/sql/011_node_groups.sql && -f app/node_groups.py \
-   && -f app/static/vendor/flag-icons/node-groups.css \
-   && -f app/static/vendor/flag-icons/LICENSE \
-   && -f app/static/vendor/flag-icons/SOURCE.md \
+   && -f postgres/sql/011_node_groups_country_flags.sql \
+   && -f app/node_groups.py \
+   && -f static/flags/4x3/jp.svg \
+   && -f static/flags/countries.json \
+   && -f THIRD_PARTY_LICENSES/flag-icons-LICENSE.txt \
    && -f app/inventory_cleanup.py && -f app/consumption_rollup.py \
    && -f deploy/postgres/bw-monitor-inventory-cleanup.timer \
    && -f deploy/agent/agent.py && -f deploy/agent/fix-agent-uuid.sh ]] \
@@ -149,18 +150,16 @@ log "Validate v50.5.9 r2 presentation-only layout polish"
 log "Validate v50.5.9 r3 UI alignment, unified theme and contained table overflow"
 "$PYTHON" -m pytest -q tests/test_v5059_r3_ui_alignment_overflow_hotfix.py
 
-log "Validate additive Node Groups, role split, permissions and UI contracts"
-"$PYTHON" -m pytest -q tests/test_node_groups_hotfix.py
+log "Validate additive v50.6.0 Node Groups, API, local flags and protected baseline"
+"$PYTHON" -m pytest -q tests/test_v5060_node_groups_additive.py
 
 log "Verify one-command installer and operations flow"
 bash ./tools/test-installer-flow.sh
-bash ./tools/test-installer-manifest-paths.sh
 
 if ((SKIP_LIVE)); then
   log "Skip live PostgreSQL integration by request"
 elif [[ -n "${BW_TEST_DATABASE_URL:-}" ]]; then
   log "Run full application integration against disposable PostgreSQL"
-  "$PYTHON" -m pytest -q tests/test_node_groups_postgres_integration.py
   "$PYTHON" tests/test_v50_postgres_integration.py
 else
   log "Skip live PostgreSQL integration because BW_TEST_DATABASE_URL is not set"

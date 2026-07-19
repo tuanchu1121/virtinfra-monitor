@@ -1,8 +1,8 @@
 # Đưa VirtInfra Monitor lên GitHub bằng GitHub Desktop
 
-> Release: `50.5.9-prod-r5-node-groups-hotfix-additive`
+> Release: `50.6.0-prod-r1-node-groups-additive`
 
-> Dùng cho release `50.5.9-prod-r3-ui-alignment-overflow-hotfix`.
+> Dùng cho release `50.6.0-prod-r1-node-groups-additive`.
 
 > Source of truth vận hành: [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md).
 >

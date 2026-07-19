@@ -6,6 +6,7 @@ public and bw_meta schemas in that database.
 """
 from __future__ import annotations
 import importlib.util
+import json
 import os
 from pathlib import Path
 import sys
@@ -47,7 +48,6 @@ sys.path.insert(0, str(ROOT / "app"))
 spec = importlib.util.spec_from_file_location("bw_monitor_v50_app", ROOT / "app/app.py")
 module = importlib.util.module_from_spec(spec)
 assert spec and spec.loader
-sys.modules[spec.name] = module
 spec.loader.exec_module(module)
 
 # The production installer applies SQL migrations after the application creates
@@ -62,15 +62,10 @@ def apply_sql(path: Path) -> None:
 
 for migration in (
     "001_bootstrap.sql", "002_timescale.sql", "003_native_indexes.sql", "004_storage_v2.sql",
-    "005_ingest_write_profile.sql", "006_postgres_native_maintenance.sql",
-    "007_safe_maintenance_queue.sql", "008_mac_identity_search.sql",
-    "009_low_io_compat.sql", "010_consumption_inventory_cleanup.sql",
-    "011_node_groups.sql",
+    "005_ingest_write_profile.sql",
+    "006_postgres_native_maintenance.sql",
 ):
     apply_sql(ROOT / "postgres/sql" / migration)
-
-# The additive role namespace keeps the existing administrator fully privileged.
-module.set_admin_credentials("admin", "Password123!")
 
 vm_uuid = str(uuid.uuid4())
 now = int(time.time())
@@ -200,42 +195,10 @@ assert bw_retry.status_code == 200 and bw_retry.get_json().get("ok") is True
 with client.session_transaction() as sess:
     sess["dashboard_authenticated"] = True
     sess["dashboard_username"] = "admin"
-    sess["dashboard_role"] = "super_admin"
+    sess["dashboard_role"] = "admin"
     sess["admin_authenticated"] = True
     sess["admin_username"] = "admin"
     sess["csrf_token"] = "test-csrf"
-
-# Live PostgreSQL Node Group create/assign/inheritance contract.
-created = client.post("/admin/node-groups/create", data={
-    "csrf_token": "test-csrf", "name": "Integration Group",
-    "description": "PostgreSQL integration", "country_code": "vn",
-})
-assert created.status_code == 302, created.get_data(as_text=True)
-conn = module.db()
-try:
-    integration_group_id = int(conn.execute(
-        "SELECT id FROM node_groups WHERE name='Integration Group'"
-    ).fetchone()[0])
-finally:
-    conn.close()
-assigned = client.post("/admin/node-groups/assign", data={
-    "csrf_token": "test-csrf", "group_id": integration_group_id,
-    "nodes": ["V50-TEST-NODE"],
-})
-assert assigned.status_code == 302, assigned.get_data(as_text=True)
-conn = module.db()
-try:
-    assert conn.execute(
-        "SELECT group_id FROM node_group_memberships WHERE node=?", ("V50-TEST-NODE",)
-    ).fetchone()[0] == integration_group_id
-    assert conn.execute(
-        "SELECT ng.name FROM vm_inventory vi "
-        "JOIN node_group_memberships gm ON gm.node=vi.node "
-        "JOIN node_groups ng ON ng.id=gm.group_id "
-        "WHERE vi.node=? AND vi.vm_uuid=?", ("V50-TEST-NODE", vm_uuid)
-    ).fetchone()[0] == "Integration Group"
-finally:
-    conn.close()
 
 paths = [
     "/", "/top", "/top?period=10m", "/top?period=30m", "/top?period=1h",

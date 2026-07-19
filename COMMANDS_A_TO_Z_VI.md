@@ -1,8 +1,8 @@
 # VirtInfra Monitor - Toàn bộ command triển khai và bảo trì từ A đến Z
 
-> Release: `50.5.9-prod-r5-node-groups-hotfix-additive`
+> Release: `50.6.0-prod-r1-node-groups-additive`
 
-> Release: `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
+> Release: `50.6.0-prod-r1-node-groups-additive`
 >
 > Chạy command Monitor bằng `root`. Với node KVM, chạy Agent bằng `root` để Agent đọc được libvirt, interface, disk và host metrics.
 

@@ -34,7 +34,7 @@ def load_normalizer():
 
 
 def test_release_identity():
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r5-node-groups-hotfix-additive"
+    assert (ROOT / "VERSION").read_text().strip() == "50.6.0-prod-r1-node-groups-additive"
 
 
 def test_existing_agent_already_reports_vm_and_physical_mac():

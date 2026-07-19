@@ -13,6 +13,7 @@ import os
 import re
 import threading
 from collections.abc import Mapping
+from contextlib import contextmanager
 from decimal import Decimal
 from typing import Any, Iterable, Sequence
 
@@ -58,9 +59,10 @@ _SERIAL_TABLES = {
     # Only tables whose callers actually consume Cursor.lastrowid. Keeping this
     # list small avoids a RETURNING round trip on high-volume metric inserts.
     "maintenance_jobs", "retention_runs", "dashboard_users", "api_keys",
-    "vm_abuse_events", "vm_abuse_incidents", "node_groups",
+    "vm_abuse_events", "vm_abuse_incidents",
 }
 
+_RE_QMARK = re.compile(r"\?")
 _RE_COLLATE_NOCASE = re.compile(r"\s+COLLATE\s+NOCASE\b", re.I)
 _RE_WITHOUT_ROWID = re.compile(r"\s+WITHOUT\s+ROWID\b", re.I)
 _RE_AUTOINC_ID = re.compile(

@@ -13,6 +13,7 @@ import json
 import gzip
 import io
 import subprocess
+import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from html import escape
@@ -36092,7 +36093,7 @@ def page(title, content):
 # ---------------------------------------------------------------------------
 # Presentation-only layer. It preserves routes, query parameters, payloads,
 # database statements, sort/filter behavior, refresh cadence and Agent flow.
-V5059R3_RELEASE = "50.5.9-prod-r4-dead-code-cleanup"
+V5059R3_RELEASE = "50.5.9-prod-r3-ui-alignment-overflow-hotfix"
 
 
 # One appearance selector contains the three core modes plus every configured
@@ -36432,29 +36433,10 @@ def page(title, content):
     return response
 
 # ---------------------------------------------------------------------------
-# VirtInfra Monitor 50.5.9 prod-r5 - additive Node Groups hotfix
-# Release: 50.5.9-prod-r5-node-groups-hotfix-additive
-# Installed only after all existing append-only runtime implementations are
-# registered, so baseline wrappers and view functions remain intact.
+# v50.6.0 additive Node Groups, inherited VM geography and local SVG flags
+# Baseline runtime remains v50.5.9 r3. Existing routes/payloads are not replaced
+# unless a new Group/Node filter or the new Node Groups feature is requested.
 # ---------------------------------------------------------------------------
-import sys as _node_groups_sys
-import node_groups as _node_groups_hotfix
-
-
-class _NodeGroupsModuleProxy:
-    """Forward module attribute access to this exec_module() globals mapping."""
-
-    def __getattr__(self, name):
-        try:
-            return globals()[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
-
-    def __setattr__(self, name, value):
-        globals()[name] = value
-
-
-_node_groups_module = _node_groups_sys.modules.get(__name__)
-if _node_groups_module is None:
-    _node_groups_module = _NodeGroupsModuleProxy()
-_node_groups_hotfix.install(_node_groups_module)
+V5060_RELEASE = "50.6.0-prod-r1-node-groups-additive"
+import node_groups as _v5060_node_groups
+_v5060_node_groups.install(globals())

@@ -15,8 +15,7 @@ find . \
   -path './.git' -prune -o \
   -path './dist' -prune -o \
   -type d \( -name __pycache__ -o -name .pytest_cache \) -prune -o \
-  -type f ! -name SHA256SUMS ! -name '*.pyc' ! -name '*.pyo' \
-  ! -name '*.zip' ! -name '*.tar.gz' -print0 \
+  -type f ! -name SHA256SUMS ! -name '*.pyc' ! -name '*.pyo' -print0 \
 | sort -z | xargs -0 sha256sum > SHA256SUMS
 sha256sum -c SHA256SUMS >/dev/null
 python3 tests/test_manifest_contract.py
@@ -28,8 +27,6 @@ tar \
   --exclude='*/.pytest_cache' \
   --exclude='*.pyc' \
   --exclude='*.pyo' \
-  --exclude='*.zip' \
-  --exclude='*.tar.gz' \
   -cf - . | tar -xf - -C "$TMP/$NAME"
 
 rm -f "$DIST/$NAME.zip" "$DIST/$NAME.tar.gz" "$DIST/SHA256SUMS"

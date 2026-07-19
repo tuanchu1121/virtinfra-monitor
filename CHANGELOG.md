@@ -1,15 +1,15 @@
-# 50.5.9-prod-r5-node-groups-hotfix-additive
+# 50.6.0-prod-r1-node-groups-additive
 
-Baseline trực tiếp: `50.5.9-prod-r4-dead-code-cleanup`.
+Baseline trực tiếp: `50.5.9-prod-r3-ui-alignment-overflow-hotfix-production-slim`.
 
-## Thay đổi riêng của r5
-
-- Bổ sung Node Groups theo module additive được nạp sau implementation runtime cuối cùng; `app/app.py` baseline giữ nguyên byte-for-byte và chỉ nối loader ở cuối file.
-- Thêm quản lý Node Groups, membership một-node-một-group, Ungrouped bất biến, VM kế thừa group từ node, audit history và filter Group trên các trang được yêu cầu.
-- Tách role cũ `admin` thành `super_admin` bằng migration có marker idempotent; role `admin` mới bị chặn khỏi Maintenance, API Keys, Theme, Retention, reset và cấu hình hệ thống nguy hiểm.
-- Thêm migration PostgreSQL `011_node_groups.sql`; không sửa bảng metric, công thức, agent payload, cadence, retention, abuse engine hoặc queue.
-- Vendor cục bộ flag-icons 7.5.0 MIT; không CDN, npm hay download runtime.
-- Group=All hoặc không truyền group gọi lại implementation baseline và giữ HTML/data behavior cũ.
+- Thêm ba bảng PostgreSQL riêng cho Group, membership hiện tại và lịch sử; không thay đổi bảng metric, inventory hoặc VM hiện có.
+- Admin bổ sung `Node Groups`; trang Nodes giữ nguyên các action/bulk action cũ và thêm Group/flag/Assign/Move/Remove theo exact Node name.
+- Trang VMs giữ nguyên action/bulk action cũ, chỉ hiển thị Group kế thừa từ Node và không tạo quan hệ VM-to-Group.
+- Bổ sung Group/Node filter và icon cờ SVG local 16 x 12 px trên các renderer Node/VM.
+- Bổ sung Group Consumption từ physical Node counters với weighted coverage `SUM(valid) / SUM(expected)`.
+- Bổ sung API namespace và scope `node_groups:read`, `node_groups:write`; toàn bộ API endpoint/payload cũ giữ nguyên.
+- Vendor 271 SVG 4:3 từ flag-icons cùng MIT license; runtime không phụ thuộc CDN hoặc upstream.
+- Agent, `/push`, metric formulas, Abuse, retention, queue và PostgreSQL SQL 001-010 giữ nguyên byte-for-byte.
 
 # 50.5.9-prod-r3-ui-alignment-overflow-hotfix
 

@@ -1,6 +1,6 @@
 # Storage V2 deployment and verification
 
-Release: `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
+Release: `50.6.0-prod-r1-node-groups-additive`
 
 This package is designed for a new deployment. It does not import history from another monitor. Current application functionality, Agent payload and route compatibility remain part of the release.
 

@@ -1,0 +1,128 @@
+VirtInfra Monitor runtime map (baseline)
+
+[deploy/postgres/bw-monitor-inventory-cleanup.service]
+WorkingDirectory=/opt/bw-monitor
+ExecStart=/opt/bw-monitor/venv/bin/python3 /opt/bw-monitor/inventory_cleanup.py
+
+[deploy/postgres/bw-monitor-maintenance-dispatch.service]
+WorkingDirectory=/opt/bw-monitor
+ExecStart=/opt/bw-monitor/venv/bin/python3 /opt/bw-monitor/maintenance_dispatch.py
+
+[deploy/postgres/bw-monitor-maintenance@.service]
+WorkingDirectory=/opt/bw-monitor
+ExecStart=/opt/bw-monitor/venv/bin/python3 /opt/bw-monitor/maintenance.py %i
+
+[deploy/postgres/bw-monitor-retention.service]
+WorkingDirectory=/opt/bw-monitor
+ExecStart=/opt/bw-monitor/venv/bin/python3 /opt/bw-monitor/retention.py
+
+[deploy/postgres/bw-monitor.service]
+WorkingDirectory=/opt/bw-monitor
+ExecStart=/opt/bw-monitor/start-monitor.sh
+
+[deploy/postgres/virtinfra-monitor-health-watch.service]
+ExecStart=/opt/bw-monitor/virtinfra-monitor-health-watch.sh
+
+[deploy/postgres/bw-monitor-inventory-cleanup.timer]
+OnCalendar=*-*-* *:02/10:00
+Unit=bw-monitor-inventory-cleanup.service
+
+[deploy/postgres/bw-monitor-maintenance-watchdog.timer]
+OnUnitActiveSec=1min
+Unit=bw-monitor-maintenance-dispatch.service
+
+[deploy/postgres/bw-monitor-retention.timer]
+OnCalendar=*-*-* 00,06,12,18:20:00
+Unit=bw-monitor-retention.service
+
+[deploy/postgres/virtinfra-monitor-health-watch.timer]
+OnUnitActiveSec=30s
+
+Entrypoint and operational scripts:
+- deploy/postgres/start-monitor.sh
+- deploy/postgres/install-postgres-native.sh
+- update.sh
+- backup.sh
+- restore.sh
+- app/maintenance.py
+- app/maintenance_dispatch.py
+- app/retention.py
+- app/inventory_cleanup.py
+- app/consumption_rollup.py
+
+Flask routes: 75
+GET	/	index
+GET	/abuse/vms	vm_abuse_page
+POST	/abuse/vms/clear	clear_abuse_events
+GET	/admin	admin_page
+GET	/admin/abuse	admin_abuse_page
+POST	/admin/abuse-data/reset-all-v48129	reset_all_abuse_data_v48129
+POST	/admin/abuse-settings	admin_abuse_settings
+POST	/admin/abuse-vm-data/clear	clear_vm_abuse_data_v48128
+POST	/admin/abuse-vm-data/manage-v48129	manage_vm_abuse_data_v48129
+GET	/admin/api-keys	admin_api_keys_page
+POST	/admin/api-keys/create	admin_api_key_create
+POST	/admin/api-keys/delete	admin_api_key_delete
+GET,POST	/admin/api-keys/edit	admin_api_key_edit
+POST	/admin/api-keys/revoke	admin_api_key_revoke
+POST	/admin/api-keys/rotate	admin_api_key_rotate
+POST	/admin/api-logs/clear	admin_api_logs_clear
+GET	/admin/api/system-health	admin_api_system_health
+POST	/admin/bandwidth-consumption	admin_bandwidth_consumption_action
+POST	/admin/bulk_nodes	admin_bulk_nodes
+POST	/admin/bulk_vms	admin_bulk_vms
+POST	/admin/cleanup	admin_run_cleanup
+POST	/admin/database-maintenance	admin_database_maintenance
+POST	/admin/database-maintenance	admin_database_maintenance
+POST	/admin/delete_node	admin_delete_node
+POST	/admin/delete_vm	admin_delete_vm
+POST	/admin/live-cache/clear	admin_clear_live_cache
+GET,POST	/admin/login	admin_login
+GET	/admin/logout	admin_logout
+GET	/admin/logs	admin_logs_page
+POST	/admin/logs/clear	admin_logs_clear
+POST	/admin/maintenance/cancel	admin_cancel_maintenance_v5057
+GET,POST	/admin/password	admin_change_password
+POST	/admin/purge_node_vms	admin_purge_node_vms
+POST	/admin/restore_node	admin_restore_node
+POST	/admin/restore_vm	admin_restore_vm
+GET,POST	/admin/setup	admin_setup
+GET	/admin/system-health	admin_system_health_page
+GET,POST	/admin/theme	admin_theme_manager
+GET	/admin/users	admin_users_page
+POST	/admin/users/action	admin_user_action
+POST	/admin/users/create	admin_create_user
+GET	/api/v1/abuse/events	api_v1_abuse_events
+GET	/api/v1/abuse/incidents	api_v1_abuse_incidents_v48126
+GET	/api/v1/abuse/rankings	api_v1_abuse_rankings_v48126
+GET	/api/v1/abuse/summary	api_v1_abuse_summary
+GET	/api/v1/abuse/vms	api_v1_abuse_vms
+GET	/api/v1/abuse/vms/<vm_uuid>	api_v1_abuse_vm
+GET	/api/v1/bandwidth/vms	api_v1_bandwidth_vms
+GET	/api/v1/bandwidth/vms/<vm_uuid>	api_v1_bandwidth_vm
+GET	/api/v1/health	api_v1_health
+GET	/api/v1/logs/events	api_v1_management_logs
+GET	/api/v1/logs/requests	api_v1_request_logs
+GET	/api/v1/me	api_v1_me
+GET	/api/v1/nodes	api_v1_nodes
+GET	/api/v1/performance	api_v1_performance_v48140
+GET	/api/v1/vms	api_v1_vms
+GET	/api/v1/vms/<vm_uuid>/current	api_v1_vm_current
+GET	/bandwidth-consumption	bandwidth_consumption_page
+GET	/bandwidth-consumption/node/<path:node>	bandwidth_consumption_node_page
+GET	/health	health
+GET	/health/nodes	node_health_page
+GET	/health/nodes/<path:node>/misses	node_missed_detail_page
+GET	/healthz	virtinfra_healthz
+GET	/livez	virtinfra_livez
+GET,POST	/login	dashboard_login
+GET	/logout	dashboard_logout
+GET	/node/<path:node>	node_page
+POST	/push	push
+POST	/push/bandwidth-consumption	push_bandwidth_consumption
+GET	/static/<path:filename>	static
+GET	/storage	storage_io_page
+GET	/summary	summary
+GET	/top	top_page
+GET	/top/nodes	top_node_page
+GET	/vm	vm_page

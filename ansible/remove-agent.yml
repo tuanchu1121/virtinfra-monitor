@@ -1,0 +1,76 @@
+---
+- name: Remove VirtInfra Monitor Agent
+  hosts: all
+  become: "{{ (ansible_user | default('root')) != 'root' }}"
+  gather_facts: false
+  strategy: free
+
+  vars:
+    bwagent_keep_state: false
+
+  tasks:
+    - name: Stop and disable known Agent units
+      ansible.builtin.shell: |
+        set +e
+        for unit in virtinfra-agent.service bwagent.service bwagent.timer bw-agent.service bw-agent.timer; do
+          timeout 15 systemctl disable --now "$unit" 2>/dev/null || true
+          timeout 10 systemctl kill --kill-who=all --signal=KILL "$unit" 2>/dev/null || true
+        done
+        for pid in $(pgrep -f '^(/usr/bin/)?python3? /usr/local/lib/(virtinfra-agent|bwagent)/agent\.py$' 2>/dev/null); do
+          kill -KILL "$pid" 2>/dev/null || true
+        done
+        exit 0
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Remove Agent services code and configuration
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/virtinfra-agent.service
+        - /etc/systemd/system/bwagent.service
+        - /etc/systemd/system/bwagent.timer
+        - /etc/systemd/system/bw-agent.service
+        - /etc/systemd/system/bw-agent.timer
+        - /etc/virtinfra-agent.env
+        - /etc/bwagent.env
+        - /etc/default/bwagent
+        - /etc/sysconfig/bwagent
+        - /usr/local/lib/virtinfra-agent
+        - /usr/local/lib/bwagent
+        - /opt/bwagent
+        - /opt/bw-agent
+        - /var/log/bwagent
+        - /usr/local/sbin/virtinfra-agent-doctor
+        - /usr/local/sbin/bwagent-doctor
+
+    - name: Remove Agent state unless preservation was requested
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /var/lib/virtinfra-agent
+        - /var/lib/bw-agent
+        - /var/lib/bwagent
+      when: not (bwagent_keep_state | bool)
+
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Verify Agent is removed
+      ansible.builtin.shell: |
+        set -e
+        test "$(systemctl is-active virtinfra-agent.service 2>/dev/null || true)" != active
+        ! pgrep -f '^(/usr/bin/)?python3? /usr/local/lib/(virtinfra-agent|bwagent)/agent\.py$' >/dev/null 2>&1
+        echo BWAGENT_REMOVED_OK
+      args:
+        executable: /bin/bash
+      register: remove_result
+      changed_when: false
+
+    - name: Show removal result
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: {{ remove_result.stdout }}"

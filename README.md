@@ -1,150 +1,23 @@
-# VirtInfra Monitor v50 PostgreSQL Native
+# VirtInfra Monitor
 
-**Release:** `50.5.9-prod-r9-safe-runtime-history-prune`
-Production monitoring for KVM/libvirt nodes and virtual machines. PostgreSQL 17 + TimescaleDB is the only runtime data plane. The repository includes the complete dashboard, Abuse Engine, storage views, Admin tools, REST API and Agent protocol in one canonical release tree.
+**Release:** `50.5.9-prod-r10-fresh-install-update-split`
 
+VirtInfra Monitor is a PostgreSQL 17 and TimescaleDB monitoring platform for KVM/libvirt nodes and virtual machines. PostgreSQL is the authoritative datastore for inventory, users, settings, current metrics, historical metrics, Abuse events, Storage I/O and Consumption.
 
-> **Operations source of truth:** [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md)
->
-> **Canonical-source bootstrap:** the installer verifies `SHA256SUMS` and stages only files in the release manifest. Stale duplicate source folders accidentally left in a GitHub Desktop repository are ignored during installation.
+## Deployment model
 
-> Windows GitHub Desktop is supported. The bootstrap validates required files, invokes source scripts through `bash`, and normalizes Linux shell modes after download.
+The release has two explicit entry points:
 
-## Architecture
+- `install.sh` is fresh-install only. It refuses to overwrite an existing application directory, PostgreSQL configuration, container or data volume.
+- `update.sh` is update-only. It requires an existing installation, preserves configuration and credentials, and creates a PostgreSQL backup before replacing application code.
 
-```text
-KVM/libvirt node
-  └─ virtinfra-agent.service
-       ├─ samples local counters every 15 seconds
-       ├─ builds one durable 5-minute operational payload
-       ├─ includes VM and physical Public/Private counter deltas
-       └─ POST /push every 300 seconds
-                    │
-                    ▼
-         Nginx :443 or public IP:8080
-                    │
-                    ▼
-            Gunicorn + Flask
-                    │
-                    ▼
-      PostgreSQL 17 + TimescaleDB
-      single source of truth, loopback only
-```
+There is no automatic install-to-update fallback.
 
-Runtime data is not split between databases. PostgreSQL stores users, settings, inventory, current metrics, Abuse state/events, storage data and history. TimescaleDB is an extension inside the same PostgreSQL database and is used for time-series history. Redis is optional page cache only, disabled by default, and never stores authoritative data.
+## Fresh installation
 
-The Flask runtime is now modular: `app/app.py` is the WSGI entrypoint, `app/runtime_loader.py` enforces the ordered manifest, and functional/compatibility layers live under `app/runtime_layers/`. See [`MODULAR_RUNTIME_ARCHITECTURE.md`](MODULAR_RUNTIME_ARCHITECTURE.md).
+Supported operating systems: Debian 12+ and Ubuntu 22.04+ with systemd. Run as root.
 
-## Exact sampling and retention
-
-The Agent behavior is unchanged:
-
-- local sampling: every **15 seconds**;
-- durable Monitor push: every **300 seconds / 5 minutes**;
-- Consumption rollup: derived server-side from the normal **5-minute** payload;
-- duplicate retry protection: stable node/push and V2 bucket keys;
-- `vm_chart_5m`: one exact point per VM per real 5-minute push, retained for **7 days** without hourly downsampling;
-- `node_chart_5m`: exact 5-minute node/host chart points, retained for **7 days**;
-- `vm_raw_detail_5m`: N-interface raw detail retained for **48 hours**;
-- existing compressed Storage I/O snapshots continue to preserve N-disk history and the current Storage UI behavior;
-- current inventory, latest metrics, users, settings, API keys and active Abuse state are not removed by chart/raw retention;
-- previous compatibility history tables remain available in this release as a safe reader fallback and are not the V2 chart source by default.
-
-## Features preserved
-
-- Login, viewer/admin roles and account logs
-- Dashboard, Top VM, Node Health, Node Detail and VM Detail
-- VM CPU, RAM, network Mbps/PPS, drops/errors and sample quality
-- Per-VM disk capacity, allocation, physical size, throughput and IOPS
-- Node storage `/`, `/home`, `/home2`, `/home3`, swap, filesystem capacity and I/O
-- Current Abuse, Abuse Events, dynamic CPU/network/disk policies
-- UUID-first Storage I/O views, search, filters, sort and pagination
-- Admin node/VM management, queued destructive jobs and exact UUID purge
-- Scoped REST API keys, Allowed IP/CIDR and rate limits
-- Dark/light UI and existing route compatibility
-- Agent deployment through one-command installer or Ansible
-- Consumption after Storage I/O: separate Physical Public, Physical Private, aggregate VM Public and aggregate VM Private RX/TX, node search/filter/sort, coverage and 7-day retention
-- Live Node/VM detail reads the same bounded current rows as Dashboard and Top VM; stale live UUID links redirect to the freshest Node while historical links remain investigable
-
-
-## PostgreSQL-native Maintenance
-
-- FIFO queue for routine jobs with one atomic `starting/running` worker;
-- 30-second heartbeat, one-minute watchdog, stale-unit recovery, queued-job cancellation and automatic next-job dispatch;
-- routine retention, history deletion and `VACUUM (ANALYZE)` stay online;
-- full monitoring/app resets briefly stop ingestion and use atomic `TRUNCATE`, not millions of row-level DELETEs;
-- nuclear reset requires Admin re-authentication, a read-only preview, a server-enforced 15-second review delay, an expiring phrase, an empty queue and a verified PostgreSQL backup;
-- nuclear success/failure audit and Maintenance history are preserved after reset; old Agent retry payloads are blocked by preserved reset epochs;
-- targeted purge shares the same per-node advisory lock as `/push`;
-- `CLEAR LIVE 5M` and the misleading Checkpoint control remain retired;
-- exact action semantics and preserved data are documented in [`docs/MANAGEMENT.md`](docs/MANAGEMENT.md).
-
-Old Agent tokens can be accepted during migration without reinstalling nodes:
-
-```bash
-# /etc/default/bw-monitor
-BW_MONITOR_LEGACY_TOKENS='old-token-1,old-token-2'
-```
-
-Both Agent endpoints validate the primary `BW_MONITOR_TOKEN` plus this optional legacy set.
-
-## Storage V2 operations
-
-The fresh-install default is:
-
-```text
-VIRTINFRA_STORAGE_V2=0
-VIRTINFRA_READ_CHART_V2=0
-VIRTINFRA_RAW_V2=0
-VIRTINFRA_PUSH_OBSERVABILITY=1
-```
-
-Inspect schema, hypertables, policies and job status:
-
-```bash
-virtinfra-monitorctl storage-v2
-```
-
-Run the complete health and database checks:
-
-```bash
-virtinfra-monitorctl doctor
-virtinfra-monitorctl health
-virtinfra-monitorctl db-check
-```
-
-Fast chart-reader rollback keeps all V2 data and restores the previous readers:
-
-```bash
-virtinfra-monitorctl rollback-storage-v2
-```
-
-Detailed design and deployment notes:
-
-- [`docs/STORAGE_V2_AUDIT.md`](docs/STORAGE_V2_AUDIT.md)
-- [`docs/STORAGE_V2_COMPATIBILITY_MATRIX.md`](docs/STORAGE_V2_COMPATIBILITY_MATRIX.md)
-- [`docs/STORAGE_V2_ARCHITECTURE.md`](docs/STORAGE_V2_ARCHITECTURE.md)
-- [`docs/STORAGE_V2_DEPLOYMENT.md`](docs/STORAGE_V2_DEPLOYMENT.md)
-
-## Consumption
-
-The page is placed immediately after **Storage I/O** and uses the existing five-minute Agent payload.
-
-- Agent v15 does not send a separate two-hour request;
-- the `2H` control remains a rolling display range alongside `1H`, `6H`, `12H`, `24H`, `2D` and `7D`;
-- VM full days/hours use existing daily/hourly rollups and only incomplete edges read five-minute rows;
-- physical full hours use `node_consumption_hourly`, with raw five-minute rows only at incomplete edges;
-- `node_bandwidth_consumption_2h` remains a compatibility fallback for pre-upgrade history and old Agents during staged rollout;
-- four summary cards keep Physical Public, Physical Private, VM Public and VM Private separate;
-- summary totals are cached for 60 seconds; table count and rows are produced by one PostgreSQL query;
-- `bw-monitor-inventory-cleanup.timer` runs every ten minutes around `:02`, in ordered `SKIP LOCKED` batches away from normal push boundaries;
-- web page refreshes no longer execute broad inventory UPDATE statements.
-
-See [`docs/CONSUMPTION_VM_NODE.md`](docs/CONSUMPTION_VM_NODE.md) for the exact query and cleanup behavior.
-
-## New server, public IP
-
-Supported hosts: Debian 12+ and Ubuntu 22.04+ with systemd. Run as root:
+### Public IP
 
 ```bash
 apt-get update
@@ -157,32 +30,9 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/install.sh 
 --port 8080
 ```
 
-Open:
+### Domain and HTTPS
 
-```text
-http://203.0.113.10:8080
-```
-
-Credentials are written with root-only permissions to:
-
-```text
-/root/bw-monitor-credentials.env
-```
-
-Show URLs and credentials:
-
-```bash
-virtinfra-monitorctl urls
-virtinfra-monitorctl credentials
-```
-
-## New server, domain + HTTPS
-
-Before installation:
-
-1. Point the domain A/AAAA record to the Monitor server.
-2. Allow inbound TCP 80 and 443.
-3. Make sure the domain resolves publicly.
+Point the domain to the Monitor server and allow TCP 80/443 first.
 
 ```bash
 curl -fsSL \
@@ -192,53 +42,10 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/install.sh 
 --email ops@example.com
 ```
 
-The installer configures Nginx, obtains a Let's Encrypt certificate with Certbot, redirects HTTP to HTTPS, binds Gunicorn to loopback and prints the dashboard/Admin/Agent URLs.
+Generated credentials are stored with root-only permissions in:
 
-## Deploy Agent from a separate Ansible server
-
-```bash
-cd /.data/agent
-git pull --ff-only
-
-read -rsp 'Enter VirtInfra Agent token: ' BW_TOKEN
-echo
-
-bash ansible/deploy-agent.sh \
-  -i ansible/test.txt \
-  --api 'https://monitor.example.com/push' \
-  --token "$BW_TOKEN" \
-  --forks 20 \
-  --serial 10
-
-unset BW_TOKEN
-```
-
-The playbook uses no `sudo` when `ansible_user=root`, keeps `ProtectHome=read-only`, and deploys the exact 15-second sampler / 300-second push defaults.
-
-## Operations
-
-```bash
-virtinfra-monitorctl status
-virtinfra-monitorctl doctor
-virtinfra-monitorctl db-check
-virtinfra-monitorctl logs all 200
-virtinfra-monitorctl follow monitor
-virtinfra-monitorctl backup
-virtinfra-monitorctl retention
-virtinfra-monitorctl psql
-virtinfra-monitorctl update
-```
-
-Switch an existing IP deployment to domain HTTPS:
-
-```bash
-virtinfra-monitorctl domain set monitor.example.com ops@example.com
-```
-
-Switch back to IP mode:
-
-```bash
-virtinfra-monitorctl domain remove 203.0.113.10 8080
+```text
+/root/bw-monitor-credentials.env
 ```
 
 ## Update
@@ -249,105 +56,129 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/update.sh \
 | bash
 ```
 
-The update keeps the PostgreSQL volume, credentials, token, settings, domain/TLS configuration and current data.
+The updater preserves:
 
-## Backup and restore
+- the `bw_monitor_postgres_data` Docker volume;
+- `/etc/default/bw-monitor` and `/etc/default/bw-monitor-postgres` settings;
+- Admin credentials, Agent token, domain/TLS settings and current data;
+- PostgreSQL backup/restore and rollback controls needed for update safety.
+
+Change domain through the update path:
 
 ```bash
-virtinfra-monitorctl backup
+virtinfra-monitorctl domain set monitor.example.com ops@example.com
+virtinfra-monitorctl domain remove 203.0.113.10 8080
 ```
 
-Backups are stored under:
+## Runtime architecture
 
 ```text
-/var/backups/bw-monitor/YYYYMMDD-HHMMSS/
+virtinfra-agent.service
+    local sample every 15 seconds
+    durable push every 300 seconds
+            |
+            v
+Nginx or public IP -> Gunicorn + Flask -> PostgreSQL 17 + TimescaleDB
 ```
 
-Restore data:
+Core retention contracts:
+
+- `vm_chart_5m` and `node_chart_5m`: exact five-minute points for seven days;
+- `vm_raw_detail_5m`: per-interface raw detail for 48 hours;
+- `node_bandwidth_consumption_2h`: compatibility Consumption history used by existing readers;
+- `/bandwidth-consumption`: VM and physical Public/Private RX/TX views;
+- `VIRTINFRA_READ_CHART_V2` and `VIRTINFRA_RAW_V2`: controlled Storage V2 readers and raw detail switches.
+
+The application keeps the existing CPU, RAM, network, PPS, disk, bandwidth, Abuse, retention and queue calculations unchanged.
+
+## Operations
 
 ```bash
-virtinfra-monitorctl restore \
-  --from /var/backups/bw-monitor/20260715-050000 \
-  --yes
+virtinfra-monitorctl status
+virtinfra-monitorctl health
+virtinfra-monitorctl doctor
+virtinfra-monitorctl db-check
+virtinfra-monitorctl logs all 200
+virtinfra-monitorctl follow monitor
+virtinfra-monitorctl backup
+virtinfra-monitorctl restore --from /var/backups/bw-monitor/TIMESTAMP --yes
+virtinfra-monitorctl retention
+virtinfra-monitorctl vacuum
+virtinfra-monitorctl storage-v2
+virtinfra-monitorctl rollback-storage-v2
+virtinfra-monitorctl update
 ```
 
-Restore data and protected configuration:
+Services and timers:
+
+```text
+bw-monitor.service
+bw-monitor-retention.timer
+bw-monitor-backup.timer
+virtinfra-monitor-health-watch.timer
+bw-monitor-inventory-cleanup.timer
+virtinfra-agent.service
+```
+
+PostgreSQL is exposed only on `127.0.0.1:55432`. The container is `bw-timescaledb`.
+
+## Agent
+
+The Agent uses:
+
+```text
+virtinfra-agent.service
+/etc/virtinfra-agent.env
+/usr/local/lib/virtinfra-agent
+/var/lib/virtinfra-agent
+```
+
+Install one Agent:
 
 ```bash
-virtinfra-monitorctl restore \
-  --from /var/backups/bw-monitor/20260715-050000 \
-  --with-config \
-  --yes
+bash install-agent.sh \
+  --api 'https://monitor.example.com/push' \
+  --token 'YOUR_AGENT_TOKEN'
 ```
+
+Ansible deployment is documented in [`docs/ANSIBLE.md`](docs/ANSIBLE.md).
 
 ## Repository layout
 
 ```text
-app/                         full Flask UI/business logic + PostgreSQL adapter
-postgres/                    Compose and TimescaleDB SQL
-postgres/sql/                bootstrap, hypertables and production indexes
-deploy/postgres/             installer, service, backup/restore, doctor and CLI
-deploy/agent/                complete Agent source and service installer
-ansible/                     Monitor and Agent deployment playbooks
-tests/                       static product contract and live PostgreSQL test
-tools/                       release audit, installer test and archive builder
-docs/                        operator and developer documentation
-install.sh                   GitHub/new-server bootstrap
-update.sh                    in-place update
+app/                 Flask runtime and data access
+postgres/            PostgreSQL/TimescaleDB compose and schema
+postgres/sql/        idempotent schema files
+deploy/postgres/     fresh installer, updater, services and management tools
+deploy/agent/        Agent source and installer
+ansible/             Agent deployment automation
+tests/               runtime and release contracts
+tools/               validation and packaging
 ```
 
 ## Validation
 
-Static/source validation:
-
 ```bash
 ./preflight.sh
+./tools/release-audit.sh
 ```
 
-Live integration requires a disposable PostgreSQL database:
+Live integration requires a disposable database:
 
 ```bash
 BW_TEST_DATABASE_URL='postgresql://user:pass@127.0.0.1:5432/bw_monitor_test' \
 ./preflight.sh --use-current-python
 ```
 
-Release audit and archives:
-
-```bash
-./tools/release-audit.sh
-./tools/build-dist.sh
-```
-
-## Vietnamese production runbooks
-
-- [Start here - end-to-end deployment](START_HERE_VI.md)
-- [GitHub Desktop publishing guide](GITHUB_DESKTOP_VI.md)
-- [All deployment and maintenance commands A-Z](COMMANDS_A_TO_Z_VI.md)
-
 ## Documentation
 
-- [Vietnamese full guide](docs/README_VI.md)
-- [Installation](docs/INSTALL.md)
-- [Domain and HTTPS](docs/DOMAIN.md)
-- [Management CLI](docs/MANAGEMENT.md)
-- [Database and performance](docs/DATABASE.md)
-- [Backup and restore](docs/BACKUP_RESTORE.md)
-- [Agent](docs/AGENT.md)
-- [Ansible](docs/ANSIBLE.md)
-- [Upgrade](docs/UPGRADE.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
-- [Publishing to GitHub](docs/PUBLISHING.md)
-- [API](docs/API.md)
-- [Code guide](docs/CODE_GUIDE.md)
-- [Security](SECURITY.md)
-
-
-## Product identity and upgrade compatibility
-
-The public product name is **VirtInfra Monitor** and the node collector is **VirtInfra Agent**. New Agent deployments use `virtinfra-agent.service`, `/etc/virtinfra-agent.env`, `/usr/local/lib/virtinfra-agent`, and `/var/lib/virtinfra-agent`. The monitor keeps legacy internal `/opt/bw-monitor`, `BW_*`, and `bw-monitor.service` identifiers as compatibility anchors so an upgrade does not move the PostgreSQL data volume, invalidate existing automation, or break the one-command installer. Canonical operator commands are `virtinfra-monitorctl` and `virtinfra-agent-doctor`; the legacy `bw-monitorctl`, `bw-monitor.service`, `BW_*` and old Agent identifiers remain available only as upgrade/integration compatibility anchors.
-
-## Custom Theme Library
-
-The original dashboard `Auto`, `Light`, and `Dark` modes are protected and keep their existing CSS. Administrators can open `Admin -> Themes` to create, edit, publish, hide, duplicate, or delete separate custom themes. Published themes appear in a user selector beside the protected core controls, and every browser keeps its own choice. Built-in templates include VirtInfra Ocean, Grafana Inspired, Zabbix Inspired, Datadog Inspired, Prometheus Inspired, NOC High Contrast, and Dense Operations.
-
-See [docs/THEME_MANAGER.md](docs/THEME_MANAGER.md).
+- [`COMMANDS_A_TO_Z_VI.md`](COMMANDS_A_TO_Z_VI.md)
+- [`docs/INSTALL.md`](docs/INSTALL.md)
+- [`docs/UPGRADE.md`](docs/UPGRADE.md)
+- [`docs/MANAGEMENT.md`](docs/MANAGEMENT.md)
+- [`docs/DATABASE.md`](docs/DATABASE.md)
+- [`docs/BACKUP_RESTORE.md`](docs/BACKUP_RESTORE.md)
+- [`docs/AGENT.md`](docs/AGENT.md)
+- [`docs/ANSIBLE.md`](docs/ANSIBLE.md)
+- [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)
+- [`SECURITY.md`](SECURITY.md)

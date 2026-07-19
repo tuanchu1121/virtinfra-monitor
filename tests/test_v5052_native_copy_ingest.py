@@ -11,7 +11,7 @@ APP_PATH = ROOT / "app" / "app.py"
 PG_PATH = ROOT / "app" / "bw_pg.py"
 APP = read_app_source()
 PG = PG_PATH.read_text(encoding="utf-8")
-INSTALLER = (ROOT / "deploy" / "postgres" / "install-postgres-native.sh").read_text(encoding="utf-8")
+INSTALLER = (ROOT / "deploy" / "postgres" / "provision-postgres-native.sh").read_text(encoding="utf-8")
 INDEX_PROFILE = (ROOT / "postgres" / "sql" / "005_ingest_write_profile.sql").read_text(encoding="utf-8")
 V5052 = (ROOT / "app/runtime_layers/37_native_copy_ingest.py").read_text(encoding="utf-8")
 INGEST_LAYER = (ROOT / "app/runtime_layers/10_ingest_push.py").read_text(encoding="utf-8")
@@ -32,7 +32,7 @@ def _function_source(source: str, name: str) -> str:
 
 
 def test_release_and_native_copy_contract() -> None:
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r9-safe-runtime-history-prune"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r10-fresh-install-update-split"
     assert "def copy_rows(" in PG
     assert "cursor.copy(statement)" in PG
     assert "copy.write_row(values)" in PG

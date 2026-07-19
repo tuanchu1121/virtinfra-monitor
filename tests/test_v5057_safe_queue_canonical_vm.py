@@ -10,7 +10,7 @@ DISPATCH = (ROOT / "app/maintenance_dispatch.py").read_text(encoding="utf-8")
 RUNNER = (ROOT / "app/maintenance.py").read_text(encoding="utf-8")
 NATIVE = (ROOT / "app/maintenance_native.py").read_text(encoding="utf-8")
 MIGRATION = (ROOT / "postgres/sql/007_safe_maintenance_queue.sql").read_text(encoding="utf-8")
-INSTALLER = (ROOT / "deploy/postgres/install-postgres-native.sh").read_text(encoding="utf-8")
+INSTALLER = (ROOT / "deploy/postgres/provision-postgres-native.sh").read_text(encoding="utf-8")
 AGENT_FIX = (ROOT / "deploy/agent/fix-agent-uuid.sh").read_text(encoding="utf-8")
 
 
@@ -40,7 +40,7 @@ def last_function(source: str, name: str) -> str:
 
 
 def test_release_identity():
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r9-safe-runtime-history-prune"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r10-fresh-install-update-split"
 
 
 def test_fifo_queue_allows_waiting_rows_but_only_one_worker():

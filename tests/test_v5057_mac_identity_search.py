@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 from runtime_source import read_app_source
 APP = read_app_source()
 AGENT = (ROOT / "deploy/agent/agent.py").read_text(encoding="utf-8")
-INSTALLER = (ROOT / "deploy/postgres/install-postgres-native.sh").read_text(encoding="utf-8")
+INSTALLER = (ROOT / "deploy/postgres/provision-postgres-native.sh").read_text(encoding="utf-8")
 MIGRATION = (ROOT / "postgres/sql/008_mac_identity_search.sql").read_text(encoding="utf-8")
 
 
@@ -35,7 +35,7 @@ def load_normalizer():
 
 
 def test_release_identity():
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r9-safe-runtime-history-prune"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r10-fresh-install-update-split"
 
 
 def test_existing_agent_already_reports_vm_and_physical_mac():

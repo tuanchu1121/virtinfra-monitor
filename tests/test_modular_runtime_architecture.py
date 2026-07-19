@@ -62,7 +62,7 @@ def test_combined_runtime_remains_the_full_legacy_contract() -> None:
 
 def test_loader_and_installer_ship_every_runtime_layer() -> None:
     loader = LOADER.read_text(encoding="utf-8")
-    installer = (ROOT / "deploy/postgres/install-postgres-native.sh").read_text(encoding="utf-8")
+    installer = (ROOT / "deploy/postgres/provision-postgres-native.sh").read_text(encoding="utf-8")
     bootstrap = (ROOT / "install.sh").read_text(encoding="utf-8")
     assert "manifest.json" in loader
     assert 'rm -rf -- "$APP_DIR/runtime_layers"' in installer

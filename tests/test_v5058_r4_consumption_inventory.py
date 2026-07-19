@@ -4,14 +4,14 @@ ROOT = Path(__file__).resolve().parents[1]
 from runtime_source import read_app_source
 APP = read_app_source()
 AGENT = (ROOT / "deploy" / "agent" / "agent.py").read_text(encoding="utf-8")
-INSTALLER = (ROOT / "deploy" / "postgres" / "install-postgres-native.sh").read_text(encoding="utf-8")
+INSTALLER = (ROOT / "deploy" / "postgres" / "provision-postgres-native.sh").read_text(encoding="utf-8")
 TIMER = (ROOT / "deploy" / "postgres" / "bw-monitor-inventory-cleanup.timer").read_text(encoding="utf-8")
 SQL = (ROOT / "postgres" / "sql" / "010_consumption_inventory_cleanup.sql").read_text(encoding="utf-8")
 VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 
 def test_release_identity():
-    assert VERSION == "50.5.9-prod-r9-safe-runtime-history-prune"
+    assert VERSION == "50.5.9-prod-r10-fresh-install-update-split"
     assert VERSION in APP
     assert VERSION in INSTALLER
 

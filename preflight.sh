@@ -29,8 +29,11 @@ fail(){ echo "ERROR: $*" >&2; exit 1; }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.9-prod-r9-safe-runtime-history-prune" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.5.9-prod-r10-fresh-install-update-split" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/runtime_loader.py \
+   && -f deploy/postgres/install-postgres-native.sh \
+   && -f deploy/postgres/update-postgres-native.sh \
+   && -f deploy/postgres/provision-postgres-native.sh \
    && -f app/runtime_layers/manifest.json \
    && -f app/runtime_layers/00_bootstrap_database.py \
    && -f app/runtime_layers/43_node_groups_loader.py \
@@ -93,8 +96,8 @@ mapfile -d '' pyfiles < <(find app deploy/agent tests tools -type f -name '*.py'
 log "Validate modular runtime architecture"
 "$PYTHON" -m pytest -q tests/test_modular_runtime_architecture.py
 
-log "Validate R9 runtime-history cleanup contract"
-"$PYTHON" -m pytest -q tests/test_r9_runtime_history_prune.py
+log "Validate runtime source-cleanliness contract"
+"$PYTHON" -m pytest -q tests/test_runtime_source_cleanliness.py
 
 log "Validate YAML syntax"
 "$PYTHON" - <<'PY'

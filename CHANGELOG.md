@@ -1,32 +1,26 @@
 # Changelog
 
-## 50.5.9-prod-r9-safe-runtime-history-prune
+## 50.5.9-prod-r10-fresh-install-update-split
 
-This release removes source-history residue without changing the active monitoring system.
+### Fresh installation
 
-### Runtime cleanup
+- `install.sh` is now fresh-install only.
+- Existing application configuration, `/opt/bw-monitor`, the `bw-timescaledb` container and the `bw_monitor_postgres_data` volume cause a fail-closed stop instead of an implicit update.
+- Removed the interactive `setup.sh` wizard and obsolete Core/Enterprise install, update and uninstall aliases.
 
-- Removed 75 superseded top-level function implementations that were neither live after application startup nor executed during bootstrap.
-- Retained the route decorator for `/api/v1/performance`; only its superseded body was reduced because the final handler is rebound later.
-- Removed historical release-banner comments, separator-only comments and repeated blank lines from ordered runtime layers.
-- Preserved the exact semantic bytecode of every function that remains live after startup.
+### Update
 
-### Repository cleanup
+- `update.sh` is the only update bootstrap.
+- Update mode requires an existing Monitor configuration.
+- PostgreSQL backup, current configuration, credentials, tokens, domain/TLS state and data preservation remain in the update path.
+- Domain set/remove commands now call `update.sh`, not the fresh installer.
 
-- Removed generated Python caches and pytest cache data.
-- Removed old call graphs, patch files, route snapshots, screenshot payloads and superseded release reports.
-- Replaced large Node Groups audit payloads with compact route, SQL-hash and UI-pass contracts under `tests/contracts/`.
-- Consolidated documentation around the current PostgreSQL 17 and TimescaleDB architecture.
+### Repository and documentation
 
-### Compatibility
+- Removed duplicate release-history reports, obsolete rollback instructions and duplicate top-level manuals.
+- Removed historical low-I/O and Storage V2 compatibility documents that duplicated current contracts.
+- Rewrote the primary installation/update documentation around the explicit fresh/update split.
 
-The release preserves:
+### Runtime compatibility
 
-- Flask routes, endpoint names and HTTP methods.
-- Agent payloads and authentication.
-- PostgreSQL schema and migrations.
-- CPU, RAM, network, PPS, disk and bandwidth calculations.
-- Abuse detection, queueing, retention and maintenance behavior.
-- Static assets, page structure and current theme behavior.
-
-No production deployment, service restart or database mutation is performed while building this package.
+The Flask runtime, Agent, SQL schema, static assets and all CPU, RAM, network, PPS, disk, bandwidth, Abuse, queue, retention and maintenance calculations are unchanged apart from the release identity string.

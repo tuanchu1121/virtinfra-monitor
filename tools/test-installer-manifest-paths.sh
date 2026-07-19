@@ -16,6 +16,8 @@ create_fixture() {
   local root="$1" style="$2" file
   local required=(
     deploy/postgres/install-postgres-native.sh
+    deploy/postgres/update-postgres-native.sh
+    deploy/postgres/provision-postgres-native.sh
     app/app.py
     app/runtime_loader.py
     app/runtime_layers/manifest.json
@@ -43,7 +45,7 @@ create_fixture() {
     requirements.txt
     VERSION
     CANONICAL_REPOSITORY
-    HUONG_DAN_REPO_MOI_VI.md
+    README.md
   )
 
   mkdir -p "$root"

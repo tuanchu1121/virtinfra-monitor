@@ -8,14 +8,14 @@ def need(cond: bool, message: str) -> None:
         raise AssertionError(message)
 
 version = (ROOT / "VERSION").read_text().strip()
-need(version == "50.5.9-prod-r9-safe-runtime-history-prune", f"unexpected VERSION: {version}")
+need(version == "50.5.9-prod-r10-fresh-install-update-split", f"unexpected VERSION: {version}")
 
 from runtime_source import read_app_source
 app = read_app_source()
 pg = (ROOT / "app/bw_pg.py").read_text()
 agent = (ROOT / "deploy/agent/agent.py").read_text()
 playbook = (ROOT / "ansible/deploy-agent.yml").read_text()
-installer = (ROOT / "deploy/postgres/install-postgres-native.sh").read_text()
+installer = (ROOT / "deploy/postgres/provision-postgres-native.sh").read_text()
 compose = (ROOT / "postgres/docker-compose.yml").read_text()
 timescale = (ROOT / "postgres/sql/002_timescale.sql").read_text()
 indexes = (ROOT / "postgres/sql/003_native_indexes.sql").read_text()
@@ -45,8 +45,9 @@ need("current_setting('timescaledb.license', TRUE)" in storage_sql, "Storage V2 
 need("add_retention_policy" in installer and "add_compression_policy" in installer, "installer policy capability checks missing")
 need("BW_REDIS_ENABLED='$REDIS_CACHE'" in installer, "optional Redis flag missing")
 need("REDIS_CACHE=0" in installer, "Redis must be disabled by default")
-need("fresh-install PostgreSQL Native" in installer, "fresh-install PostgreSQL-native contract missing")
-need("does not import SQLite data" in installer, "no-SQLite-migration contract missing")
+need("VirtInfra Monitor fresh installer" in installer, "fresh installer contract missing")
+need("Fresh mode refuses to overwrite an existing VirtInfra Monitor installation" in installer, "fresh overwrite guard missing")
+need("update.sh requires an existing VirtInfra Monitor installation" in installer, "explicit update contract missing")
 
 
 # v50.4.2 Consumption authentication hotfix with exact 5-minute chart storage and short raw detail.
@@ -99,8 +100,7 @@ need("become: \"{{ (ansible_user | default('root')) != 'root' }}\"" in playbook,
 
 # Product deployment and operations.
 for path in [
-    "install.sh", "update.sh", "backup.sh", "restore.sh", "doctor.sh",
-    "db-check.sh", "audit.sh", "collect-diagnostics.sh", "uninstall.sh",
+    "install.sh", "update.sh", "uninstall.sh",
     "deploy/postgres/bw-monitorctl.sh", "deploy/postgres/backup.sh",
     "deploy/postgres/restore.sh", "deploy/postgres/doctor.sh",
     "deploy/postgres/bw-monitor-retention.timer", "postgres/docker-compose.yml",

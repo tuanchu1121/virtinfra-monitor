@@ -9,7 +9,7 @@ APP = read_app_source()
 AGENT_PATH = ROOT / "deploy/agent/agent.py"
 AGENT = AGENT_PATH.read_text(encoding="utf-8")
 MIGRATION = (ROOT / "postgres/sql/009_low_io_compat.sql").read_text(encoding="utf-8")
-INSTALLER = (ROOT / "deploy/postgres/install-postgres-native.sh").read_text(encoding="utf-8")
+INSTALLER = (ROOT / "deploy/postgres/provision-postgres-native.sh").read_text(encoding="utf-8")
 COMPOSE = (ROOT / "postgres/docker-compose.yml").read_text(encoding="utf-8")
 
 

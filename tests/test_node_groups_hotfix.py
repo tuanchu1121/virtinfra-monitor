@@ -17,7 +17,7 @@ MODULE = ROOT / "app" / "node_groups.py"
 MIGRATION = ROOT / "postgres" / "sql" / "011_node_groups.sql"
 R6_MIGRATION = ROOT / "postgres" / "sql" / "012_node_groups_r6_safety.sql"
 RUNTIME_TOOL = ROOT / "tools" / "node-groups-runtime-validation.py"
-EXPECTED_RELEASE = "50.5.9-prod-r9-safe-runtime-history-prune"
+EXPECTED_RELEASE = "50.5.9-prod-r10-fresh-install-update-split"
 
 
 @pytest.fixture(scope="module")
@@ -52,7 +52,7 @@ def _route_key(item):
 
 def test_release_identity():
     assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == EXPECTED_RELEASE
-    assert f'RELEASE="{EXPECTED_RELEASE}"' in (ROOT / "deploy/postgres/install-postgres-native.sh").read_text(encoding="utf-8")
+    assert f'RELEASE="{EXPECTED_RELEASE}"' in (ROOT / "deploy/postgres/provision-postgres-native.sh").read_text(encoding="utf-8")
 
 
 def test_node_groups_loader_and_required_runtime_sections_are_present():
@@ -189,7 +189,7 @@ def test_local_flag_icons_are_vendored_without_runtime_network_dependency():
 
 
 def test_installer_copies_and_applies_additive_files():
-    installer = (ROOT / "deploy/postgres/install-postgres-native.sh").read_text(encoding="utf-8")
+    installer = (ROOT / "deploy/postgres/provision-postgres-native.sh").read_text(encoding="utf-8")
     bootstrap = (ROOT / "install.sh").read_text(encoding="utf-8")
     for marker in (
         "app/node_groups.py", "postgres/sql/011_node_groups.sql",

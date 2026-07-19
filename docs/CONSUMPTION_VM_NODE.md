@@ -1,6 +1,6 @@
 # Consumption VM/Node
 
-Release: `50.5.9-prod-r9-safe-runtime-history-prune`
+Release: `50.5.9-prod-r10-fresh-install-update-split`
 
 ## Scope
 

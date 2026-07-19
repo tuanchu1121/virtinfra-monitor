@@ -4,8 +4,11 @@ set -Eeuo pipefail
 REPO="${BW_GITHUB_REPO:-tuanchu1121/virtinfra-monitor}"
 REF="${BW_GITHUB_REF:-main}"
 TOKEN="${GITHUB_TOKEN:-}"
+ACTION="${BW_BOOTSTRAP_ACTION:-install}"
 SELF_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$PWD}")" 2>/dev/null && pwd || true)"
 TMP_ROOT=""
+
+case "$ACTION" in install|update) ;; *) echo "Unsupported BW_BOOTSTRAP_ACTION: $ACTION" >&2; exit 2;; esac
 
 cleanup() {
   [[ -z "$TMP_ROOT" ]] || rm -rf -- "$TMP_ROOT"
@@ -17,6 +20,8 @@ repo_complete() {
   local missing=()
   for path in \
     deploy/postgres/install-postgres-native.sh \
+    deploy/postgres/update-postgres-native.sh \
+    deploy/postgres/provision-postgres-native.sh \
     app/app.py \
     app/runtime_loader.py \
     app/runtime_layers/manifest.json \
@@ -44,7 +49,6 @@ repo_complete() {
     requirements.txt \
     VERSION \
     CANONICAL_REPOSITORY \
-    HUONG_DAN_REPO_MOI_VI.md \
     SHA256SUMS
   do
     [[ -f "$root/$path" ]] || missing+=("$path")
@@ -83,7 +87,7 @@ stage_canonical_tree() {
 
   # Only files listed in the signed release manifest are staged. This makes
   # one-command installs safe even when Windows Explorer/GitHub Desktop left
-  # old v48/v49 directories such as release/ or enterprise/ in the repository.
+  # unlisted stale directories in the repository.
   while read -r checksum listed; do
     [[ "$checksum" =~ ^[0-9a-fA-F]{64}$ ]] || {
       printf 'ERROR: Invalid checksum entry: %s %s\n' "$checksum" "$listed" >&2
@@ -122,7 +126,7 @@ stage_canonical_tree() {
   normalize_shell_modes "$clean_root"
   repo_complete "$clean_root"
 
-  printf 'Canonical source staged. Extra legacy files are ignored.\n'
+  printf 'Canonical source staged. Unlisted files are ignored.\n'
 }
 
 run_from_source() {
@@ -134,7 +138,11 @@ run_from_source() {
   stage_canonical_tree "$source_root" "$clean_root"
 
   export BW_GITHUB_REPO="$REPO" BW_GITHUB_REF="$REF"
-  bash "$clean_root/deploy/postgres/install-postgres-native.sh" "$@"
+  case "$ACTION" in
+    install) bash "$clean_root/deploy/postgres/install-postgres-native.sh" "$@" ;;
+    update) bash "$clean_root/deploy/postgres/update-postgres-native.sh" "$@" ;;
+    *) printf 'ERROR: Unsupported bootstrap action: %s\n' "$ACTION" >&2; return 2 ;;
+  esac
 }
 
 if repo_complete "$SELF_DIR" >/dev/null 2>&1; then
@@ -170,4 +178,8 @@ RAW_ROOT="$(find "$TMP_ROOT" -mindepth 1 -maxdepth 1 -type d | head -n1)"
 CLEAN_ROOT="$TMP_ROOT/canonical"
 stage_canonical_tree "$RAW_ROOT" "$CLEAN_ROOT"
 export BW_GITHUB_REPO="$REPO" BW_GITHUB_REF="$REF"
-bash "$CLEAN_ROOT/deploy/postgres/install-postgres-native.sh" "$@"
+case "$ACTION" in
+  install) bash "$CLEAN_ROOT/deploy/postgres/install-postgres-native.sh" "$@" ;;
+  update) bash "$CLEAN_ROOT/deploy/postgres/update-postgres-native.sh" "$@" ;;
+  *) echo "Unsupported bootstrap action: $ACTION" >&2; exit 2 ;;
+esac

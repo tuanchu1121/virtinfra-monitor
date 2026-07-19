@@ -40,8 +40,8 @@ for cmd in re.findall(r"virtinfra-monitorctl\s+([a-z0-9-]+)", markdown):
     assert cmd in allowed, f"unsupported documented virtinfra-monitorctl command: {cmd}"
 
 for name in (
-    "README.md", "START_HERE_VI.md", "SOURCE_OF_TRUTH_VI.md",
-    "GITHUB_DESKTOP_VI.md", "COMMANDS_A_TO_Z_VI.md",
+    "README.md", "COMMANDS_A_TO_Z_VI.md",
+    "docs/README_VI.md", "docs/INSTALL.md", "docs/UPGRADE.md",
 ):
     assert VERSION in ROOT.joinpath(name).read_text(), f"{name} version mismatch"
 

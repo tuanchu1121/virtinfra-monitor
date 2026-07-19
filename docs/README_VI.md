@@ -1,62 +1,32 @@
-# VIRTINFRA MONITOR: TÀI LIỆU VẬN HÀNH
+# Tài liệu VirtInfra Monitor
 
-> Release `50.5.9-prod-r9-safe-runtime-history-prune`
+Release: `50.5.9-prod-r10-fresh-install-update-split`
 
-Runtime hiện tại dùng PostgreSQL 17 + TimescaleDB làm nguồn dữ liệu duy nhất.
+Runtime dùng PostgreSQL 17 + TimescaleDB làm nguồn dữ liệu duy nhất.
 
-## Bắt đầu
+## Cài mới và update
 
-- [`../START_HERE_VI.md`](../START_HERE_VI.md)
-- [`../SOURCE_OF_TRUTH_VI.md`](../SOURCE_OF_TRUTH_VI.md)
-- [`../GITHUB_DESKTOP_VI.md`](../GITHUB_DESKTOP_VI.md)
-- [`../COMMANDS_A_TO_Z_VI.md`](../COMMANDS_A_TO_Z_VI.md)
+- [`INSTALL.md`](INSTALL.md): cài mới trên server sạch.
+- [`UPGRADE.md`](UPGRADE.md): update installation đang hoạt động.
+- [`DOMAIN.md`](DOMAIN.md): domain, Nginx và HTTPS.
+- [`PUBLISHING.md`](PUBLISHING.md): đưa source lên GitHub.
 
-## Cài đặt và update
-
-- [`INSTALL.md`](INSTALL.md)
-- [`UPGRADE.md`](UPGRADE.md)
-- [`DOMAIN.md`](DOMAIN.md)
-- [`PUBLISHING.md`](PUBLISHING.md)
+`install.sh` không tự chuyển thành update. Khi đã có `/opt/bw-monitor`, cấu hình PostgreSQL, container hoặc volume hiện hữu, cài mới sẽ dừng. Mọi nâng cấp đi qua `update.sh`.
 
 ## Vận hành
 
+- [`../COMMANDS_A_TO_Z_VI.md`](../COMMANDS_A_TO_Z_VI.md)
 - [`MANAGEMENT.md`](MANAGEMENT.md)
 - [`OPERATIONS.md`](OPERATIONS.md)
 - [`QUICK_COMMANDS.md`](QUICK_COMMANDS.md)
 - [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md)
 - [`AUDIT.md`](AUDIT.md)
 
-## Database
+## Database, Agent và API
 
 - [`DATABASE.md`](DATABASE.md)
 - [`BACKUP_RESTORE.md`](BACKUP_RESTORE.md)
-
-## Agent và Ansible
-
 - [`AGENT.md`](AGENT.md)
 - [`ANSIBLE.md`](ANSIBLE.md)
-
-## API và code
-
 - [`API.md`](API.md)
 - [`CODE_GUIDE.md`](CODE_GUIDE.md)
-
-## Contract nhanh
-
-```text
-Database: PostgreSQL 17 + TimescaleDB
-Container: bw-timescaledb
-Volume: bw_monitor_postgres_data
-PostgreSQL bind: 127.0.0.1:55432
-Web service: bw-monitor.service
-Retention timer: bw-monitor-retention.timer
-Backup timer: bw-monitor-backup.timer
-Health timer: virtinfra-monitor-health-watch.timer
-Agent service: virtinfra-agent.service
-Consumption: bucket 2 giờ, giữ 7 ngày, không lưu UUID VM
-```
-
-
-## Hướng dẫn cho người mới
-
-- [Hướng dẫn đầy đủ cho repo mới](../HUONG_DAN_REPO_MOI_VI.md)

@@ -1,6 +1,6 @@
 # VirtInfra Monitor - Toàn bộ command triển khai và bảo trì từ A đến Z
 
-> Release: `50.5.9-prod-r9-safe-runtime-history-prune`
+> Release: `50.5.9-prod-r10-fresh-install-update-split`
 >
 > Chạy command Monitor bằng `root`. Với node KVM, chạy Agent bằng `root` để Agent đọc được libvirt, interface, disk và host metrics.
 
@@ -20,7 +20,7 @@ Restore: pg_restore
 
 Không có database file cục bộ để backup, compact hoặc restore. Toàn bộ command database trong guide này đi qua PostgreSQL/TimescaleDB.
 
-Xem kiến trúc đầy đủ tại [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md).
+Xem kiến trúc đầy đủ tại [`README.md`](README.md).
 
 # MỤC LỤC
 
@@ -105,7 +105,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Kết quả mong đợi:
 
 ```text
-50.5.9-prod-r9-safe-runtime-history-prune
+50.5.9-prod-r10-fresh-install-update-split
 ```
 
 ## 2.2 Update chuẩn, có backup trước

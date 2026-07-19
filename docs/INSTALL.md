@@ -1,5 +1,6 @@
 # Installation
 
+Release: `50.5.9-prod-r10-fresh-install-update-split`
 ## Requirements
 
 - Debian 12+ or Ubuntu 22.04+

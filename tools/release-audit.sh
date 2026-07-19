@@ -28,7 +28,7 @@ args=()
 bash ./preflight.sh "${args[@]}"
 
 printf '\n==> Verify product shell entry points\n'
-for f in install.sh update.sh setup.sh backup.sh restore.sh doctor.sh db-check.sh audit.sh collect-diagnostics.sh uninstall.sh install-agent.sh uninstall-agent.sh \
+for f in install.sh update.sh uninstall.sh install-agent.sh uninstall-agent.sh \
   deploy/postgres/*.sh deploy/agent/*.sh ansible/*.sh tools/*.sh; do
   [[ -f "$f" ]] || continue
   head -n 1 "$f" | grep -Eq '^#!/usr/bin/env bash$|^#!/bin/bash$' || { echo "Missing bash shebang: $f" >&2; exit 1; }

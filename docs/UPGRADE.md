@@ -1,13 +1,10 @@
-# Upgrade
+# Update an existing installation
 
-v50 is intended as a fresh PostgreSQL-native installation. This release does not import legacy database data. Agents can be redeployed with the generated v50 token and will repopulate current state on the next 5-minute push.
-
-## Normal v50 update
+Release: `50.5.9-prod-r10-fresh-install-update-split`
+Use this path only when VirtInfra Monitor is already installed. The updater requires both `/etc/default/bw-monitor` and `/etc/default/bw-monitor-postgres`.
 
 ```bash
-virtinfra-monitorctl backup
 virtinfra-monitorctl update
-virtinfra-monitorctl doctor
 ```
 
 Or:
@@ -18,15 +15,30 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/update.sh \
 | bash
 ```
 
-The installer detects the existing v50 environment and preserves PostgreSQL volume, credentials, token, Admin hash, domain/IP mode, TLS state and settings.
+Before application files are replaced, the updater runs the installed PostgreSQL backup tool. It preserves:
 
-## Change release branch/ref
+- the `bw_monitor_postgres_data` volume;
+- PostgreSQL credentials and port;
+- Admin credentials and session secret;
+- Agent token and accepted transition tokens;
+- domain, TLS, Gunicorn and optional Redis settings;
+- all current and historical monitoring data.
 
-Set in `/etc/default/bw-monitor`:
+After update:
 
-```text
-BW_GITHUB_REPO=tuanchu1121/virtinfra-monitor
-BW_GITHUB_REF=main
+```bash
+virtinfra-monitorctl version
+virtinfra-monitorctl status
+virtinfra-monitorctl health
+virtinfra-monitorctl doctor
+virtinfra-monitorctl db-check
 ```
 
-Then run `virtinfra-monitorctl update`.
+Change domain through the updater:
+
+```bash
+virtinfra-monitorctl domain set monitor.example.com ops@example.com
+virtinfra-monitorctl domain remove 203.0.113.10 8080
+```
+
+The fresh installer deliberately refuses an existing installation. Do not use `install.sh` as an update command.

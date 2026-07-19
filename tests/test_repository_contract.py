@@ -19,7 +19,7 @@ required_defaults = {
     "install.sh": f'REPO="${{BW_GITHUB_REPO:-{CANONICAL}}}"',
     "install-agent.sh": f'REPO="${{BW_GITHUB_REPO:-{CANONICAL}}}"',
     "uninstall-agent.sh": f'REPO="${{BW_GITHUB_REPO:-{CANONICAL}}}"',
-    "deploy/postgres/install-postgres-native.sh": f'GITHUB_REPO="${{BW_GITHUB_REPO:-{CANONICAL}}}"',
+    "deploy/postgres/provision-postgres-native.sh": f'GITHUB_REPO="${{BW_GITHUB_REPO:-{CANONICAL}}}"',
     "publish-github.sh": f'REPO="{CANONICAL}"',
 }
 for rel, marker in required_defaults.items():
@@ -42,7 +42,7 @@ for path in ROOT.rglob("*"):
     need(LEGACY not in text, f"legacy repository reference remains in {path.relative_to(ROOT)}")
     need(LEGACY_SHORT not in text, f"legacy repository name remains in {path.relative_to(ROOT)}")
 
-for rel in ("README.md", "START_HERE_VI.md", "GITHUB_DESKTOP_VI.md", "HUONG_DAN_REPO_MOI_VI.md",
+for rel in ("README.md", "COMMANDS_A_TO_Z_VI.md",
             "docs/INSTALL.md", "docs/AGENT.md", "docs/UPGRADE.md", "docs/PUBLISHING.md"):
     text = (ROOT / rel).read_text(encoding="utf-8")
     need(CANONICAL in text, f"canonical repository is missing from {rel}")

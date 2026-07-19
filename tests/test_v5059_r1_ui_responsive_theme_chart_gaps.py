@@ -6,7 +6,7 @@ APP = read_app_source()
 
 
 def test_release_marker():
-    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "50.5.9-prod-r9-safe-runtime-history-prune"
+    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "50.5.9-prod-r10-fresh-install-update-split"
     assert 'V5059R2_RELEASE = "50.5.9-prod-r3-ui-alignment-overflow-hotfix"' in APP
 
 

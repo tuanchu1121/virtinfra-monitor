@@ -4,7 +4,7 @@ ROOT = Path(__file__).resolve().parents[1]
 from runtime_source import read_app_source
 APP = read_app_source()
 SV2 = (ROOT / "app" / "storage_v2.py").read_text(encoding="utf-8")
-INSTALLER = (ROOT / "deploy" / "postgres" / "install-postgres-native.sh").read_text(encoding="utf-8")
+INSTALLER = (ROOT / "deploy" / "postgres" / "provision-postgres-native.sh").read_text(encoding="utf-8")
 
 
 def test_batched_ingest_contract():

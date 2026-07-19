@@ -1,6 +1,6 @@
 # Đưa VirtInfra Monitor lên GitHub bằng GitHub Desktop
 
-> Release: `50.5.9-prod-r7-modular-runtime-refactor`
+> Release: `50.5.9-prod-r8-safe-dead-code-prune`
 
 > Dùng cho release `50.5.9-prod-r3-ui-alignment-overflow-hotfix`.
 

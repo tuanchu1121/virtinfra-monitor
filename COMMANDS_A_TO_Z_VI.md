@@ -1,6 +1,6 @@
 # VirtInfra Monitor - Toàn bộ command triển khai và bảo trì từ A đến Z
 
-> Release: `50.5.9-prod-r7-modular-runtime-refactor`
+> Release: `50.5.9-prod-r8-safe-dead-code-prune`
 
 > Release: `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
 >

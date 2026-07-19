@@ -1,6 +1,6 @@
 # VirtInfra Monitor modular runtime
 
-Release: `50.5.9-prod-r7-modular-runtime-refactor`
+Release: `50.5.9-prod-r8-safe-dead-code-prune`
 
 ## Purpose
 

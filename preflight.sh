@@ -29,7 +29,7 @@ fail(){ echo "ERROR: $*" >&2; exit 1; }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.9-prod-r7-modular-runtime-refactor" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.5.9-prod-r8-safe-dead-code-prune" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/runtime_loader.py \
    && -f app/runtime_layers/manifest.json \
    && -f app/runtime_layers/00_bootstrap_database.py \

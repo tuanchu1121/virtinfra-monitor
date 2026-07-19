@@ -68,47 +68,6 @@ def _apply_abuse_settings_to_runtime(cfg):
         ABUSE_DISK_REQUIRED_SECONDS = 10**9
 
 
-def _insert_abuse_event(conn, event_type, state, event_time, flags=None, severity=None, cfg=None, detail=""):
-    if not state:
-        return
-    flags = state.get("abuse_flags", "") if flags is None else flags
-    severity = safe_float(state.get("severity"), 0.0) if severity is None else severity
-    cfg = cfg or get_abuse_settings(conn)
-    thresholds = {
-        "network_enabled": cfg["network_enabled"],
-        "network_pps": cfg["network_pps"],
-        "network_required_seconds": cfg["network_required_seconds"],
-        "cpu_enabled": cfg["cpu_enabled"],
-        "cpu_full_percent": cfg["cpu_full_percent"],
-        "cpu_required_seconds": cfg["cpu_required_seconds"],
-        "disk_enabled": cfg["disk_enabled"],
-        "disk_read_bps": cfg["disk_read_bps"],
-        "disk_write_bps": cfg["disk_write_bps"],
-        "disk_bps": cfg["disk_bps"],
-        "disk_iops": cfg["disk_iops"],
-        "disk_required_seconds": cfg["disk_required_seconds"],
-    }
-    conn.execute("""
-        INSERT OR IGNORE INTO vm_abuse_events(
-          event_time,event_type,node,vm_uuid,abuse_flags,severity,
-          rx_pps,tx_pps,rx_peak_pps,tx_peak_pps,seconds_over_rx_pps,seconds_over_tx_pps,
-          cpu_full_percent,cpu_core_percent,vcpu_current,cpu_streak_seconds,
-          disk_read_bps,disk_write_bps,disk_read_iops,disk_write_iops,disk_streak_seconds,
-          thresholds_json,detail
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-    """, (
-        safe_int(event_time, now_ts()), str(event_type), str(state.get("node") or ""), str(state.get("vm_uuid") or ""),
-        str(flags or ""), safe_float(severity, 0.0),
-        safe_float(state.get("rx_pps"),0), safe_float(state.get("tx_pps"),0),
-        safe_float(state.get("rx_peak_pps"),0), safe_float(state.get("tx_peak_pps"),0),
-        safe_int(state.get("seconds_over_rx_pps"),0), safe_int(state.get("seconds_over_tx_pps"),0),
-        safe_float(state.get("cpu_full_percent"),0), safe_float(state.get("cpu_core_percent"),0),
-        safe_int(state.get("vcpu_current"),0), safe_int(state.get("cpu_streak_seconds"),0),
-        safe_float(state.get("disk_read_bps"),0), safe_float(state.get("disk_write_bps"),0),
-        safe_float(state.get("disk_read_iops"),0), safe_float(state.get("disk_write_iops"),0),
-        safe_int(state.get("disk_streak_seconds"),0),
-        json.dumps(thresholds, separators=(",", ":")), str(detail or "")[:1000],
-    ))
 
 
 def _disk_policy_text(cfg):

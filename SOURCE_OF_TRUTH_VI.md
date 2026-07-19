@@ -1,6 +1,6 @@
 # SOURCE OF TRUTH VẬN HÀNH
 
-> Release: `50.5.9-prod-r7-modular-runtime-refactor`
+> Release: `50.5.9-prod-r8-safe-dead-code-prune`
 
 >
 > Tài liệu này được đối chiếu trực tiếp với `install.sh`, `deploy/postgres/*`, `deploy/agent/*`, `postgres/docker-compose.yml`, `app/app.py`, `app/runtime_loader.py`, `app/runtime_layers/` và các test contract hiện tại.

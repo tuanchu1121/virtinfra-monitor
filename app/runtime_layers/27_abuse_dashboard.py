@@ -1295,18 +1295,6 @@ def _v48129_ram_block(current_kib, rss_kib, available_kib, usable_kib, guest_pct
     </div>"""
 
 
-def _v48129_vm_detail_cpu_stat(core_percent, vcpu):
-    core = max(0.0, safe_float(core_percent, 0.0))
-    vcpu_count = max(0, safe_int(vcpu, 0))
-    full = pct_clamp(core / vcpu_count) if vcpu_count > 0 else 0.0
-    level = _v48129_level(full)
-    return f"""
-    <div class="stat vm-detail-cpu-stat resource-{level}">
-      <span class="vm-detail-stat-label">CPU</span>
-      <b>{full:.1f}% full</b>
-      <span class="resource-meter vm-detail-cpu-meter"><i style="width:{min(100.0,full):.1f}%"></i></span>
-      <small>{core:.1f}% core · {vcpu_count} vCPU</small>
-    </div>"""
 
 
 def _v48129_group_header(title, options, values):

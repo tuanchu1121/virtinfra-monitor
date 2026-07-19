@@ -17,7 +17,7 @@ MODULE = ROOT / "app" / "node_groups.py"
 MIGRATION = ROOT / "postgres" / "sql" / "011_node_groups.sql"
 R6_MIGRATION = ROOT / "postgres" / "sql" / "012_node_groups_r6_safety.sql"
 RUNTIME_TOOL = ROOT / "tools" / "node-groups-runtime-validation.py"
-EXPECTED_RELEASE = "50.5.9-prod-r7-modular-runtime-refactor"
+EXPECTED_RELEASE = "50.5.9-prod-r8-safe-dead-code-prune"
 
 
 @pytest.fixture(scope="module")

@@ -110,16 +110,6 @@ def _apply_abuse_settings_to_runtime(cfg):
         ABUSE_DISK_REQUIRED_SECONDS = 10**9
 
 
-def get_agent_runtime_config():
-    # Agent still sends exactly the same payload. Only the PPS sampler threshold
-    # needs to be returned to Agent v10. AVG Mbps is calculated from existing
-    # counter deltas on the monitor, so no agent redeploy is required.
-    cfg = get_abuse_settings()
-    return {
-        "revision": cfg["revision"],
-        "pps_warn": cfg["network_pps"] if cfg["network_enabled"] else 0,
-        "network_enabled": bool(cfg["network_enabled"]),
-    }
 
 
 def _abuse_state_map(conn, node):
@@ -147,56 +137,6 @@ def _abuse_state_map(conn, node):
     return {str(r[1]): dict(zip(keys, r)) for r in rows}
 
 
-def _insert_abuse_event(conn, event_type, state, event_time, flags=None, severity=None, cfg=None, detail=""):
-    if not state:
-        return
-    flags = state.get("abuse_flags", "") if flags is None else flags
-    severity = safe_float(state.get("severity"), 0.0) if severity is None else severity
-    cfg = cfg or get_abuse_settings(conn)
-    thresholds = {
-        "network_enabled": cfg["network_enabled"],
-        "network_pps": cfg["network_pps"],
-        "network_required_seconds": cfg["network_required_seconds"],
-        "network_mbps_enabled": cfg["network_mbps_enabled"],
-        "network_avg_mbps": cfg["network_avg_mbps"],
-        "network_mbps_required_seconds": cfg["network_mbps_required_seconds"],
-        "cpu_enabled": cfg["cpu_enabled"],
-        "cpu_full_percent": cfg["cpu_full_percent"],
-        "cpu_required_seconds": cfg["cpu_required_seconds"],
-        "disk_enabled": cfg["disk_enabled"],
-        "disk_read_bps": cfg["disk_read_bps"],
-        "disk_write_bps": cfg["disk_write_bps"],
-        "disk_bps": cfg["disk_bps"],
-        "disk_iops": cfg["disk_iops"],
-        "disk_required_seconds": cfg["disk_required_seconds"],
-    }
-    conn.execute("""
-        INSERT OR IGNORE INTO vm_abuse_events(
-          event_time,event_type,node,vm_uuid,abuse_flags,severity,
-          rx_pps,tx_pps,rx_peak_pps,tx_peak_pps,seconds_over_rx_pps,seconds_over_tx_pps,
-          cpu_full_percent,cpu_core_percent,vcpu_current,cpu_streak_seconds,
-          disk_read_bps,disk_write_bps,disk_read_iops,disk_write_iops,disk_streak_seconds,
-          thresholds_json,detail,rx_mbps,tx_mbps,
-          network_rx_mbps_streak_seconds,network_tx_mbps_streak_seconds
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-    """, (
-        safe_int(event_time, now_ts()), str(event_type), str(state.get("node") or ""), str(state.get("vm_uuid") or ""),
-        str(flags or ""), safe_float(severity, 0.0),
-        safe_float(state.get("rx_pps"),0), safe_float(state.get("tx_pps"),0),
-        safe_float(state.get("rx_peak_pps"),0), safe_float(state.get("tx_peak_pps"),0),
-        safe_int(state.get("seconds_over_rx_pps"),0), safe_int(state.get("seconds_over_tx_pps"),0),
-        safe_float(state.get("cpu_full_percent"),0), safe_float(state.get("cpu_core_percent"),0),
-        safe_int(state.get("vcpu_current"),0), safe_int(state.get("cpu_streak_seconds"),0),
-        safe_float(state.get("disk_read_bps"),0), safe_float(state.get("disk_write_bps"),0),
-        safe_float(state.get("disk_read_iops"),0), safe_float(state.get("disk_write_iops"),0),
-        safe_int(state.get("disk_streak_seconds"),0),
-        json.dumps(thresholds, separators=(",", ":")),
-        (f"{str(detail or '').strip()}; RX AVG {safe_float(state.get('rx_mbps'),0):.2f} Mbps; "
-         f"TX AVG {safe_float(state.get('tx_mbps'),0):.2f} Mbps").strip("; ")[:1000],
-        safe_float(state.get("rx_mbps"),0), safe_float(state.get("tx_mbps"),0),
-        safe_int(state.get("network_rx_mbps_streak_seconds"),0),
-        safe_int(state.get("network_tx_mbps_streak_seconds"),0),
-    ))
 
 
 def _abuse_flag_labels(flags, cfg):
@@ -219,178 +159,8 @@ def _abuse_flag_labels(flags, cfg):
 
 # Use the original bounded current-state writer directly, then add the dynamic
 # AVG Mbps streak before creating event records. This avoids scanning history.
-def refresh_fast_current_state(conn, node, data_time, interval_seconds, interfaces, vms, node_host, inventory_complete=False):
-    cfg = get_abuse_settings(conn)
-    _apply_abuse_settings_to_runtime(cfg)
-    before = _abuse_state_map(conn, node)
-
-    normalized_interfaces = []
-    for item in interfaces or []:
-        if not isinstance(item, dict):
-            normalized_interfaces.append(item)
-            continue
-        copy_item = dict(item)
-        reported = copy_item.get("pps_warn_threshold")
-        mismatch = False
-        if not cfg["network_enabled"]:
-            mismatch = True
-        elif reported is not None:
-            mismatch = abs(safe_float(reported, cfg["network_pps"]) - cfg["network_pps"]) > max(1.0, cfg["network_pps"] * 0.001)
-        if mismatch:
-            for key in ("seconds_over_pps", "seconds_over_rx_pps", "seconds_over_tx_pps"):
-                copy_item[key] = 0
-        normalized_interfaces.append(copy_item)
-
-    result = _refresh_fast_current_state_v470(
-        conn, node, data_time, interval_seconds, normalized_interfaces, vms, node_host, inventory_complete
-    )
-
-    current_rows = conn.execute("""
-        SELECT c.vm_uuid,c.last_seen,c.interval_seconds,c.rx_mbps,c.tx_mbps,
-               a.is_abuse,a.abuse_since,a.abuse_flags,a.severity
-        FROM vm_current_fast c
-        JOIN vm_abuse_state a ON a.node=c.node AND a.vm_uuid=c.vm_uuid
-        WHERE c.node=? AND c.last_seen=?
-    """, (node, data_time)).fetchall()
-
-    for vm_uuid, last_seen, vm_interval, rx_mbps, tx_mbps, base_is_abuse, base_since, base_flags, base_severity in current_rows:
-        vm_uuid = str(vm_uuid)
-        old = before.get(vm_uuid) or {}
-        prev_seen = safe_int(old.get("last_seen"), 0)
-        contiguous = bool(prev_seen and 0 < data_time - prev_seen <= max(safe_int(vm_interval, interval_seconds) + 120, 420))
-        step_seconds = min(max(1, safe_int(vm_interval, interval_seconds)), CACHE_BUCKET_SECONDS)
-
-        rx_now = bool(cfg["network_mbps_enabled"] and cfg["network_avg_mbps"] > 0 and safe_float(rx_mbps, 0) >= cfg["network_avg_mbps"])
-        tx_now = bool(cfg["network_mbps_enabled"] and cfg["network_avg_mbps"] > 0 and safe_float(tx_mbps, 0) >= cfg["network_avg_mbps"])
-        old_rx_streak = safe_int(old.get("network_rx_mbps_streak_seconds"), 0)
-        old_tx_streak = safe_int(old.get("network_tx_mbps_streak_seconds"), 0)
-        rx_streak = (old_rx_streak + step_seconds if contiguous else step_seconds) if rx_now else 0
-        tx_streak = (old_tx_streak + step_seconds if contiguous else step_seconds) if tx_now else 0
-        rx_hit = rx_streak >= cfg["network_mbps_required_seconds"] if cfg["network_mbps_enabled"] and cfg["network_avg_mbps"] > 0 else False
-        tx_hit = tx_streak >= cfg["network_mbps_required_seconds"] if cfg["network_mbps_enabled"] and cfg["network_avg_mbps"] > 0 else False
-
-        flags = [x for x in str(base_flags or "").split(",") if x]
-        if rx_hit and "NETWORK_RX_AVG_MBPS" not in flags:
-            flags.append("NETWORK_RX_AVG_MBPS")
-        if tx_hit and "NETWORK_TX_AVG_MBPS" not in flags:
-            flags.append("NETWORK_TX_AVG_MBPS")
-
-        severity = safe_float(base_severity, 0.0)
-        if rx_hit:
-            severity = max(severity, safe_float(rx_mbps, 0) / max(cfg["network_avg_mbps"], 0.001))
-        if tx_hit:
-            severity = max(severity, safe_float(tx_mbps, 0) / max(cfg["network_avg_mbps"], 0.001))
-
-        final_active = 1 if flags else 0
-        old_active = bool(safe_int(old.get("is_abuse"), 0))
-        if final_active:
-            final_since = safe_int(old.get("abuse_since"), 0) if old_active and safe_int(old.get("abuse_since"), 0) else data_time
-        else:
-            final_since = 0
-
-        conn.execute("""
-            UPDATE vm_abuse_state
-            SET is_abuse=?,abuse_since=?,abuse_flags=?,severity=?,
-                network_rx_mbps_hit=?,network_tx_mbps_hit=?,
-                network_rx_mbps_streak_seconds=?,network_tx_mbps_streak_seconds=?,
-                rx_mbps=?,tx_mbps=?
-            WHERE node=? AND vm_uuid=?
-        """, (
-            final_active, final_since, ",".join(flags), severity,
-            1 if rx_hit else 0, 1 if tx_hit else 0,
-            rx_streak, tx_streak, safe_float(rx_mbps,0), safe_float(tx_mbps,0),
-            node, vm_uuid,
-        ))
-
-    after = _abuse_state_map(conn, node)
-    for vm_uuid in sorted(set(before) | set(after)):
-        old = before.get(vm_uuid)
-        new = after.get(vm_uuid)
-        old_active = bool(safe_int((old or {}).get("is_abuse"), 0))
-        new_active = bool(safe_int((new or {}).get("is_abuse"), 0))
-        old_flags = str((old or {}).get("abuse_flags") or "")
-        new_flags = str((new or {}).get("abuse_flags") or "")
-        if new_active and not old_active:
-            _insert_abuse_event(conn, "started", new, data_time, cfg=cfg, detail="VM entered sustained abuse state")
-        elif new_active and old_active and new_flags != old_flags:
-            _insert_abuse_event(conn, "updated", new, data_time, cfg=cfg, detail=f"flags {old_flags or '-'} -> {new_flags or '-'}")
-        elif old_active and not new_active:
-            state = dict(new or old or {})
-            state["node"] = node
-            state["vm_uuid"] = vm_uuid
-            _insert_abuse_event(
-                conn, "recovered", state, data_time, flags=old_flags,
-                severity=safe_float((old or {}).get("severity"),0), cfg=cfg,
-                detail="VM no longer satisfies any sustained abuse rule",
-            )
-    return result
 
 
-def abuse_settings_admin_card():
-    cfg = get_abuse_settings()
-    msg = (request.args.get("abusemsg") or request.args.get("msg") or "").strip()[:700]
-    current, total, started, recovered = _abuse_admin_counts()
-    return f"""{_abuse_page_style()}
-    <style>
-      .abuse-setting-box .setting-help{{font-size:11px;color:#6b7280;font-weight:500;line-height:1.45}}
-      .abuse-admin-actions{{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}}
-      .abuse-policy-summary{{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:8px;margin:12px 0}}
-      .abuse-policy-summary>div{{border:1px solid #e5e7eb;border-radius:9px;padding:10px;background:#fff}}
-      .abuse-policy-summary small{{display:block;color:#6b7280}}
-      .network-rule-split{{display:grid;grid-template-columns:1fr 1fr;gap:10px}}
-      .network-rule-split>div{{border-top:1px dashed #cbd5e1;padding-top:9px;margin-top:4px}}
-      html[data-theme=dark] .abuse-policy-summary>div{{background:#111827;border-color:#334155}}
-      @media(max-width:900px){{.network-rule-split{{grid-template-columns:1fr}}.abuse-policy-summary{{grid-template-columns:repeat(2,minmax(120px,1fr))}}}}
-    </style>
-    <div class="card" id="abuse-policy-admin">
-      <div class="table-title-row"><h3>VM Abuse Management</h3><div class="count-badges"><span>Policy <b>dynamic</b></span><span>Restart <b>not required</b></span><span>Agent payload <b>unchanged</b></span></div></div>
-      {f'<div class="success-box">{escape(msg)}</div>' if msg else ''}
-      <div class="admin-note"><b>Only Admin can clear abuse history.</b> PPS uses Agent v10 directional timers. AVG Mbps, CPU and Disk are evaluated from the same payload already being sent, so adding or changing the AVG Mbps rule does not require an agent redeploy.</div>
-      <div class="abuse-policy-summary"><div><small>Current abuse</small><b>{current}</b></div><div><small>Saved events</small><b>{total}</b></div><div><small>Started</small><b>{started}</b></div><div><small>Recovered</small><b>{recovered}</b></div></div>
-      <form method="post" action="{url_for('admin_abuse_settings')}">
-        <input type="hidden" name="csrf_token" value="{escape(csrf_token(),quote=True)}"><input type="hidden" name="action" value="save">
-        <div class="abuse-settings-grid">
-          <div class="abuse-setting-box">
-            <h4>Network</h4>
-            <div class="network-rule-split">
-              <div>
-                <label class="enable-line"><input type="checkbox" name="network_enabled" {'checked' if cfg['network_enabled'] else ''}> Enable directional PPS abuse</label>
-                <label>RX or TX PPS threshold<input type="number" name="network_pps" min="1000" max="100000000" step="1000" value="{cfg['network_pps']:.0f}"></label>
-                <label>Required seconds in each 5-minute sample<input type="number" name="network_required_seconds" min="15" max="300" step="15" value="{cfg['network_required_seconds']}"></label>
-                <div class="setting-help">Either receive PPS or send PPS must stay above the threshold for the configured sampled seconds.</div>
-              </div>
-              <div>
-                <label class="enable-line"><input type="checkbox" name="network_mbps_enabled" {'checked' if cfg['network_mbps_enabled'] else ''}> Enable directional AVG Mbps abuse</label>
-                <label>RX or TX AVG Mbps threshold<input type="number" name="network_avg_mbps" min="0" max="1000000" step="10" value="{cfg['network_avg_mbps']:.1f}"></label>
-                <label>Required consecutive minutes<input type="number" name="network_mbps_required_minutes" min="5" max="1440" step="5" value="{cfg['network_mbps_required_seconds']//60}"></label>
-                <div class="setting-help">Uses the full push-window average for each direction. A value of 0 disables this threshold.</div>
-              </div>
-            </div>
-          </div>
-          <div class="abuse-setting-box">
-            <h4>CPU</h4>
-            <label class="enable-line"><input type="checkbox" name="cpu_enabled" {'checked' if cfg['cpu_enabled'] else ''}> Enable CPU abuse</label>
-            <label>CPU Full % of assigned vCPU<input type="number" name="cpu_full_percent" min="1" max="100" step="0.1" value="{cfg['cpu_full_percent']:.1f}"></label>
-            <div class="setting-help">CPU Full% is normalized by assigned vCPU. Example: 360 Core% on 4 vCPU equals 90 Full%.</div>
-            <label>Required consecutive minutes<input type="number" name="cpu_required_minutes" min="5" max="1440" step="5" value="{cfg['cpu_required_seconds']//60}"></label>
-          </div>
-          <div class="abuse-setting-box">
-            <h4>Disk I/O</h4>
-            <label class="enable-line"><input type="checkbox" name="disk_enabled" {'checked' if cfg['disk_enabled'] else ''}> Enable disk abuse</label>
-            <label>Read threshold MiB/s <small>(0 = disabled)</small><input type="number" name="disk_read_mibps" min="0" max="100000" step="1" value="{cfg['disk_read_bps']/1024/1024:.0f}"></label>
-            <label>Write threshold MiB/s <small>(0 = disabled)</small><input type="number" name="disk_write_mibps" min="0" max="100000" step="1" value="{cfg['disk_write_bps']/1024/1024:.0f}"></label>
-            <label>Total read + write MiB/s <small>(0 = disabled)</small><input type="number" name="disk_mibps" min="0" max="100000" step="1" value="{cfg['disk_bps']/1024/1024:.0f}"></label>
-            <label>Total read + write IOPS <small>(0 = disabled)</small><input type="number" name="disk_iops" min="0" max="10000000" step="100" value="{cfg['disk_iops']:.0f}"></label>
-            <div class="setting-help">Disk uses OR logic between every non-zero threshold.</div>
-            <label>Required consecutive minutes<input type="number" name="disk_required_minutes" min="5" max="1440" step="5" value="{cfg['disk_required_seconds']//60}"></label>
-          </div>
-        </div>
-        <div class="abuse-admin-actions"><button type="submit">Save Abuse Policy</button><a class="btn" href="{url_for('admin_abuse_page')}">Manage Abuse History</a><a class="btn" href="{url_for('vm_abuse_page')}">Open Viewer Page</a></div>
-      </form>
-      <form method="post" action="{url_for('admin_abuse_settings')}" onsubmit="return confirm('Reset all abuse thresholds to defaults?')" style="margin-top:8px">
-        <input type="hidden" name="csrf_token" value="{escape(csrf_token(),quote=True)}"><input type="hidden" name="action" value="reset"><button class="btn" type="submit">Reset defaults</button>
-      </form>
-    </div>"""
 
 
 def admin_abuse_settings_v484():
@@ -1034,14 +804,6 @@ def get_vm_directional_current(node, vm_uuid):
         return {}
     return _get_vm_directional_current_v483(node, vm_uuid)
 
-def vm_period_links(current,node,vm_uuid,bridge,iface):
-    links = _vm_period_links_v483(current,node,vm_uuid,bridge,iface)
-    at = _request_target_ts()
-    params = {"node":node,"vm_uuid":vm_uuid,"bridge":bridge,"iface":iface,"period":current}
-    compact = f"""<form class="custom-time-form" style="display:flex;flex-basis:100%;margin-top:10px" method="get" action="{url_for('vm_page')}">
-      <input type="hidden" name="node" value="{escape(node,quote=True)}"><input type="hidden" name="vm_uuid" value="{escape(vm_uuid,quote=True)}"><input type="hidden" name="bridge" value="{escape(bridge,quote=True)}"><input type="hidden" name="iface" value="{escape(iface,quote=True)}"><input type="hidden" name="period" value="{escape(current,quote=True)}">
-      <label>Custom end time<input type="datetime-local" name="at" value="{escape(_datetime_local_value(at),quote=True)}" required></label><button type="submit">Open time</button>{f'<a class="clear" href="{escape(url_for("vm_page",**params),quote=True)}">Use live</a>' if at else ''}</form>"""
-    return links + compact
 
 
 def top_node_page_v484():

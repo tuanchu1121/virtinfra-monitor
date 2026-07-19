@@ -704,18 +704,6 @@ def _v48136_storage_disk_group_table(conn, values, start_ts):
 _v48136_storage_disk_filtered_base = _v48133_storage_disk_table
 
 
-def _v48133_storage_disk_table(conn, values, start_ts):
-    # All storage: compact VM hierarchy. A selected mount is a forensic view,
-    # so keep each matching virtual disk as an independent sortable row.
-    if not str(values.get("mount") or "").strip():
-        return _v48136_storage_disk_group_table(conn, values, start_ts)
-    filtered = _v48136_storage_disk_filtered_base(conn, values, start_ts)
-    clear_mount = _storage_io_url(values, mount="", page=1)
-    banner = (
-        V48136_STORAGE_CSS
-        + f'<div class="storage-filtered-banner"><div><b>FILTERED STORAGE: {escape(values.get("mount") or "-")}</b><span> · one matching virtual disk per row for direct I/O comparison</span></div><a href="{escape(clear_mount,quote=True)}">Back to grouped All view</a></div>'
-    )
-    return banner + filtered
 
 
 def _v48136_real_storage_rows(conn, values, start_ts):
@@ -835,15 +823,5 @@ def _v48136_storage_node_group_table(conn, values, start_ts):
 _v48136_storage_node_filtered_base = _v48133_storage_node_table
 
 
-def _v48133_storage_node_table(conn, values, start_ts):
-    if not str(values.get("mount") or "").strip():
-        return _v48136_storage_node_group_table(conn, values, start_ts)
-    filtered = _v48136_storage_node_filtered_base(conn, values, start_ts)
-    clear_mount = _storage_io_url(values, mount="", page=1)
-    return (
-        V48136_STORAGE_CSS
-        + f'<div class="storage-filtered-banner"><div><b>FILTERED FILESYSTEM: {escape(values.get("mount") or "-")}</b><span> · matching node mount rows</span></div><a href="{escape(clear_mount,quote=True)}">Back to grouped All view</a></div>'
-        + filtered
-    )
 
 # ---------------------------------------------------------------------------

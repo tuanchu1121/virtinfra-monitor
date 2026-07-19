@@ -39,28 +39,6 @@ def db():
 _refresh_fast_current_state_v48103_base = refresh_fast_current_state
 
 
-def refresh_fast_current_state(conn, node, data_time, interval_seconds, interfaces, vms, node_host, inventory_complete=False):
-    """Keep v48.10.2 behavior, then persist guest balloon fields in current caches."""
-    _refresh_fast_current_state_v48103_base(
-        conn, node, data_time, interval_seconds, interfaces, vms, node_host,
-        inventory_complete=inventory_complete,
-    )
-    for vm_item in vms or []:
-        if not isinstance(vm_item, dict):
-            continue
-        vm_uuid = str(vm_item.get("vm_uuid") or "").strip()
-        if not vm_uuid or vm_uuid == "-":
-            continue
-        unused = max(0, safe_int(vm_item.get("ram_unused_kib"), 0))
-        usable = max(0, safe_int(vm_item.get("ram_usable_kib"), 0))
-        conn.execute(
-            "UPDATE vm_current_fast SET ram_unused_kib=?,ram_usable_kib=? WHERE node=? AND vm_uuid=?",
-            (unused, usable, node, vm_uuid),
-        )
-        conn.execute(
-            "UPDATE vm_latest_metrics SET ram_unused_kib=?,ram_usable_kib=? WHERE node=? AND vm_uuid=?",
-            (unused, usable, node, vm_uuid),
-        )
 
 
 def vm_guest_ram_metrics(current_kib=0, rss_kib=0, available_kib=0, unused_kib=0, usable_kib=0):
@@ -322,61 +300,6 @@ def _v48103_top_ram_link(label, key, period, q, current_sort, current_order, sco
     return _v48102_top_sort_link(label, key, period, q, current_sort, current_order, scope, limit)
 
 
-def top_vm_table(rows, period, q, sort_by, order, scope, limit):
-    body = ""
-    for rank, row in enumerate(rows, 1):
-        (
-            node, vm_uuid, iface_count, public_total, private_total, rx, tx, total,
-            packets, drops, errors, avg_mbps, peak_mbps, avg_pps, peak_pps,
-            sample_count, sample_expected, sample_max_gap, seconds_over_pps, seconds_over_mbps,
-            sample_quality_rank, cpu_full_percent, vcpu_current, cpu_core_percent,
-            ram_rss_kib, ram_current_kib, disk_read_bps, disk_write_bps,
-            last_push, interval_seconds, public_ipv4, private_ipv4,
-            ram_available_kib, ram_unused_kib, ram_usable_kib,
-        ) = row
-        row_at = (request.args.get("at") or "").strip()
-        href = url_for("node_page", node=node, period=period, q=vm_uuid, **({"at": row_at} if row_at else {}))
-        public_ip = compact_ipv4(public_ipv4)
-        ip_lines = f'<small class="node-ipv4" title="Public IPv4">{escape(public_ip)}</small>' if public_ip else ""
-        sample = network_sample_badge(network_quality_from_rank(sample_quality_rank), sample_count, sample_expected, sample_max_gap)
-        core_value = max(0.0, safe_float(cpu_core_percent, 0.0))
-        full_value = max(0.0, safe_float(cpu_full_percent, 0.0))
-        cpu_level = _v48102_cpu_level(full_value)
-        cpu_bar = min(100.0, full_value)
-        ram_html = fmt_vm_ram_block(ram_current_kib, ram_rss_kib, ram_available_kib, ram_unused_kib, ram_usable_kib, compact=True)
-        body += f"""
-        <tr>
-          <td class="num rank-cell">{rank}</td>
-          <td class="mono"><div class="node-name-cell"><a href="{escape(href,quote=True)}"><b>{escape(node)}</b></a>{ip_lines}</div></td>
-          <td class="mono"><span class="uuid-cell"><a href="{escape(href,quote=True)}" title="{escape(vm_uuid)}">{escape(vm_uuid)}</a><button type="button" class="copy-btn" data-copy="{escape(vm_uuid)}" title="Copy UUID">⧉</button></span></td>
-          <td class="num">{iface_count or 0}</td><td class="num">{human(public_total)}</td><td class="num">{human(private_total)}</td><td class="num"><b>{human(total)}</b></td>
-          <td class="num">{float(avg_mbps or 0):.2f}</td><td class="num"><b>{float(peak_mbps or 0):.2f}</b></td><td class="num">{fmt_pps_value(avg_pps)}</td><td class="num"><b>{fmt_pps_value(peak_pps)}</b></td><td class="num sample-cell">{sample}</td>
-          <td class="num cpu-dual-cell cpu-{cpu_level}"><b class="cpu-core-value">{core_value:.1f}%</b><small class="cpu-full-value">{full_value:.1f}% FULL</small><span class="cpu-meter"><i style="width:{cpu_bar:.1f}%"></i></span></td>
-          <td class="num">{int(vcpu_current or 0)}</td><td class="num ram-cell">{ram_html}</td><td class="num">{human_rate(disk_read_bps)}</td><td class="num">{human_rate(disk_write_bps)}</td><td class="num">{fmt_push(last_push)}</td><td class="num">{int(drops or 0)}</td><td class="num">{int(errors or 0)}</td>
-        </tr>"""
-    if not body:
-        body = '<tr><td colspan="20" class="empty">No VM data at this selected snapshot</td></tr>'
-    h = lambda label, key: top_sort_header(label, key, period, q, sort_by, order, scope, limit)
-    cpu_core_sort = _v48102_top_sort_link("CORE%", "cpu", period, q, sort_by, order, scope, limit)
-    cpu_full_sort = _v48102_top_sort_link("FULL%", "cpufull", period, q, sort_by, order, scope, limit)
-    ram_header = _v48104_ram_sort_header(
-        _v48103_top_ram_link("RAM", "ram", period, q, sort_by, order, scope, limit),
-        [
-            _v48103_top_ram_link("Guest %", "ram", period, q, sort_by, order, scope, limit),
-            _v48103_top_ram_link("Used GiB", "ramused", period, q, sort_by, order, scope, limit),
-            _v48103_top_ram_link("Host RSS", "ramrss", period, q, sort_by, order, scope, limit),
-            _v48103_top_ram_link("Assigned", "ramassigned", period, q, sort_by, order, scope, limit),
-        ],
-        sort_by,
-        order,
-    )
-    return f"""
-    <div class="card vm-table-card top-vm-v48102 top-vm-v48103">
-      <div class="table-title-row"><h3>Top VM Across All Nodes</h3><div class="count-badges"><span>Rows <b>{len(rows)}</b></span><span>Scope <b>{escape(scope)}</b></span><span>Refresh <b>5s partial</b></span><span>Sort <b>{escape(sort_by)} {escape(order)}</b></span></div></div>
-      <div class="table-wrap"><table class="table-top-vm"><colgroup><col class="top-rank"><col class="top-node"><col class="top-uuid"><col class="top-ifaces"><col class="top-public"><col class="top-private"><col class="top-total"><col class="top-mbps"><col class="top-peakmbps"><col class="top-pps"><col class="top-peakpps"><col class="top-sample"><col class="top-cpu"><col class="top-vcpu"><col class="top-ram"><col class="top-diskr"><col class="top-diskw"><col class="top-push"><col class="top-drops"><col class="top-errors"></colgroup>
-      <thead><tr><th>#</th><th>{h('NODE','node')}</th><th>{h('VM UUID','vm')}</th><th>IFACES</th><th class="num-head">{h('PUBLIC','public')}</th><th class="num-head">{h('PRIVATE','private')}</th><th class="num-head">{h('TOTAL','total')}</th><th class="num-head">{h('AVG Mbps','mbps')}</th><th class="num-head">{h('PEAK Mbps','peakmbps')}</th><th class="num-head">{h('AVG PPS','pps')}</th><th class="num-head">{h('PEAK PPS','peakpps')}</th><th class="num-head">{h('SAMPLE','sample')}</th><th class="num-head cpu-dual-head"><div>CPU</div><small>{cpu_core_sort}<span> · </span>{cpu_full_sort}</small></th><th class="num-head">{h('vCPU','vcpu')}</th><th class="num-head ram-compact-sort-head">{ram_header}</th><th class="num-head">{h('DISK R/s','diskr')}</th><th class="num-head">{h('DISK W/s','diskw')}</th><th class="num-head">{h('PUSH','last_push')}</th><th class="num-head">{h('DROPS','drops')}</th><th class="num-head">{h('ERR','errors')}</th></tr></thead><tbody>{body}</tbody></table></div>
-      <div class="table-hint">RAM shows <b>Guest Used / Assigned</b>; <b>RSS</b> is host-side QEMU memory. Use the small RAM menu to change the sort metric. Missing guest stats stay N/A and sort last.</div>
-    </div>"""
 
 
 # ---- Per-node VM/interface table RAM sorting and display ------------------
@@ -425,68 +348,6 @@ def query_node_bridge(node, period, bridge, q="", limit=1000, sort_by="total", o
     return rows[:requested_limit], selected_bucket, latest_bucket
 
 
-def interface_table(title, bridge, node, rows, period, q="", sort_by="total", order="desc", vm_status="active"):
-    body = ""
-    for row in rows:
-        (
-            iface, vm_uuid, rx, tx, total, rx_packets, tx_packets, packets, drops, errors,
-            avg_mbps, peak_mbps, avg_pps, peak_pps, sample_count, sample_expected,
-            sample_max_gap_seconds, seconds_over_pps, seconds_over_mbps, sample_quality_rank,
-            cpu_percent, vcpu_current, core_cpu_percent, ram_rss_kib, ram_current_kib,
-            disk_read_bps, disk_write_bps, row_vm_status, last_push, vm_last_seen,
-            interval_seconds, ram_available_kib, ram_unused_kib, ram_usable_kib,
-        ) = row
-        row_at = (request.args.get("at") or "").strip()
-        href = url_for("vm_page", node=node, vm_uuid=vm_uuid, bridge=bridge, iface=iface, period=period, **({"at": row_at} if row_at else {}))
-        href_e = escape(href, quote=True)
-        live = vm_live_status(vm_last_seen)
-        row_status = clean_vm_status(row_vm_status)
-        row_cls = "clickable stale-row" if (live == "stale" or row_status != "active") else "clickable"
-        state_html = vm_status_badge(row_status, live)
-        vm_uuid_e = escape(vm_uuid)
-        quality = network_quality_from_rank(sample_quality_rank)
-        sample_html = network_sample_badge(quality, sample_count, sample_expected, sample_max_gap_seconds)
-        ram_html = fmt_vm_ram_block(ram_current_kib, ram_rss_kib, ram_available_kib, ram_unused_kib, ram_usable_kib, compact=True)
-        body += f"""
-        <tr class="{row_cls}" onclick="if (!event.target.closest('a, button, input, select, textarea, label, form')) window.location='{href_e}'">
-          <td>{state_html}</td><td class="mono"><a href="{href_e}"><b>{escape(iface)}</b></a></td><td class="mono"><span class="uuid-cell"><a href="{href_e}" title="{vm_uuid_e}">{vm_uuid_e}</a><button type="button" class="copy-btn" data-copy="{vm_uuid_e}" title="Copy UUID">⧉</button></span></td>
-          <td class="num">{human(rx)}</td><td class="num">{human(tx)}</td><td class="num"><b>{human(total)}</b></td><td class="num">{float(avg_mbps or 0):.2f}</td><td class="num"><b>{float(peak_mbps or 0):.2f}</b></td><td class="num">{fmt_pps_value(avg_pps)}</td><td class="num"><b>{fmt_pps_value(peak_pps)}</b></td><td class="num sample-cell">{sample_html}<small class="metric-subline">{int(seconds_over_pps or 0)}s PPS · {int(seconds_over_mbps or 0)}s Mbps</small></td>
-          <td class="num"><b>{fmt_vm_cpu(cpu_percent,vcpu_current)}</b><small class="metric-subline">{float(cpu_percent or 0):.1f}% full</small></td><td class="num">{int(vcpu_current or 0)}</td><td class="num ram-cell">{ram_html}</td><td class="num">{human_rate(disk_read_bps)}</td><td class="num">{human_rate(disk_write_bps)}</td><td class="num">{int(drops or 0)}</td><td class="num">{int(errors or 0)}</td>
-        </tr>"""
-    if not body:
-        body = '<tr><td colspan="18" class="empty">No data in this selected snapshot</td></tr>'
-    hs = {
-        "rx": sort_header("RX","rx",node,period,q,sort_by,order,vm_status),
-        "tx": sort_header("TX","tx",node,period,q,sort_by,order,vm_status),
-        "total": sort_header("TOTAL","total",node,period,q,sort_by,order,vm_status),
-        "mbps": sort_header("AVG Mbps","mbps",node,period,q,sort_by,order,vm_status),
-        "peakmbps": sort_header("PEAK Mbps","peakmbps",node,period,q,sort_by,order,vm_status),
-        "pps": sort_header("AVG PPS","pps",node,period,q,sort_by,order,vm_status),
-        "peakpps": sort_header("PEAK PPS","peakpps",node,period,q,sort_by,order,vm_status),
-        "sample": sort_header("SAMPLE","sample",node,period,q,sort_by,order,vm_status),
-        "cpu": sort_header("CPU Core%","cpu",node,period,q,sort_by,order,vm_status),
-        "vcpu": sort_header("vCPU","vcpu",node,period,q,sort_by,order,vm_status),
-        "diskr": sort_header("DISK R/s","diskr",node,period,q,sort_by,order,vm_status),
-        "diskw": sort_header("DISK W/s","diskw",node,period,q,sort_by,order,vm_status),
-        "drops": sort_header("DROPS","drops",node,period,q,sort_by,order,vm_status),
-        "errors": sort_header("ERR","errors",node,period,q,sort_by,order,vm_status),
-    }
-    ram_header = _v48104_ram_sort_header(
-        sort_header("RAM","ram",node,period,q,sort_by,order,vm_status),
-        [
-            sort_header("Guest %","ram",node,period,q,sort_by,order,vm_status),
-            sort_header("Used GiB","ramused",node,period,q,sort_by,order,vm_status),
-            sort_header("Host RSS","ramrss",node,period,q,sort_by,order,vm_status),
-            sort_header("Assigned","ramassigned",node,period,q,sort_by,order,vm_status),
-        ],
-        sort_by,
-        order,
-    )
-    return f"""
-    <div class="card vm-table-card"><div class="table-title-row"><h3>{escape(title)}</h3><div class="count-badges"><span>VM rows <b>{len(rows)}</b></span><span>Snapshot <b>exact</b></span></div></div><div class="table-wrap"><table class="table-vm"><colgroup><col class="col-state"><col class="col-iface"><col class="col-uuid"><col class="col-rx"><col class="col-tx"><col class="col-total"><col class="col-mbps"><col class="col-peakmbps"><col class="col-pps"><col class="col-peakpps"><col class="col-sample"><col class="col-cpu"><col class="col-vcpu"><col class="col-ram"><col class="col-diskr"><col class="col-diskw"><col class="col-drops"><col class="col-errors"></colgroup>
-      <thead><tr><th>STATE</th><th>INTERFACE</th><th>VM UUID</th><th class="num-head">{hs['rx']}</th><th class="num-head">{hs['tx']}</th><th class="num-head">{hs['total']}</th><th class="num-head">{hs['mbps']}</th><th class="num-head">{hs['peakmbps']}</th><th class="num-head">{hs['pps']}</th><th class="num-head">{hs['peakpps']}</th><th class="num-head">{hs['sample']}</th><th class="num-head">{hs['cpu']}</th><th class="num-head">{hs['vcpu']}</th><th class="num-head ram-compact-sort-head">{ram_header}</th><th class="num-head">{hs['diskr']}</th><th class="num-head">{hs['diskw']}</th><th class="num-head">{hs['drops']}</th><th class="num-head">{hs['errors']}</th></tr></thead><tbody>{body}</tbody></table></div>
-      <div class="table-hint">RAM shows estimated <b>Guest Used / Assigned</b>. <b>RSS</b> is host-side; N/A means balloon guest statistics are unavailable.</div>
-    </div>"""
 
 
 # ---- VM charts and VM detail RAM card ------------------------------------

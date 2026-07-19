@@ -1,3 +1,14 @@
+# 50.5.9-prod-r8-safe-dead-code-prune
+
+## Conservative superseded-code removal
+
+- Removed 26 historical function implementations that are overwritten and provably unreachable.
+- Reduced the ordered runtime from 36,449 to 35,241 physical lines.
+- Repeated reachability analysis until a fixed point; the third pass found zero more safe candidates.
+- Preserved the 44-layer execution order, 83 Flask routes, 920 final runtime callables, endpoint bindings, Flask hooks and every static asset.
+- Added `DEAD_CODE_AUDIT_R8.md` and regression guards for removed implementation hashes.
+- Did not change database schema, SQL migrations, Agent payloads, monitoring formulas, retention, maintenance, queueing or RBAC behavior.
+
 # 50.5.9-prod-r7-modular-runtime-refactor
 
 ## Modular runtime refactor

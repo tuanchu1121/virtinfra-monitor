@@ -54,7 +54,7 @@ def test_runtime_manifest_is_complete_ordered_and_hash_pinned() -> None:
 def test_combined_runtime_remains_the_full_legacy_contract() -> None:
     source = read_app_source()
     tree = ast.parse(source, filename="<virtinfra-modular-runtime>")
-    assert len(source.splitlines()) > 36000
+    assert len(source.splitlines()) == 35241
     assert any(isinstance(node, ast.FunctionDef) and node.name == "push" for node in tree.body)
     assert '@app.route("/push", methods=["POST"])' in source
     assert "# VirtInfra Monitor 50.5.9 prod-r5 - additive Node Groups hotfix" in source

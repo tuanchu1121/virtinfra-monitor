@@ -345,9 +345,6 @@ except Exception:
 _ingest_disk_io_current_v48140_base = ingest_disk_io_current
 
 
-def ingest_disk_io_current(conn, node, data_time, interval_seconds, vms, node_host):
-    _ingest_disk_io_current_v48140_base(conn, node, data_time, interval_seconds, vms, node_host)
-    _v48140_refresh_node_summaries(conn, node)
 
 
 # Build the same request-local summary tables for historical Storage snapshots.

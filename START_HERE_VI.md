@@ -1,6 +1,6 @@
 # BẮT ĐẦU TẠI ĐÂY - VirtInfra Monitor
 
-> Release: `50.5.9-prod-r7-modular-runtime-refactor`
+> Release: `50.5.9-prod-r8-safe-dead-code-prune`
 
 > Release: `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
 >

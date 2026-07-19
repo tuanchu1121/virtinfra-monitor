@@ -8,7 +8,7 @@ def need(cond: bool, message: str) -> None:
         raise AssertionError(message)
 
 version = (ROOT / "VERSION").read_text().strip()
-need(version == "50.5.9-prod-r7-modular-runtime-refactor", f"unexpected VERSION: {version}")
+need(version == "50.5.9-prod-r8-safe-dead-code-prune", f"unexpected VERSION: {version}")
 
 from runtime_source import read_app_source
 app = read_app_source()

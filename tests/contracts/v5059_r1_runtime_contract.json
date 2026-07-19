@@ -9,7 +9,7 @@
     ],
     [
       "abusemsg",
-      4
+      2
     ],
     [
       "apierr",
@@ -21,7 +21,7 @@
     ],
     [
       "at",
-      19
+      16
     ],
     [
       "bridge",
@@ -81,7 +81,7 @@
     ],
     [
       "msg",
-      3
+      2
     ],
     [
       "net",
@@ -1389,11 +1389,11 @@
   "url_for_endpoints": [
     [
       "admin_abuse_page",
-      40
+      39
     ],
     [
       "admin_abuse_settings",
-      8
+      4
     ],
     [
       "admin_api_key_create",
@@ -1557,7 +1557,7 @@
     ],
     [
       "node_page",
-      43
+      41
     ],
     [
       "reset_all_abuse_data_v48129",
@@ -1577,11 +1577,11 @@
     ],
     [
       "vm_abuse_page",
-      60
+      59
     ],
     [
       "vm_page",
-      39
+      36
     ]
   ],
   "view_overrides": [

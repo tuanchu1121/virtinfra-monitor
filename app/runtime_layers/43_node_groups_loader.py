@@ -1,5 +1,5 @@
 # VirtInfra Monitor 50.5.9 prod-r5 - additive Node Groups hotfix
-# Release: 50.5.9-prod-r7-modular-runtime-refactor
+# Release: 50.5.9-prod-r8-safe-dead-code-prune
 # Installed only after all existing append-only runtime implementations are
 # registered, so baseline wrappers and view functions remain intact.
 # ---------------------------------------------------------------------------

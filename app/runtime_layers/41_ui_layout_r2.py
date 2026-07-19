@@ -491,61 +491,8 @@ def vm_chart_table(rows, node, vm_uuid, bridge, iface, period, raw_sort="time", 
 
 
 # Compact select-based appearance controls in the upper-right header area.
-def _v5049_theme_selector_html(settings=None):
-    preset_options = ['<option value="">Core theme</option>']
-    for theme in _v5049_available_themes(settings):
-        preset_options.append(
-            '<option value="%s">%s</option>' % (
-                escape(theme["id"], quote=True), escape(theme["name"]),
-            )
-        )
-    return '''
-    <div class="appearance-controls appearance-controls-r5" aria-label="Theme">
-      <label class="appearance-select"><span>Theme</span>
-        <select id="core-theme-mode-select" aria-label="Theme mode">
-          <option value="auto">Auto</option><option value="light">Light</option><option value="dark">Dark</option>
-        </select>
-      </label>
-      <label class="appearance-select"><span>Style</span>
-        <select id="simple-theme-select" aria-label="Theme style">%s</select>
-      </label>
-    </div>''' % ''.join(preset_options)
 
 
-def _v5049_runtime_theme_script(settings=None):
-    payload = json.dumps(_v5049_theme_client_payload(settings), separators=(",", ":"), sort_keys=True)
-    return f'''
-<script>
-(function(){{
-  var themes={payload};
-  var customKey="{V5049_THEME_SELECTION_KEY}";
-  var customSelect=document.getElementById("simple-theme-select");
-  var modeSelect=document.getElementById("core-theme-mode-select");
-  function readCustom(){{try{{return localStorage.getItem(customKey)||""}}catch(e){{return""}}}}
-  function writeCustom(id){{try{{if(id)localStorage.setItem(customKey,id);else localStorage.removeItem(customKey)}}catch(e){{}}}}
-  function coreMode(){{try{{return localStorage.getItem("bw-theme-mode")||"auto"}}catch(e){{return"auto"}}}}
-  function useCore(mode,persist){{
-    writeCustom("");document.documentElement.removeAttribute("data-custom-theme");
-    mode=(mode==="dark"||mode==="light")?mode:"auto";
-    if(typeof applyTheme==="function")applyTheme(mode,!!persist);
-    else{{try{{if(persist)localStorage.setItem("bw-theme-mode",mode)}}catch(e){{}}document.documentElement.setAttribute("data-theme-mode",mode);}}
-    if(modeSelect)modeSelect.value=mode;if(customSelect)customSelect.value="";
-  }}
-  function useCustom(id,persist){{
-    if(!themes[id]){{useCore(coreMode(),false);return}}
-    if(persist)writeCustom(id);
-    document.documentElement.setAttribute("data-custom-theme",id);
-    document.documentElement.setAttribute("data-theme",themes[id]);
-    document.documentElement.setAttribute("data-theme-mode","custom");
-    if(customSelect)customSelect.value=id;if(modeSelect)modeSelect.value=coreMode();
-  }}
-  if(modeSelect)modeSelect.addEventListener("change",function(){{useCore(this.value,true)}});
-  if(customSelect)customSelect.addEventListener("change",function(){{if(this.value)useCustom(this.value,true);else useCore(coreMode(),false)}});
-  window.addEventListener("storage",function(ev){{if(ev.key===customKey||ev.key==="bw-theme-mode"){{var id=readCustom();if(id)useCustom(id,false);else useCore(coreMode(),false)}}}});
-  var current=readCustom();if(current)useCustom(current,false);else useCore(coreMode(),false);
-}})();
-</script>
-'''
 
 
 V5059R1_A11Y_SCRIPT = r'''

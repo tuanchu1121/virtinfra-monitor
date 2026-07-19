@@ -73,13 +73,6 @@ def _apply_abuse_settings_to_runtime(cfg):
         ABUSE_DISK_REQUIRED_SECONDS = 10**9
 
 
-def get_agent_runtime_config():
-    cfg = get_abuse_settings()
-    return {
-        "revision": cfg["revision"],
-        "pps_warn": cfg["network_pps"] if cfg["network_enabled"] else 0,
-        "network_enabled": bool(cfg["network_enabled"]),
-    }
 
 
 @app.before_request
@@ -92,117 +85,13 @@ def _v480_refresh_abuse_runtime_settings():
         app.logger.exception("Could not refresh abuse settings")
 
 
-def _abuse_state_map(conn, node):
-    rows = conn.execute("""
-        SELECT node,vm_uuid,last_seen,is_abuse,abuse_since,abuse_flags,severity,
-               network_rx_hit,network_tx_hit,cpu_streak_seconds,disk_streak_seconds,
-               rx_pps,tx_pps,rx_peak_pps,tx_peak_pps,seconds_over_rx_pps,seconds_over_tx_pps,
-               cpu_full_percent,cpu_core_percent,vcpu_current,
-               disk_read_bps,disk_write_bps,disk_read_iops,disk_write_iops
-        FROM vm_abuse_state WHERE node=?
-    """, (node,)).fetchall()
-    keys = [
-        "node","vm_uuid","last_seen","is_abuse","abuse_since","abuse_flags","severity",
-        "network_rx_hit","network_tx_hit","cpu_streak_seconds","disk_streak_seconds",
-        "rx_pps","tx_pps","rx_peak_pps","tx_peak_pps","seconds_over_rx_pps","seconds_over_tx_pps",
-        "cpu_full_percent","cpu_core_percent","vcpu_current",
-        "disk_read_bps","disk_write_bps","disk_read_iops","disk_write_iops",
-    ]
-    return {str(r[1]): dict(zip(keys, r)) for r in rows}
 
 
-def _insert_abuse_event(conn, event_type, state, event_time, flags=None, severity=None, cfg=None, detail=""):
-    if not state:
-        return
-    flags = state.get("abuse_flags", "") if flags is None else flags
-    severity = safe_float(state.get("severity"), 0.0) if severity is None else severity
-    cfg = cfg or get_abuse_settings(conn)
-    thresholds = {
-        "network_enabled": cfg["network_enabled"],
-        "network_pps": cfg["network_pps"],
-        "network_required_seconds": cfg["network_required_seconds"],
-        "cpu_enabled": cfg["cpu_enabled"],
-        "cpu_full_percent": cfg["cpu_full_percent"],
-        "cpu_required_seconds": cfg["cpu_required_seconds"],
-        "disk_enabled": cfg["disk_enabled"],
-        "disk_bps": cfg["disk_bps"],
-        "disk_iops": cfg["disk_iops"],
-        "disk_required_seconds": cfg["disk_required_seconds"],
-    }
-    conn.execute("""
-        INSERT OR IGNORE INTO vm_abuse_events(
-          event_time,event_type,node,vm_uuid,abuse_flags,severity,
-          rx_pps,tx_pps,rx_peak_pps,tx_peak_pps,seconds_over_rx_pps,seconds_over_tx_pps,
-          cpu_full_percent,cpu_core_percent,vcpu_current,cpu_streak_seconds,
-          disk_read_bps,disk_write_bps,disk_read_iops,disk_write_iops,disk_streak_seconds,
-          thresholds_json,detail
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-    """, (
-        safe_int(event_time, now_ts()), str(event_type), str(state.get("node") or ""), str(state.get("vm_uuid") or ""),
-        str(flags or ""), safe_float(severity, 0.0),
-        safe_float(state.get("rx_pps"),0), safe_float(state.get("tx_pps"),0),
-        safe_float(state.get("rx_peak_pps"),0), safe_float(state.get("tx_peak_pps"),0),
-        safe_int(state.get("seconds_over_rx_pps"),0), safe_int(state.get("seconds_over_tx_pps"),0),
-        safe_float(state.get("cpu_full_percent"),0), safe_float(state.get("cpu_core_percent"),0),
-        safe_int(state.get("vcpu_current"),0), safe_int(state.get("cpu_streak_seconds"),0),
-        safe_float(state.get("disk_read_bps"),0), safe_float(state.get("disk_write_bps"),0),
-        safe_float(state.get("disk_read_iops"),0), safe_float(state.get("disk_write_iops"),0),
-        safe_int(state.get("disk_streak_seconds"),0),
-        json.dumps(thresholds, separators=(",", ":")), str(detail or "")[:1000],
-    ))
 
 
 _refresh_fast_current_state_v470 = refresh_fast_current_state
 
 
-def refresh_fast_current_state(conn, node, data_time, interval_seconds, interfaces, vms, node_host, inventory_complete=False):
-    cfg = get_abuse_settings(conn)
-    _apply_abuse_settings_to_runtime(cfg)
-    before = _abuse_state_map(conn, node)
-    # Agent v10 reports the exact threshold used by its local 15-second sampler.
-    # After an Admin threshold change, ignore timers collected with the previous
-    # threshold instead of mixing two policies in one abuse decision.
-    normalized_interfaces = []
-    for item in interfaces or []:
-        if not isinstance(item, dict):
-            normalized_interfaces.append(item)
-            continue
-        copy_item = dict(item)
-        reported = copy_item.get("pps_warn_threshold")
-        mismatch = False
-        if not cfg["network_enabled"]:
-            mismatch = True
-        elif reported is not None:
-            mismatch = abs(safe_float(reported, cfg["network_pps"]) - cfg["network_pps"]) > max(1.0, cfg["network_pps"] * 0.001)
-        if mismatch:
-            for key in ("seconds_over_pps","seconds_over_rx_pps","seconds_over_tx_pps"):
-                copy_item[key] = 0
-        normalized_interfaces.append(copy_item)
-    result = _refresh_fast_current_state_v470(
-        conn, node, data_time, interval_seconds, normalized_interfaces, vms, node_host, inventory_complete
-    )
-    after = _abuse_state_map(conn, node)
-    for vm_uuid in sorted(set(before) | set(after)):
-        old = before.get(vm_uuid)
-        new = after.get(vm_uuid)
-        old_active = bool(safe_int((old or {}).get("is_abuse"), 0))
-        new_active = bool(safe_int((new or {}).get("is_abuse"), 0))
-        old_flags = str((old or {}).get("abuse_flags") or "")
-        new_flags = str((new or {}).get("abuse_flags") or "")
-        if new_active and not old_active:
-            _insert_abuse_event(conn, "started", new, data_time, cfg=cfg, detail="VM entered sustained abuse state")
-        elif new_active and old_active and new_flags != old_flags:
-            _insert_abuse_event(conn, "updated", new, data_time, cfg=cfg, detail=f"flags {old_flags or '-'} -> {new_flags or '-'}")
-        elif old_active and not new_active:
-            state = dict(new or old or {})
-            state["node"] = node
-            state["vm_uuid"] = vm_uuid
-            _insert_abuse_event(
-                conn, "recovered", state, data_time, flags=old_flags,
-                severity=safe_float((old or {}).get("severity"),0), cfg=cfg,
-                detail="VM no longer satisfies any sustained abuse rule",
-            )
-    return result
 
 
 _run_retention_v470 = run_retention
@@ -555,16 +444,6 @@ def admin_abuse_settings():
     return redirect(url_for("admin_page",abusemsg="Abuse settings saved. Agent v10 receives the network PPS threshold in the next push response; allow one full 5-minute window before judging the new network rule."))
 
 
-def abuse_settings_admin_card():
-    cfg=get_abuse_settings(); msg=(request.args.get("abusemsg") or "").strip()[:700]
-    return f"""{_abuse_page_style()}<div class="card" id="abuse-policy-admin"><div class="table-title-row"><h3>VM Abuse Policy</h3><div class="count-badges"><span>Storage <b>admin_settings</b></span><span>Restart <b>not required</b></span></div></div>{f'<div class="success-box">{escape(msg)}</div>' if msg else ''}
-    <div class="admin-note">These values are no longer hard-coded. CPU and disk apply on the monitor immediately. The network PPS threshold is returned to Agent v10 after each push, then becomes authoritative after the next complete sampled 5-minute window.</div>
-    <form method="post" action="{url_for('admin_abuse_settings')}"><input type="hidden" name="csrf_token" value="{escape(csrf_token(),quote=True)}"><input type="hidden" name="action" value="save"><div class="abuse-settings-grid">
-      <div class="abuse-setting-box"><h4>Network PPS</h4><label class="enable-line"><input type="checkbox" name="network_enabled" {'checked' if cfg['network_enabled'] else ''}> Enable network abuse</label><label>RX or TX PPS threshold<input type="number" name="network_pps" min="1000" max="100000000" step="1000" value="{cfg['network_pps']:.0f}"></label><label>Required seconds in 5-minute window<input type="number" name="network_required_seconds" min="15" max="300" step="15" value="{cfg['network_required_seconds']}"></label></div>
-      <div class="abuse-setting-box"><h4>CPU</h4><label class="enable-line"><input type="checkbox" name="cpu_enabled" {'checked' if cfg['cpu_enabled'] else ''}> Enable CPU abuse</label><label>CPU Full % of assigned vCPU<input type="number" name="cpu_full_percent" min="1" max="100" step="0.1" value="{cfg['cpu_full_percent']:.1f}"></label><label>Required consecutive minutes<input type="number" name="cpu_required_minutes" min="5" max="1440" step="5" value="{cfg['cpu_required_seconds']//60}"></label></div>
-      <div class="abuse-setting-box"><h4>Disk</h4><label class="enable-line"><input type="checkbox" name="disk_enabled" {'checked' if cfg['disk_enabled'] else ''}> Enable disk abuse</label><label>Total read + write MiB/s<input type="number" name="disk_mibps" min="0" max="100000" step="1" value="{cfg['disk_bps']/1024/1024:.0f}"></label><label>Total read + write IOPS<input type="number" name="disk_iops" min="0" max="10000000" step="100" value="{cfg['disk_iops']:.0f}"></label><label>Required consecutive minutes<input type="number" name="disk_required_minutes" min="5" max="1440" step="5" value="{cfg['disk_required_seconds']//60}"></label></div>
-    </div><div class="bulk-bar" style="margin-top:12px"><button type="submit">Save Abuse Settings</button></div></form>
-    <form method="post" action="{url_for('admin_abuse_settings')}" onsubmit="return confirm('Reset all abuse thresholds to defaults?')" style="margin-top:8px"><input type="hidden" name="csrf_token" value="{escape(csrf_token(),quote=True)}"><input type="hidden" name="action" value="reset"><button class="btn" type="submit">Reset defaults</button></form></div>"""
 
 
 _admin_page_v470 = app.view_functions.get("admin_page")

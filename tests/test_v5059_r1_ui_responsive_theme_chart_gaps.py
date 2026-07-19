@@ -6,7 +6,7 @@ APP = read_app_source()
 
 
 def test_release_marker():
-    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "50.5.9-prod-r7-modular-runtime-refactor"
+    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "50.5.9-prod-r8-safe-dead-code-prune"
     assert 'V5059R2_RELEASE = "50.5.9-prod-r3-ui-alignment-overflow-hotfix"' in APP
 
 
@@ -50,8 +50,10 @@ def test_professional_ui_contract():
         ".table-top-vm{width:100%;min-width:1760px",
         ".abuse-v48102-table,body.endpoint-vm-abuse-page .abuse-v490-table",
         ".v5058c-table{width:100%;min-width:1160px",
-        "core-theme-mode-select",
-        '<option value="auto">Auto</option><option value="light">Light</option><option value="dark">Dark</option>',
+        "unified-theme-select",
+        '<option value="mode:auto">Auto</option>',
+        '<option value="mode:light">Light</option>',
+        '<option value="mode:dark">Dark</option>',
         'aria-label="Theme"',
     ):
         assert marker in APP

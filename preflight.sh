@@ -154,6 +154,7 @@ log "Validate additive Node Groups, role split, permissions and UI contracts"
 
 log "Verify one-command installer and operations flow"
 bash ./tools/test-installer-flow.sh
+bash ./tools/test-installer-manifest-paths.sh
 
 if ((SKIP_LIVE)); then
   log "Skip live PostgreSQL integration by request"

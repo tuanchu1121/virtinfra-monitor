@@ -83,16 +83,21 @@ stage_canonical_tree() {
     }
 
     listed="${listed#\*}"
-    [[ "$listed" == ./* ]] || {
-      printf 'ERROR: Unsafe manifest path: %s\n' "$listed" >&2
-      return 1
-    }
+    case "$listed" in
+      ./*) rel="${listed#./}" ;;
+      /*|'')
+        printf 'ERROR: Unsafe manifest path: %s\n' "$listed" >&2
+        return 1
+        ;;
+      *) rel="$listed" ;;
+    esac
 
-    rel="${listed#./}"
-    [[ -n "$rel" && "$rel" != /* && "$rel" != *'..'* ]] || {
-      printf 'ERROR: Unsafe manifest path: %s\n' "$listed" >&2
-      return 1
-    }
+    case "$rel" in
+      ''|.|..|../*|*/../*|*/..|./*|*/./*|*/.|*'//'* )
+        printf 'ERROR: Unsafe manifest path: %s\n' "$listed" >&2
+        return 1
+        ;;
+    esac
 
     source_file="$source_root/$rel"
     target_file="$clean_root/$rel"

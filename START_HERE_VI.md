@@ -1,6 +1,6 @@
 # BẮT ĐẦU TẠI ĐÂY - VirtInfra Monitor
 
-> Release: `50.5.9-prod-r4-dead-code-cleanup`
+> Release: `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
 
 > Release: `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
 >

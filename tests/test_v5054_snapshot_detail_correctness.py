@@ -3,11 +3,11 @@ import ast
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = (ROOT / "app/app.py").read_text(encoding="utf-8")
+APP_TREE = ast.parse(APP)
 
 
 def function_nodes(name: str):
-    tree = ast.parse(APP)
-    return [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == name]
+    return [n for n in APP_TREE.body if isinstance(n, ast.FunctionDef) and n.name == name]
 
 
 def function_source(name: str, index: int = -1) -> str:
@@ -28,7 +28,7 @@ def compile_function(name: str, index: int = -1, namespace=None):
 
 
 def test_release_identity_and_preflight_dependencies():
-    assert (ROOT / "VERSION").read_text().strip() == "50.6.0-prod-r1-node-groups-additive"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r6-node-groups-admin-bulk-management-retention-safe-maintenance-hotfix"
     requirements = (ROOT / "requirements.txt").read_text()
     assert "pytest>=8,<9" in requirements
     assert "PyYAML>=6,<7" in requirements

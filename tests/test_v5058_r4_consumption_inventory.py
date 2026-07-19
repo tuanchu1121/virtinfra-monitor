@@ -10,7 +10,7 @@ VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 
 def test_release_identity():
-    assert VERSION == "50.6.0-prod-r1-node-groups-additive"
+    assert VERSION == "50.5.9-prod-r6-node-groups-admin-bulk-management-retention-safe-maintenance-hotfix"
     assert VERSION in APP
     assert VERSION in INSTALLER
 

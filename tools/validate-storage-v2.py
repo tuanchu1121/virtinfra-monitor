@@ -6,8 +6,7 @@ useful on a fresh deployment after 24-48 hours of traffic. It never changes data
 """
 from __future__ import annotations
 import argparse
-from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime
 import math
 import os
 import psycopg

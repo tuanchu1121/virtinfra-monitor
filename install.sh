@@ -18,8 +18,15 @@ repo_complete() {
   for path in \
     deploy/postgres/install-postgres-native.sh \
     app/app.py \
-    app/bw_pg.py \
     app/node_groups.py \
+    app/static/vendor/flag-icons/node-groups.css \
+    app/static/vendor/flag-icons/LICENSE \
+    app/static/vendor/flag-icons/SOURCE.md \
+    app/static/vendor/flag-icons/flags/4x3/vn.svg \
+    app/static/flags/node-groups.css \
+    app/static/flags/neutral.svg \
+    app/static/flags/vn.svg \
+    app/bw_pg.py \
     app/storage_v2.py \
     app/maintenance_native.py \
     app/maintenance_queue.py \
@@ -28,9 +35,8 @@ repo_complete() {
     postgres/sql/004_storage_v2.sql \
     postgres/sql/006_postgres_native_maintenance.sql \
     postgres/sql/007_safe_maintenance_queue.sql \
-    postgres/sql/011_node_groups_country_flags.sql \
-    static/flags/4x3/jp.svg \
-    static/flags/countries.json \
+    postgres/sql/011_node_groups.sql \
+    postgres/sql/012_node_groups_r6_safety.sql \
     requirements.txt \
     VERSION \
     CANONICAL_REPOSITORY \
@@ -81,16 +87,21 @@ stage_canonical_tree() {
     }
 
     listed="${listed#\*}"
-    [[ "$listed" == ./* ]] || {
-      printf 'ERROR: Unsafe manifest path: %s\n' "$listed" >&2
-      return 1
-    }
+    case "$listed" in
+      ./*) rel="${listed#./}" ;;
+      /*|'')
+        printf 'ERROR: Unsafe manifest path: %s\n' "$listed" >&2
+        return 1
+        ;;
+      *) rel="$listed" ;;
+    esac
 
-    rel="${listed#./}"
-    [[ -n "$rel" && "$rel" != /* && "$rel" != *'..'* ]] || {
-      printf 'ERROR: Unsafe manifest path: %s\n' "$listed" >&2
-      return 1
-    }
+    case "$rel" in
+      ''|.|..|../*|*/../*|*/..|./*|*/./*|*/.|*'//'* )
+        printf 'ERROR: Unsafe manifest path: %s\n' "$listed" >&2
+        return 1
+        ;;
+    esac
 
     source_file="$source_root/$rel"
     target_file="$clean_root/$rel"

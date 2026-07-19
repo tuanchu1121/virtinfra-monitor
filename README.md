@@ -1,9 +1,9 @@
 # VirtInfra Monitor v50 PostgreSQL Native
 
-**Release:** `50.6.0-prod-r1-node-groups-additive`
+**Release:** `50.5.9-prod-r6-node-groups-admin-bulk-management-retention-safe-maintenance-hotfix`
 Production monitoring for KVM/libvirt nodes and virtual machines. PostgreSQL 17 + TimescaleDB is the only runtime data plane. This repository keeps the complete v48/v49 dashboard, Abuse Engine, storage views, Admin tools, REST API and Agent protocol, while replacing the runtime data store with one PostgreSQL 17 + TimescaleDB database.
 
-> Release: `50.6.0-prod-r1-node-groups-additive`
+> Release: `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
 
 > **Operations source of truth:** [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md)
 >
@@ -350,9 +350,3 @@ The public product name is **VirtInfra Monitor** and the node collector is **Vir
 The original dashboard `Auto`, `Light`, and `Dark` modes are protected and keep their existing CSS. Administrators can open `Admin -> Themes` to create, edit, publish, hide, duplicate, or delete separate custom themes. Published themes appear in a user selector beside the protected core controls, and every browser keeps its own choice. Built-in templates include VirtInfra Ocean, Grafana Inspired, Zabbix Inspired, Datadog Inspired, Prometheus Inspired, NOC High Contrast, and Dense Operations.
 
 See [docs/THEME_MANAGER.md](docs/THEME_MANAGER.md).
-
-## Node Groups and country flags
-
-Release `50.6.0-prod-r1-node-groups-additive` adds Node Groups directly on top of the 50.5.9 r3 slim baseline. Groups are assigned only by exact Node name; VMs inherit their Group from the containing Node. The UI uses local 4:3 SVG flags at 16 x 12 px, adds Group/Node filters and includes Group Consumption calculated from physical Node counters. Existing Agent, API payload, metric, Abuse, retention and queue behavior is preserved.
-
-See [docs/NODE_GROUPS.md](docs/NODE_GROUPS.md) and [docs/API.md](docs/API.md).

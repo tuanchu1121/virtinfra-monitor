@@ -1,0 +1,722 @@
+{
+  "api": {
+    "/api/v1/abuse/summary": {
+      "content_type": "application/json",
+      "json_shape": {
+        "api_version": "str",
+        "error": {
+          "code": "str",
+          "message": "str"
+        },
+        "generated_at": "int",
+        "ok": "bool"
+      },
+      "length": 148,
+      "sha256": "fff96acec37e4aa20df6f0689fa1b8c918f0c08aca6dbd813672bf20fde8063e",
+      "status": 401
+    },
+    "/api/v1/health": {
+      "content_type": "application/json",
+      "json_shape": {
+        "api_version": "str",
+        "error": {
+          "code": "str",
+          "message": "str"
+        },
+        "generated_at": "int",
+        "ok": "bool"
+      },
+      "length": 148,
+      "sha256": "fff96acec37e4aa20df6f0689fa1b8c918f0c08aca6dbd813672bf20fde8063e",
+      "status": 401
+    },
+    "/api/v1/me": {
+      "content_type": "application/json",
+      "json_shape": {
+        "api_version": "str",
+        "error": {
+          "code": "str",
+          "message": "str"
+        },
+        "generated_at": "int",
+        "ok": "bool"
+      },
+      "length": 148,
+      "sha256": "fff96acec37e4aa20df6f0689fa1b8c918f0c08aca6dbd813672bf20fde8063e",
+      "status": 401
+    },
+    "/api/v1/nodes": {
+      "content_type": "application/json",
+      "json_shape": {
+        "api_version": "str",
+        "error": {
+          "code": "str",
+          "message": "str"
+        },
+        "generated_at": "int",
+        "ok": "bool"
+      },
+      "length": 148,
+      "sha256": "fff96acec37e4aa20df6f0689fa1b8c918f0c08aca6dbd813672bf20fde8063e",
+      "status": 401
+    },
+    "/api/v1/vms": {
+      "content_type": "application/json",
+      "json_shape": {
+        "api_version": "str",
+        "error": {
+          "code": "str",
+          "message": "str"
+        },
+        "generated_at": "int",
+        "ok": "bool"
+      },
+      "length": 148,
+      "sha256": "fff96acec37e4aa20df6f0689fa1b8c918f0c08aca6dbd813672bf20fde8063e",
+      "status": 401
+    }
+  },
+  "app_function_ast_sha256": "46504b4589c9daec7891fd7157d4da1ba3305dd8ddb4b0234d0bfdf3113dfd1a",
+  "postgres_sql_tree_sha256": "bcfa9bf907f66c142b4e66b97d15214506a9d36fcf0c222d33729f94c0a5011e",
+  "responses": {
+    "/": {
+      "content_type": "text/html; charset=utf-8",
+      "length": 241096,
+      "sha256": "c6a25ef75bbfb0312c75227b873d4e14ed90477c4daed10b572f94af4b85cb88",
+      "status": 200
+    },
+    "/abuse/vms": {
+      "content_type": "text/html; charset=utf-8",
+      "length": 248805,
+      "sha256": "27b16e62da9182b1a0450c0f4b2c2dc0a2f23589ffc0a4c73a82e901c5252f10",
+      "status": 200
+    },
+    "/admin": {
+      "content_type": "text/html; charset=utf-8",
+      "length": 211,
+      "sha256": "77ccccf14ba160da80edf7292be84c13d3357cb399f77748b6bf1f104cc29e8d",
+      "status": 302
+    },
+    "/admin/database-maintenance": {
+      "content_type": "text/html; charset=utf-8",
+      "length": 153,
+      "sha256": "bfb286554b24db87b6cbcb6e68be23f89dee1be4d7db544d1e7c97c45664e0df",
+      "status": 405
+    },
+    "/bandwidth-consumption": {
+      "content_type": "text/html; charset=utf-8",
+      "length": 247165,
+      "sha256": "622849325909b846b2db6b81cbf0441d4192c8e4555c8ad4b07e7dca4e97f7ff",
+      "status": 200
+    },
+    "/health": {
+      "content_type": "application/json",
+      "json_shape": {
+        "cache": "str",
+        "status": "str",
+        "timezone": "str"
+      },
+      "length": 67,
+      "sha256": "a092807f7824f92b5b183531d13d82b9bdf79ee1e7876d02d32db8c140533da6",
+      "status": 200
+    },
+    "/healthz": {
+      "content_type": "application/json",
+      "json_shape": {
+        "database": "str",
+        "service": "str",
+        "status": "str",
+        "storage_v2": {
+          "enabled": "bool",
+          "ok": "bool",
+          "raw_v2": "bool",
+          "read_chart_v2": "bool",
+          "tables": {
+            "node_chart_5m": {
+              "estimated_rows": "int",
+              "exists": "bool"
+            },
+            "vm_chart_5m": {
+              "estimated_rows": "int",
+              "exists": "bool"
+            },
+            "vm_raw_detail_5m": {
+              "estimated_rows": "int",
+              "exists": "bool"
+            }
+          }
+        }
+      },
+      "length": 317,
+      "sha256": "d24faddf81b98422041a958c61c42e84fba0d0ccac9b27802f613d1b69d62ead",
+      "status": 503
+    },
+    "/livez": {
+      "content_type": "application/json",
+      "json_shape": {
+        "service": "str",
+        "status": "str"
+      },
+      "length": 46,
+      "sha256": "2364e0cd7225645f67901e596b8005b2f907d382ae2498c117133ecdb7875388",
+      "status": 200
+    },
+    "/login": {
+      "content_type": "text/html; charset=utf-8",
+      "length": 189,
+      "sha256": "9cd515fe301e7cace88e57e496565c1a145bfe0f883e29a03877d05789d6546c",
+      "status": 302
+    },
+    "/storage": {
+      "content_type": "text/html; charset=utf-8",
+      "length": 262172,
+      "sha256": "8fe064b9c6f203686fa170a2c93f9bce2a02b5606804f03b61d9ab1d1cec8767",
+      "status": 200
+    },
+    "/top": {
+      "content_type": "text/html; charset=utf-8",
+      "length": 247195,
+      "sha256": "0012825d2d3d5962ac8d2dba17090060e51c8dace95142a37434f213552713d1",
+      "status": 200
+    },
+    "/top/nodes": {
+      "content_type": "text/html; charset=utf-8",
+      "length": 239816,
+      "sha256": "a9dc22f3291fd70afa6672def3cc0b65aaf5b4260758a54be4b4c1d8f29da5b9",
+      "status": 200
+    }
+  },
+  "routes": [
+    {
+      "endpoint": "index",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/"
+    },
+    {
+      "endpoint": "vm_abuse_page",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/abuse/vms"
+    },
+    {
+      "endpoint": "clear_abuse_events",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/abuse/vms/clear"
+    },
+    {
+      "endpoint": "admin_page",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/admin"
+    },
+    {
+      "endpoint": "admin_abuse_page",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/admin/abuse"
+    },
+    {
+      "endpoint": "reset_all_abuse_data_v48129",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/abuse-data/reset-all-v48129"
+    },
+    {
+      "endpoint": "admin_abuse_settings",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/abuse-settings"
+    },
+    {
+      "endpoint": "clear_vm_abuse_data_v48128",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/abuse-vm-data/clear"
+    },
+    {
+      "endpoint": "manage_vm_abuse_data_v48129",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/abuse-vm-data/manage-v48129"
+    },
+    {
+      "endpoint": "admin_api_keys_page",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/admin/api-keys"
+    },
+    {
+      "endpoint": "admin_api_key_create",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/api-keys/create"
+    },
+    {
+      "endpoint": "admin_api_key_delete",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/api-keys/delete"
+    },
+    {
+      "endpoint": "admin_api_key_edit",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "rule": "/admin/api-keys/edit"
+    },
+    {
+      "endpoint": "admin_api_key_revoke",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/api-keys/revoke"
+    },
+    {
+      "endpoint": "admin_api_key_rotate",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/api-keys/rotate"
+    },
+    {
+      "endpoint": "admin_api_logs_clear",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/api-logs/clear"
+    },
+    {
+      "endpoint": "admin_api_system_health",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/admin/api/system-health"
+    },
+    {
+      "endpoint": "admin_bandwidth_consumption_action",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/bandwidth-consumption"
+    },
+    {
+      "endpoint": "admin_bulk_nodes",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/bulk_nodes"
+    },
+    {
+      "endpoint": "admin_bulk_vms",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/bulk_vms"
+    },
+    {
+      "endpoint": "admin_run_cleanup",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/cleanup"
+    },
+    {
+      "endpoint": "admin_database_maintenance",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/database-maintenance"
+    },
+    {
+      "endpoint": "admin_database_maintenance",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/database-maintenance"
+    },
+    {
+      "endpoint": "admin_delete_node",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/delete_node"
+    },
+    {
+      "endpoint": "admin_delete_vm",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/delete_vm"
+    },
+    {
+      "endpoint": "admin_clear_live_cache",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/live-cache/clear"
+    },
+    {
+      "endpoint": "admin_login",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "rule": "/admin/login"
+    },
+    {
+      "endpoint": "admin_logout",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/admin/logout"
+    },
+    {
+      "endpoint": "admin_logs_page",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/admin/logs"
+    },
+    {
+      "endpoint": "admin_logs_clear",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/logs/clear"
+    },
+    {
+      "endpoint": "admin_cancel_maintenance_v5057",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/maintenance/cancel"
+    },
+    {
+      "endpoint": "admin_change_password",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "rule": "/admin/password"
+    },
+    {
+      "endpoint": "admin_purge_node_vms",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/purge_node_vms"
+    },
+    {
+      "endpoint": "admin_restore_node",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/restore_node"
+    },
+    {
+      "endpoint": "admin_restore_vm",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/restore_vm"
+    },
+    {
+      "endpoint": "admin_setup",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "rule": "/admin/setup"
+    },
+    {
+      "endpoint": "admin_system_health_page",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/admin/system-health"
+    },
+    {
+      "endpoint": "admin_theme_manager",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "rule": "/admin/theme"
+    },
+    {
+      "endpoint": "admin_users_page",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/admin/users"
+    },
+    {
+      "endpoint": "admin_user_action",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/users/action"
+    },
+    {
+      "endpoint": "admin_create_user",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/admin/users/create"
+    },
+    {
+      "endpoint": "api_v1_abuse_events",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/api/v1/abuse/events"
+    },
+    {
+      "endpoint": "api_v1_abuse_incidents_v48126",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/api/v1/abuse/incidents"
+    },
+    {
+      "endpoint": "api_v1_abuse_rankings_v48126",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/api/v1/abuse/rankings"
+    },
+    {
+      "endpoint": "api_v1_abuse_summary",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/api/v1/abuse/summary"
+    },
+    {
+      "endpoint": "api_v1_abuse_vms",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/api/v1/abuse/vms"
+    },
+    {
+      "endpoint": "api_v1_abuse_vm",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/api/v1/abuse/vms/<vm_uuid>"
+    },
+    {
+      "endpoint": "api_v1_bandwidth_vms",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/api/v1/bandwidth/vms"
+    },
+    {
+      "endpoint": "api_v1_bandwidth_vm",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/api/v1/bandwidth/vms/<vm_uuid>"
+    },
+    {
+      "endpoint": "api_v1_health",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/api/v1/health"
+    },
+    {
+      "endpoint": "api_v1_management_logs",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/api/v1/logs/events"
+    },
+    {
+      "endpoint": "api_v1_request_logs",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/api/v1/logs/requests"
+    },
+    {
+      "endpoint": "api_v1_me",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/api/v1/me"
+    },
+    {
+      "endpoint": "api_v1_nodes",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/api/v1/nodes"
+    },
+    {
+      "endpoint": "api_v1_performance_v48140",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/api/v1/performance"
+    },
+    {
+      "endpoint": "api_v1_vms",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/api/v1/vms"
+    },
+    {
+      "endpoint": "api_v1_vm_current",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/api/v1/vms/<vm_uuid>/current"
+    },
+    {
+      "endpoint": "bandwidth_consumption_page",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/bandwidth-consumption"
+    },
+    {
+      "endpoint": "bandwidth_consumption_node_page",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/bandwidth-consumption/node/<path:node>"
+    },
+    {
+      "endpoint": "health",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/health"
+    },
+    {
+      "endpoint": "node_health_page",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/health/nodes"
+    },
+    {
+      "endpoint": "node_missed_detail_page",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/health/nodes/<path:node>/misses"
+    },
+    {
+      "endpoint": "virtinfra_healthz",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/healthz"
+    },
+    {
+      "endpoint": "virtinfra_livez",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/livez"
+    },
+    {
+      "endpoint": "dashboard_login",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "rule": "/login"
+    },
+    {
+      "endpoint": "dashboard_logout",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/logout"
+    },
+    {
+      "endpoint": "node_page",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/node/<path:node>"
+    },
+    {
+      "endpoint": "push",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/push"
+    },
+    {
+      "endpoint": "push_bandwidth_consumption",
+      "methods": [
+        "POST"
+      ],
+      "rule": "/push/bandwidth-consumption"
+    },
+    {
+      "endpoint": "static",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/static/<path:filename>"
+    },
+    {
+      "endpoint": "storage_io_page",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/storage"
+    },
+    {
+      "endpoint": "summary",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/summary"
+    },
+    {
+      "endpoint": "top_page",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/top"
+    },
+    {
+      "endpoint": "top_node_page",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/top/nodes"
+    },
+    {
+      "endpoint": "vm_page",
+      "methods": [
+        "GET"
+      ],
+      "rule": "/vm"
+    }
+  ]
+}

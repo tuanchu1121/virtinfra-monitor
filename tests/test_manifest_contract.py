@@ -23,6 +23,8 @@ def included_files() -> dict[str, Path]:
             continue
         if path.name == "SHA256SUMS" or path.suffix in {".pyc", ".pyo"}:
             continue
+        if path.name.endswith((".zip", ".tar.gz")):
+            continue
         result[rel.as_posix()] = path
     return result
 

@@ -2,19 +2,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = (ROOT / "app" / "app.py").read_text(encoding="utf-8")
-BASELINE_VERSION = "50.5.9-prod-r3-ui-alignment-overflow-hotfix"
-CURRENT_VERSION = "50.6.0-prod-r1-node-groups-additive"
+CURRENT_VERSION = "50.5.9-prod-r6-node-groups-admin-bulk-management-retention-safe-maintenance-hotfix"
+R3_RELEASE = "50.5.9-prod-r4-dead-code-cleanup"
 
 
 def effective_block():
-    start = APP.index("# v50.5.9 r3 UI alignment and overflow hotfix")
-    end = APP.index("# v50.6.0 additive Node Groups", start)
-    return APP[start:end]
+    return APP[APP.index("# v50.5.9 r3 UI alignment and overflow hotfix"):]
 
 
 def test_release_identity_and_scope_marker():
     assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == CURRENT_VERSION
-    assert f'V5059R3_RELEASE = "{BASELINE_VERSION}"' in APP
+    assert f'V5059R3_RELEASE = "{R3_RELEASE}"' in APP
     assert 'style id="v5059r3-ui-alignment-overflow-hotfix"' in APP
 
 

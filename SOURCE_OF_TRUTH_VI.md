@@ -1,8 +1,8 @@
 # SOURCE OF TRUTH VẬN HÀNH
 
-> Release: `50.6.0-prod-r1-node-groups-additive`
+> Release: `50.5.9-prod-r6-node-groups-admin-bulk-management-retention-safe-maintenance-hotfix`
 
-> Release: `50.6.0-prod-r1-node-groups-additive`
+> Release: `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
 >
 > Tài liệu này được đối chiếu trực tiếp với `install.sh`, `deploy/postgres/*`, `deploy/agent/*`, `postgres/docker-compose.yml`, `app/app.py` và các test contract hiện tại.
 

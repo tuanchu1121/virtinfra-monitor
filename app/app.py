@@ -36439,4 +36439,22 @@ def page(title, content):
 # ---------------------------------------------------------------------------
 import sys as _node_groups_sys
 import node_groups as _node_groups_hotfix
-_node_groups_hotfix.install(_node_groups_sys.modules[__name__])
+
+
+class _NodeGroupsModuleProxy:
+    """Forward module attribute access to this exec_module() globals mapping."""
+
+    def __getattr__(self, name):
+        try:
+            return globals()[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+
+    def __setattr__(self, name, value):
+        globals()[name] = value
+
+
+_node_groups_module = _node_groups_sys.modules.get(__name__)
+if _node_groups_module is None:
+    _node_groups_module = _NodeGroupsModuleProxy()
+_node_groups_hotfix.install(_node_groups_module)

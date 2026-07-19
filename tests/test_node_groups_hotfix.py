@@ -65,11 +65,10 @@ def test_hotfix_is_appended_after_untouched_baseline_app():
     baseline, connector = data.split(marker, 1)
     expected_hash = (ROOT / "audit/node-groups/BASELINE_APP_SHA256.txt").read_text(encoding="utf-8").split()[0]
     assert hashlib.sha256(baseline).hexdigest() == expected_hash
-    assert connector.decode().strip().endswith(
-        "import sys as _node_groups_sys\n"
-        "import node_groups as _node_groups_hotfix\n"
-        "_node_groups_hotfix.install(_node_groups_sys.modules[__name__])"
-    )
+    connector_text = connector.decode().strip()
+    assert "class _NodeGroupsModuleProxy:" in connector_text
+    assert "_node_groups_module = _node_groups_sys.modules.get(__name__)" in connector_text
+    assert "_node_groups_hotfix.install(_node_groups_module)" in connector_text
 
 
 def test_existing_postgresql_migrations_are_byte_identical():

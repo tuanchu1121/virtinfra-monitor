@@ -120,6 +120,10 @@ def main() -> int:
                 new_items = after["buttons"].get(text, [])
                 if text in moved_buttons:
                     continue
+                if page_name in {"admin-nodes", "admin-vms"} and text == "Apply":
+                    # The single bulk Apply button is intentionally removed
+                    # together with the checkbox/selection scope controls.
+                    old_items = old_items[1:]
                 if len(new_items) < len(old_items):
                     old_button_ok = False
                     break

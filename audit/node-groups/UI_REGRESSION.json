@@ -78,12 +78,15 @@
     "cards_unchanged": true,
     "group_filter_count": 1,
     "headers_after": [
-      "",
       "NODE / STATUS",
       "NODE GROUP",
       "PUBLIC IP",
       "PRIVATE IP",
       "VM",
+      "CPU",
+      "RAM",
+      "DISK I/O",
+      "NETWORK",
       "LAST PUSH",
       "ACTION"
     ],
@@ -136,7 +139,6 @@
     "cards_unchanged": true,
     "group_filter_count": 1,
     "headers_after": [
-      "",
       "NODE / IP",
       "NODE GROUP",
       "VM UUID",

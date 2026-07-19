@@ -1,6 +1,6 @@
 # VirtInfra Monitor - Toàn bộ command triển khai và bảo trì từ A đến Z
 
-> Release: `50.5.9-prod-r6-node-groups-admin-bulk-management-retention-safe-maintenance-hotfix`
+> Release: `50.5.9-prod-r7-rbac-node-groups-node-vm-ui-refresh-hotfix`
 
 > Release: `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
 >

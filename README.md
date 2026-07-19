@@ -1,6 +1,6 @@
 # VirtInfra Monitor v50 PostgreSQL Native
 
-**Release:** `50.5.9-prod-r6-node-groups-admin-bulk-management-retention-safe-maintenance-hotfix`
+**Release:** `50.5.9-prod-r7-rbac-node-groups-node-vm-ui-refresh-hotfix`
 Production monitoring for KVM/libvirt nodes and virtual machines. PostgreSQL 17 + TimescaleDB is the only runtime data plane. This repository keeps the complete v48/v49 dashboard, Abuse Engine, storage views, Admin tools, REST API and Agent protocol, while replacing the runtime data store with one PostgreSQL 17 + TimescaleDB database.
 
 > Release: `50.5.9-prod-r3-ui-alignment-overflow-hotfix`

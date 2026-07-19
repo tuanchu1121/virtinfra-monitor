@@ -1,0 +1,40 @@
+VirtInfra Monitor 50.5.9 r7 validation
+=====================================
+
+Release:
+50.5.9-prod-r7-rbac-node-groups-node-vm-ui-refresh-hotfix
+
+Python compile:
+PASS
+
+Bash syntax:
+45/45 PASS
+
+Targeted Node Groups/RBAC/UI tests:
+25 passed in 5.88s
+
+Previously failing contract group after version/additive-migration update:
+73 passed in 23.68s
+
+Full pytest:
+117 passed, 1 skipped in 33.03s
+Exit code: 0
+
+Skipped:
+tests/test_node_groups_postgres_integration.py or the live PostgreSQL integration path when BW_TEST_DATABASE_URL is not set.
+
+Runtime validation:
+PASS
+Includes Admin capability boundaries, own-password scope, Super Admin stealth,
+hidden-group visibility, Node/VM actions, Move all to Ungrouped, Node/IP search,
+Admin Nodes current CPU/RAM/Disk/Network sorting, Consumption alignment,
+VM detail label cleanup, 30-second refresh and route contract.
+
+Structural UI regression:
+11/11 pages PASS
+
+Chromium UI regression:
+12/12 pages PASS at desktop, tablet and mobile widths
+
+Production deployment/restart:
+NOT PERFORMED

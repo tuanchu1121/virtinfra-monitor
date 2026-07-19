@@ -30,13 +30,16 @@ ADMIN_ALLOWED_ENDPOINTS = {
     "reset_all_abuse_data_v48129", "admin_abuse_settings",
     "clear_vm_abuse_data_v48128", "manage_vm_abuse_data_v48129",
     "clear_abuse_events",
-    "admin_users_page", "admin_create_user", "admin_user_action",
-    "admin_theme_manager", "admin_logs_page", "admin_system_health_page",
     "admin_delete_vm", "admin_restore_vm", "admin_delete_node", "admin_restore_node",
     "admin_purge_node_vms", "admin_bulk_nodes", "admin_bulk_vms",
     "admin_change_password", "admin_logout",
     "admin_node_groups_create", "admin_node_groups_update",
     "admin_node_groups_action", "admin_node_groups_assign", "admin_node_groups_bulk",
+    # Admin capability: user management (viewer/admin only, super_admin gated in handler)
+    "admin_users_page", "admin_create_user", "admin_user_action",
+    # Admin capability: theme, logs, system health
+    "admin_theme_manager", "admin_logs_page", "admin_system_health_page",
+    "admin_api_system_health",
 }
 
 
@@ -73,36 +76,11 @@ def selected_group_id() -> int:
     if gid <= 0:
         return 0
     row = group_row(gid, include_hidden=True)
-    if not row or not bool(row[4]):
+    if not row:
+        return 0
+    if current_role() == "viewer" and not bool(row[4]):
         return 0
     return gid
-
-def visible_node_names(group_id: int = 0) -> set[str]:
-    conn = _m().db()
-    try:
-        sql = """SELECT ni.node FROM node_inventory ni
-                 JOIN node_group_memberships gm ON gm.node=ni.node
-                 JOIN node_groups g ON g.id=gm.group_id
-                WHERE g.is_active=1 AND COALESCE(ni.status,'active')!='hidden'
-                  AND ni.deleted_at IS NULL"""
-        params = []
-        if int(group_id or 0) > 0:
-            sql += " AND g.id=?"
-            params.append(int(group_id))
-        return {str(row[0]) for row in conn.execute(sql, params).fetchall()}
-    finally:
-        conn.close()
-
-
-def _active_membership_clause(node_expr: str, group_id: int = 0, prefix: str = "ngv"):
-    sql = f"EXISTS (SELECT 1 FROM node_group_memberships {prefix}m JOIN node_groups {prefix}g ON {prefix}g.id={prefix}m.group_id WHERE {prefix}m.node={node_expr} AND {prefix}g.is_active=1"
-    params = []
-    if int(group_id or 0) > 0:
-        sql += f" AND {prefix}g.id=?"
-        params.append(int(group_id))
-    return sql + ")", params
-
-
 
 
 
@@ -313,19 +291,11 @@ def all_group_rows(q: str = "", visibility: str = "all", sort: str = "name", ord
         where.append("""(
             LOWER(g.name) LIKE ? OR LOWER(g.description) LIKE ? OR
             LOWER(g.country_code) LIKE ? OR EXISTS (
-                SELECT 1
-                  FROM node_group_memberships gm_search
-                  LEFT JOIN node_bridge_addresses_latest ba_search
-                    ON ba_search.node=gm_search.node
-                 WHERE gm_search.group_id=g.id
-                   AND (
-                        LOWER(gm_search.node) LIKE ?
-                        OR LOWER(COALESCE(ba_search.primary_ipv4,'')) LIKE ?
-                        OR LOWER(COALESCE(ba_search.ipv4_json,'[]')) LIKE ?
-                   )
+                SELECT 1 FROM node_group_memberships gm_search
+                 WHERE gm_search.group_id=g.id AND LOWER(gm_search.node) LIKE ?
             )
         )""")
-        params.extend((needle, needle, needle, needle, needle, needle))
+        params.extend((needle, needle, needle, needle))
     where_sql = " WHERE " + " AND ".join(where) if where else ""
     direction = "DESC" if order == "desc" else "ASC"
     conn = _m().db()
@@ -668,8 +638,7 @@ def page(title, content, *args, **kwargs):
             for endpoint, label in items
         ) + '</nav>'
         text = text[:nav_match.start()] + nav + text[nav_match.end():]
-    # Flags are rendered only by scoped Node cells. Global link decoration
-    # previously attached country alt text to VM UUIDs and metric labels.
+    text = _inject_node_flags(text)
     if ("node-group-flag" in text or "node-group-monitor" in text) and "flags/node-groups.css" not in text:
         text = text.replace("</head>", _flag_css_link() + "</head>", 1)
     return _replace_response_html(response or html, text)
@@ -796,7 +765,7 @@ def _group_management_section() -> str:
     filters = (
         f'<form class="search" method="get" action="{m.url_for("admin_page")}">'
         '<input type="hidden" name="section" value="groups">'
-        f'<input name="group_q" value="{m.escape(q, quote=True)}" placeholder="Search group, node or IP">'
+        f'<input name="group_q" value="{m.escape(q, quote=True)}" placeholder="Search group or node">'
         f'<select name="group_visibility">{visibility_options}</select>'
         f'<input type="hidden" name="group_sort" value="{m.escape(sort, quote=True)}">'
         f'<input type="hidden" name="group_order" value="{m.escape(order, quote=True)}">'
@@ -829,45 +798,6 @@ def _admin_group_filter() -> int:
     return _clean_group_id(_m().request.args.get("group"))
 
 
-def _filtered_admin_nodes(q, status, page_no, per_page):
-    rows, total, page_no, max_page = admin_nodes_query(q, status, page_no, per_page)
-    return [tuple(row[:7]) for row in rows], total, page_no, max_page
-
-
-def _filtered_admin_vms(q, status, page_no, per_page):
-    rows, total, page_no, max_page = admin_vms_query(q, status, page_no, per_page)
-    return [tuple(row[:9]) for row in rows], total, page_no, max_page
-
-
-def _admin_sort_state(default="node"):
-    m = _m()
-    sort = str(m.request.args.get("sort") or default).strip().lower()
-    order = str(m.request.args.get("order") or "asc").strip().lower()
-    return sort, "desc" if order == "desc" else "asc"
-
-
-def _admin_sort_link(label, key, section, q, status, per_page, group_id=0):
-    m = _m()
-    current, order = _admin_sort_state()
-    next_order = "desc" if current == key and order == "asc" else "asc"
-    values = {
-        "section": section,
-        "q": q or None,
-        "status": status,
-        "per_page": per_page,
-        "sort": key,
-        "order": next_order,
-    }
-    if group_id:
-        values["group"] = group_id
-    arrow = " ↑" if current == key and order == "asc" else " ↓" if current == key else ""
-    return '<a class="sort-link" href="%s">%s%s</a>' % (
-        m.escape(m.url_for("admin_page", **values), quote=True),
-        m.escape(label),
-        arrow,
-    )
-
-
 def admin_nodes_query(q, status, page_no, per_page):
     m = _m()
     status = m._v48134_clean_admin_status(status)
@@ -878,11 +808,10 @@ def admin_nodes_query(q, status, page_no, per_page):
         where.append("gm.group_id=?")
         params.append(group_id)
     if q:
-        pattern = m.like_pattern(q)
+        p = m.like_pattern(q)
         normalized_mac = m.normalize_mac_address(q)
         where.append("""(
             ni.node LIKE ?
-            OR ng.name LIKE ?
             OR EXISTS (SELECT 1 FROM node_bridge_addresses_latest b WHERE b.node=ni.node AND (
                 COALESCE(b.primary_ipv4,'') LIKE ? OR COALESCE(b.ipv4_json,'[]') LIKE ? OR COALESCE(b.mac,'') LIKE ?
                 OR (?<>'' AND LOWER(COALESCE(b.mac,''))=LOWER(?))))
@@ -900,30 +829,11 @@ def admin_nodes_query(q, status, page_no, per_page):
                 WHERE l.node=ni.node AND (l.mac LIKE ? OR (?<>'' AND l.mac=?)))
         )""")
         params.extend([
-            pattern, pattern, pattern, pattern, pattern, normalized_mac, normalized_mac,
-            pattern, pattern, pattern, pattern, pattern, pattern,
-            pattern, normalized_mac, normalized_mac,
-            pattern, pattern, pattern, normalized_mac, normalized_mac,
+            p, p, p, p, normalized_mac, normalized_mac,
+            p, p, p, p, p, p, p, normalized_mac, normalized_mac,
+            p, p, p, normalized_mac, normalized_mac,
         ])
     where_sql = "WHERE " + " AND ".join(where)
-    sort, order = _admin_sort_state("node")
-    sort_map = {
-        "node": "ni.node COLLATE NOCASE",
-        "group": "ng.name COLLATE NOCASE",
-        "public": "COALESCE(b.public_ipv4,'') COLLATE NOCASE",
-        "private": "COALESCE(b.private_ipv4,'') COLLATE NOCASE",
-        "status": "CASE WHEN COALESCE(ni.status,'active')='hidden' OR ni.deleted_at IS NOT NULL THEN 3 WHEN ng.is_active=0 THEN 2 WHEN ni.last_push<? THEN 1 ELSE 0 END",
-        "vms": "COALESCE(vc.vm_count,0)",
-        "last": "COALESCE(ni.last_push,0)",
-        "cpu": "CASE WHEN ncf.node IS NULL THEN 1 ELSE 0 END ASC, COALESCE(ncf.cpu_percent,0)",
-        "ram": "CASE WHEN ncf.node IS NULL OR COALESCE(ncf.mem_total,0)<=0 THEN 1 ELSE 0 END ASC, CASE WHEN COALESCE(ncf.mem_total,0)>0 THEN ncf.mem_used*1.0/ncf.mem_total ELSE 0 END",
-        "disk": "CASE WHEN ncf.node IS NULL THEN 1 ELSE 0 END ASC, COALESCE(ncf.disk_read_bps,0)+COALESCE(ncf.disk_write_bps,0)",
-        "network": "CASE WHEN ncf.node IS NULL OR COALESCE(ncf.interval_seconds,0)<=0 THEN 1 ELSE 0 END ASC, CASE WHEN COALESCE(ncf.interval_seconds,0)>0 THEN ncf.total_bytes*1.0/ncf.interval_seconds ELSE 0 END",
-    }
-    if sort not in sort_map:
-        sort = "node"
-    sort_params = [m.now_ts() - m.VM_STALE_SECONDS] if sort == "status" else []
-    direction = "DESC" if order == "desc" else "ASC"
     conn = m.db()
     try:
         system_id = system_group_id(conn)
@@ -949,16 +859,14 @@ def admin_nodes_query(q, status, page_no, per_page):
             WHERE COALESCE(status,'active')!='hidden' AND deleted_at IS NULL GROUP BY node
           )
           SELECT ni.node,ni.status,ni.last_push,ni.deleted_at,COALESCE(vc.vm_count,0),
-                 COALESCE(b.public_ipv4,''),COALESCE(b.private_ipv4,''),ng.id,ng.name,ng.country_code,
-                 ng.is_active,ncf.cpu_percent,ncf.mem_used,ncf.mem_total,ncf.disk_read_bps,ncf.disk_write_bps,
-                 ncf.total_bytes,ncf.interval_seconds
+                 COALESCE(b.public_ipv4,''),COALESCE(b.private_ipv4,''),ng.id,ng.name,ng.country_code
           FROM {from_sql}
           LEFT JOIN bridge_ip b ON b.node=ni.node LEFT JOIN vm_count vc ON vc.node=ni.node
-          LEFT JOIN node_current_fast ncf ON ncf.node=ni.node
           {where_sql}
-          ORDER BY {sort_map[sort]} {direction},ni.node COLLATE NOCASE ASC
+          ORDER BY CASE WHEN COALESCE(ni.status,'active')='hidden' OR ni.deleted_at IS NOT NULL THEN 1 ELSE 0 END,
+                   ni.node COLLATE NOCASE
           LIMIT ? OFFSET ?
-        """, params + sort_params + [per_page, (page_no - 1) * per_page]).fetchall()
+        """, params + [per_page, (page_no - 1) * per_page]).fetchall()
         return rows, total, page_no, max_page
     finally:
         conn.close()
@@ -974,11 +882,10 @@ def admin_vms_query(q, status, page_no, per_page):
         where.append("gm.group_id=?")
         params.append(group_id)
     if q:
-        pattern = m.like_pattern(q)
+        p = m.like_pattern(q)
         normalized_mac = m.normalize_mac_address(q)
         where.append("""(
-            vi.node LIKE ? OR ng.name LIKE ? OR vi.vm_uuid LIKE ?
-            OR COALESCE(vi.last_iface,'') LIKE ? OR COALESCE(vi.last_bridge,'') LIKE ?
+            vi.node LIKE ? OR vi.vm_uuid LIKE ? OR COALESCE(vi.last_iface,'') LIKE ? OR COALESCE(vi.last_bridge,'') LIKE ?
             OR EXISTS (SELECT 1 FROM node_bridge_addresses_latest b WHERE b.node=vi.node AND (
                 COALESCE(b.primary_ipv4,'') LIKE ? OR COALESCE(b.ipv4_json,'[]') LIKE ? OR COALESCE(b.mac,'') LIKE ?
                 OR (?<>'' AND LOWER(COALESCE(b.mac,''))=LOWER(?))))
@@ -988,25 +895,8 @@ def admin_vms_query(q, status, page_no, per_page):
                 ON i.node=l.node AND i.vm_uuid=l.vm_uuid AND i.bridge=l.bridge AND i.iface=l.iface AND i.mac=l.mac
                 WHERE l.node=vi.node AND l.vm_uuid=vi.vm_uuid AND (l.mac LIKE ? OR (?<>'' AND l.mac=?)))
         )""")
-        params.extend([
-            pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern,
-            normalized_mac, normalized_mac, pattern, pattern, pattern,
-            normalized_mac, normalized_mac,
-        ])
+        params.extend([p, p, p, p, p, p, p, normalized_mac, normalized_mac, p, p, p, normalized_mac, normalized_mac])
     where_sql = "WHERE " + " AND ".join(where)
-    sort, order = _admin_sort_state("node")
-    sort_map = {
-        "node": "vi.node COLLATE NOCASE",
-        "group": "ng.name COLLATE NOCASE",
-        "uuid": "vi.vm_uuid COLLATE NOCASE",
-        "status": "CASE WHEN COALESCE(vi.status,'active')='hidden' OR vi.deleted_at IS NOT NULL THEN 2 WHEN vi.last_seen<? THEN 1 ELSE 0 END",
-        "seen": "COALESCE(vi.last_seen,0)",
-        "bridge": "COALESCE(vi.last_bridge,'') COLLATE NOCASE",
-    }
-    if sort not in sort_map:
-        sort = "node"
-    sort_params = [m.now_ts() - m.VM_STALE_SECONDS] if sort == "status" else []
-    direction = "DESC" if order == "desc" else "ASC"
     conn = m.db()
     try:
         from_sql = """vm_inventory vi
@@ -1022,199 +912,124 @@ def admin_vms_query(q, status, page_no, per_page):
             FROM node_bridge_addresses_latest GROUP BY node
           )
           SELECT vi.node,vi.vm_uuid,vi.status,vi.last_seen,vi.last_bridge,vi.last_iface,vi.deleted_at,
-                 COALESCE(b.public_ipv4,''),COALESCE(b.private_ipv4,''),ng.id,ng.name,ng.country_code,
-                 ng.is_active
+                 COALESCE(b.public_ipv4,''),COALESCE(b.private_ipv4,''),ng.id,ng.name,ng.country_code
           FROM {from_sql} LEFT JOIN bridge_ip b ON b.node=vi.node
           {where_sql}
-          ORDER BY {sort_map[sort]} {direction},vi.node COLLATE NOCASE ASC,vi.vm_uuid COLLATE NOCASE ASC
+          ORDER BY CASE WHEN COALESCE(vi.status,'active')='hidden' OR vi.deleted_at IS NOT NULL THEN 1 ELSE 0 END,
+                   vi.node COLLATE NOCASE,vi.last_seen DESC
           LIMIT ? OFFSET ?
-        """, params + sort_params + [per_page, (page_no - 1) * per_page]).fetchall()
+        """, params + [per_page, (page_no - 1) * per_page]).fetchall()
         return rows, total, page_no, max_page
     finally:
         conn.close()
 
 
+def _filtered_admin_nodes(q, status, page_no, per_page):
+    gid = _admin_group_filter()
+    if not gid:
+        return _BASE["admin_nodes_query"](q, status, page_no, per_page)
+    rows, total, page_no, max_page = admin_nodes_query(q, status, page_no, per_page)
+    return [tuple(row[:7]) for row in rows], total, page_no, max_page
+
+
+def _filtered_admin_vms(q, status, page_no, per_page):
+    gid = _admin_group_filter()
+    if not gid:
+        return _BASE["admin_vms_query"](q, status, page_no, per_page)
+    rows, total, page_no, max_page = admin_vms_query(q, status, page_no, per_page)
+    return [tuple(row[:9]) for row in rows], total, page_no, max_page
+
+
+def _groups_for_nodes(nodes: list[str]) -> dict[str, tuple[str, str]]:
+    unique = sorted({str(node or "").strip() for node in nodes if str(node or "").strip()})
+    if not unique:
+        return {}
+    placeholders = ",".join("?" for _ in unique)
+    conn = _m().db()
+    try:
+        rows = conn.execute(f"""
+            SELECT gm.node,g.name,g.country_code
+              FROM node_group_memberships gm
+              JOIN node_groups g ON g.id=gm.group_id
+             WHERE gm.node IN ({placeholders})
+        """, unique).fetchall()
+        return {str(row[0]): (str(row[1]), str(row[2] or "")) for row in rows}
+    finally:
+        conn.close()
+
+
+def _insert_group_cell(row_html: str, cell_html: str) -> str:
+    cells = list(re.finditer(r"</td>", row_html, flags=re.I))
+    if len(cells) < 2:
+        return row_html
+    pos = cells[1].end()
+    return row_html[:pos] + cell_html + row_html[pos:]
+
+
+def _inject_admin_node_rows(html: str) -> str:
+    matches = re.findall(r'class="node-select"[^>]*name="nodes"[^>]*value="([^"]+)"', html)
+    nodes = [html_lib.unescape(value) for value in matches]
+    mapping = _groups_for_nodes(nodes)
+
+    def patch(match):
+        row = match.group(0)
+        selected = re.search(r'class="node-select"[^>]*name="nodes"[^>]*value="([^"]+)"', row)
+        if not selected:
+            return row
+        node = html_lib.unescape(selected.group(1))
+        name, country = mapping.get(node, (SYSTEM_GROUP_NAME, ""))
+        return _insert_group_cell(row, f'<td data-node-group>{group_badge(name, country)}</td>')
+
+    return re.sub(r"<tr(?:\s[^>]*)?>.*?</tr>", patch, html, flags=re.I | re.S)
+
+
+def _inject_admin_vm_rows(html: str) -> str:
+    values = re.findall(r'class="vm-select"[^>]*name="vms"[^>]*value="([^"]+)"', html)
+    nodes = [html_lib.unescape(value).split("\t", 1)[0] for value in values]
+    mapping = _groups_for_nodes(nodes)
+
+    def patch(match):
+        row = match.group(0)
+        selected = re.search(r'class="vm-select"[^>]*name="vms"[^>]*value="([^"]+)"', row)
+        if not selected:
+            return row
+        node = html_lib.unescape(selected.group(1)).split("\t", 1)[0]
+        name, country = mapping.get(node, (SYSTEM_GROUP_NAME, ""))
+        return _insert_group_cell(row, f'<td data-node-group>{group_badge(name, country)}</td>')
+
+    return re.sub(r"<tr(?:\s[^>]*)?>.*?</tr>", patch, html, flags=re.I | re.S)
+
+
 def admin_pager(section, q, status, page_no, max_page, per_page):
-    if max_page <= 1:
-        return ""
-    m = _m()
-    sort, order = _admin_sort_state("node")
-    common = {
-        "section": section,
-        "q": q or None,
-        "status": status,
-        "per_page": per_page,
-        "sort": sort,
-        "order": order,
-    }
-    group_id = _admin_group_filter()
-    if group_id:
-        common["group"] = group_id
-    previous = m.url_for("admin_page", **common, page=max(1, page_no - 1))
-    following = m.url_for("admin_page", **common, page=min(max_page, page_no + 1))
-    return (
-        '<div class="pagination">'
-        f'<a class="btn {"disabled" if page_no <= 1 else ""}" href="{m.escape(previous, quote=True)}">← Previous</a>'
-        f'<span>Page <b>{page_no}</b> / <b>{max_page}</b></span>'
-        f'<a class="btn {"disabled" if page_no >= max_page else ""}" href="{m.escape(following, quote=True)}">Next →</a>'
-        '</div>'
-    )
-
-
-def _row_action_menu(forms: str, width: int) -> str:
-    """Keep the existing desktop action-button geometry after bulk removal."""
-    html = _m()._v490_action_menu(forms)
-    return html.replace("<div>", f'<div style="width:{int(width)}px">', 1)
-
-
-def _row_group_move_form(node, selected_group):
-    m = _m()
-    return (
-        f'<form method="post" action="{m.url_for("admin_node_groups_assign")}" '
-        'onsubmit="return confirm(\'Move this node to the selected Node Group?\')">'
-        f'<input type="hidden" name="csrf_token" value="{m.escape(m.csrf_token(), quote=True)}">'
-        f'<input type="hidden" name="nodes" value="{m.escape(node, quote=True)}">'
-        f'<select name="group_id" aria-label="Target Node Group">{group_options_html(selected_group, "Target Node Group")}</select>'
-        '<button type="submit">Move Group</button></form>'
-    )
+    html = _BASE["admin_pager"](section, q, status, page_no, max_page, per_page)
+    gid = _admin_group_filter()
+    if gid and html:
+        marker = f"section={section}"
+        html = html.replace(marker, marker + f"&amp;group={gid}")
+    return html
 
 
 def admin_nodes_section(q, status, page_no, per_page):
-    m = _m()
-    rows, total, page_no, max_page = admin_nodes_query(q, status, page_no, per_page)
-    group_id = _admin_group_filter()
-    cutoff = m.now_ts() - m.VM_STALE_SECONDS
-    body = []
-    for (node, row_status, last_push, deleted_at, vm_count, public_ip, private_ip,
-         gid, group_name, country, group_active, cpu_percent, mem_used, mem_total,
-         disk_read_bps, disk_write_bps, total_bytes, interval_seconds) in rows:
-        hidden = row_status == "hidden" or bool(deleted_at)
-        stale = not hidden and m.safe_int(last_push, 0) < cutoff
-        agent_status = "hidden" if hidden else "stale" if stale else "active"
-        group_note = '<small class="row-sub">Group Hidden</small>' if not group_active else ""
-        has_current = cpu_percent is not None
-        cpu_value = m.safe_float(cpu_percent, 0)
-        ram_pct = m.ram_used_percent_value(mem_used, mem_total) if has_current else 0.0
-        cpu_html = "N/A" if not has_current else m.metric_pill(
-            m.fmt_percent(cpu_value), m.metric_level(cpu_value, 70, 85), "Current host CPU"
-        )
-        ram_html = "N/A" if not has_current or m.safe_int(mem_total, 0) <= 0 else (
-            m.metric_pill(
-                f"{m.human(mem_used)} / {m.human(mem_total)}",
-                m.metric_level(ram_pct, 80, 90),
-                f"Current host RAM used {ram_pct:.1f}%",
-            ) + f'<small class="row-sub">{ram_pct:.1f}% used</small>'
-        )
-        disk_total = m.safe_float(disk_read_bps, 0) + m.safe_float(disk_write_bps, 0)
-        disk_html = "N/A" if not has_current else (
-            f'<b>{m.human_rate(disk_total)}</b>'
-            f'<small class="row-sub">R {m.human_rate(disk_read_bps)} · W {m.human_rate(disk_write_bps)}</small>'
-        )
-        net_html = "N/A" if not has_current or m.safe_int(interval_seconds, 0) <= 0 else (
-            f'<b>{m.fmt_mbps(total_bytes, interval_seconds)}</b>'
-            f'<small class="row-sub">Current interval {m.safe_int(interval_seconds, 0)}s</small>'
-        )
-        forms = m.admin_form(m.url_for("admin_delete_node"), "Hide", {"node": node, "mode": "soft"}, danger=True, confirm="Hide node from monitoring? Raw usage is kept.")
-        forms += m.admin_form(m.url_for("admin_restore_node"), "Restore", {"node": node}, danger=False, confirm="Restore node to monitoring?")
-        forms += _row_group_move_form(node, int(gid))
-        forms += m.admin_form(m.url_for("admin_purge_node_vms"), "Purge VMs", {"node": node}, danger=True, confirm="Queue purge of all VM monitoring data under this node?")
-        forms += m.admin_form(m.url_for("admin_delete_node"), "Purge node", {"node": node, "mode": "purge"}, danger=True, confirm="Permanently purge this node and its monitoring data?")
-        body.append(
-            f'<tr class="{"stale-row" if hidden or stale or not group_active else ""}">'
-            f'<td>{flag_html(country)}<b>{m.escape(node)}</b><small class="row-sub">{m.escape(agent_status)}</small>{group_note}</td>'
-            f'<td>{m.escape(group_name)}</td>'
-            f'<td class="mono">{m.escape(m.compact_ipv4(public_ip) or "-")}</td>'
-            f'<td class="mono">{m.escape(m.compact_ipv4(private_ip) or "-")}</td>'
-            f'<td class="num"><b>{m.safe_int(vm_count, 0)}</b></td>'
-            f'<td class="num">{cpu_html}</td>'
-            f'<td class="num">{ram_html}</td>'
-            f'<td class="num">{disk_html}</td>'
-            f'<td class="num">{net_html}</td>'
-            f'<td>{m.fmt_full(last_push)}</td>'
-            f'<td>{_row_action_menu(forms, 145)}</td></tr>'
-        )
-    body_html = ''.join(body) or '<tr><td colspan="11" class="empty">No nodes match this filter</td></tr>'
-    headers = [
-        _admin_sort_link("NODE / STATUS", "node", "nodes", q, status, per_page, group_id),
-        _admin_sort_link("NODE GROUP", "group", "nodes", q, status, per_page, group_id),
-        _admin_sort_link("PUBLIC IP", "public", "nodes", q, status, per_page, group_id),
-        _admin_sort_link("PRIVATE IP", "private", "nodes", q, status, per_page, group_id),
-        _admin_sort_link("VM", "vms", "nodes", q, status, per_page, group_id),
-        _admin_sort_link("CPU", "cpu", "nodes", q, status, per_page, group_id),
-        _admin_sort_link("RAM", "ram", "nodes", q, status, per_page, group_id),
-        _admin_sort_link("DISK I/O", "disk", "nodes", q, status, per_page, group_id),
-        _admin_sort_link("NETWORK", "network", "nodes", q, status, per_page, group_id),
-        _admin_sort_link("LAST PUSH", "last", "nodes", q, status, per_page, group_id),
-        "ACTION",
-    ]
-    filters = (
-        '<form class="search" method="get">'
-        '<input type="hidden" name="section" value="nodes">'
-        f'<input name="q" value="{m.escape(q, quote=True)}" placeholder="Search node, group, IP, MAC, VM, bridge or interface">'
-        f'<select name="status">{m._v48134_status_options(status)}</select>'
-        f'{_group_select(group_id)}'
-        f'<select name="per_page"><option value="100" {"selected" if per_page == 100 else ""}>100 rows</option><option value="200" {"selected" if per_page == 200 else ""}>200 rows</option><option value="500" {"selected" if per_page == 500 else ""}>500 rows</option></select>'
-        '<button>Filter</button>'
-        f'<a class="clear" href="{m.url_for("admin_page", section="nodes")}">Reset</a></form>'
-    )
-    return (
-        '<div class="card"><div class="section-head"><div><h3>Node management</h3>'
-        f'<p>{total:,} matching node(s). Each row has direct actions; group-hidden state is separate from agent state.</p>'
-        f'</div></div>{filters}<div class="table-wrap"><table class="admin-clean-table node-groups-admin-nodes">'
-        f'<thead><tr>{"".join("<th>" + header + "</th>" for header in headers)}</tr></thead>'
-        f'<tbody>{body_html}</tbody></table></div>{admin_pager("nodes", q, status, page_no, max_page, per_page)}</div>'
-    )
+    m=_m(); html = _BASE["admin_nodes_section"](q, status, page_no, per_page); html = html.replace('<table class="admin-clean-table">', '<table class="admin-clean-table node-groups-admin-nodes">', 1); selected = _admin_group_filter(); html = _insert_once(html, '<select name="per_page">', _group_select(selected), before=True)
+    html = html.replace('<option value="purge_vms">Purge all VMs</option>', '<option value="add_group">Add to Group</option><option value="move_group">Move to Group</option><option value="remove_group">Remove from Group</option><option value="move_ungrouped">Move to Ungrouped</option><option value="purge_vms">Purge all VMs</option>', 1)
+    action_end = '</select><button class="btn-danger">Apply</button>'
+    group_select = '<select name="group_id" aria-label="Target Node Group">%s</select>' % group_options_html(0, "Target Node Group")
+    scope = '<select name="selection_scope" aria-label="Selection scope"><option value="selected">Selected nodes</option><option value="matching">All matching nodes</option></select><input type="hidden" name="q" value="%s"><input type="hidden" name="status" value="%s"><input type="hidden" name="current_group" value="%s">' % (m.escape(q or '',quote=True),m.escape(status or '',quote=True),int(selected or 0))
+    html = html.replace(action_end, '</select>' + scope + group_select + '<button class="btn-danger">Apply</button>', 1)
+    html = html.replace('<th>PUBLIC IP</th>', '<th>NODE GROUP</th><th>PUBLIC IP</th>', 1); html = html.replace('colspan="7" class="empty">No nodes', 'colspan="8" class="empty">No nodes', 1)
+    return _inject_admin_node_rows(html)
+
 
 
 def admin_vms_section(q, status, page_no, per_page):
-    m = _m()
-    rows, total, page_no, max_page = admin_vms_query(q, status, page_no, per_page)
-    group_id = _admin_group_filter()
-    cutoff = m.now_ts() - m.VM_STALE_SECONDS
-    body = []
-    for node, vm_uuid, row_status, last_seen, bridge, iface, deleted_at, public_ip, private_ip, gid, group_name, country, group_active in rows:
-        hidden = row_status == "hidden" or bool(deleted_at)
-        stale = not hidden and m.safe_int(last_seen, 0) < cutoff
-        display_status = "hidden" if hidden else "stale" if stale else "active"
-        forms = m.admin_form(m.url_for("admin_delete_vm"), "Hide", {"node": node, "vm_uuid": vm_uuid, "mode": "soft"}, danger=True, confirm="Hide VM from monitoring? Raw usage is kept.")
-        forms += m.admin_form(m.url_for("admin_restore_vm"), "Restore", {"node": node, "vm_uuid": vm_uuid}, danger=False, confirm="Restore VM to monitoring?")
-        forms += m.admin_form(m.url_for("admin_delete_vm"), "Purge VM", {"node": node, "vm_uuid": vm_uuid, "mode": "purge"}, danger=True, confirm="Permanently purge only this UUID from VM-scoped monitoring data?")
-        group_note = ' <span class="vm-state stale">HIDDEN</span>' if not group_active else ''
-        body.append(
-            f'<tr class="{"stale-row" if hidden or stale or not group_active else ""}">'
-            f'<td><b>{m.escape(node)}</b><small class="row-sub">{m.escape(m.compact_ipv4(public_ip) or "-")}</small></td>'
-            f'<td>{m.escape(group_name)}{group_note}</td>'
-            f'<td class="mono"><span class="uuid-cell">{m.escape(vm_uuid)}<button type="button" class="copy-btn" data-copy="{m.escape(vm_uuid, quote=True)}">⧉</button></span></td>'
-            f'<td><b>{m.escape(display_status)}</b><small class="row-sub">{m.fmt_push(last_seen)}</small></td>'
-            f'<td>{m.escape(bridge or "-")}<small class="row-sub">{m.escape(iface or "-")}</small></td>'
-            f'<td>{m._v490_action_menu(forms)}</td></tr>'
-        )
-    body_html = ''.join(body) or '<tr><td colspan="6" class="empty">No VMs match this filter</td></tr>'
-    headers = [
-        _admin_sort_link("NODE / IP", "node", "vms", q, status, per_page, group_id),
-        _admin_sort_link("NODE GROUP", "group", "vms", q, status, per_page, group_id),
-        _admin_sort_link("VM UUID", "uuid", "vms", q, status, per_page, group_id),
-        _admin_sort_link("STATUS / SEEN", "seen", "vms", q, status, per_page, group_id),
-        _admin_sort_link("BRIDGE / IFACE", "bridge", "vms", q, status, per_page, group_id),
-        "ACTION",
-    ]
-    filters = (
-        '<form class="search" method="get">'
-        '<input type="hidden" name="section" value="vms">'
-        f'<input name="q" value="{m.escape(q, quote=True)}" placeholder="Search node, group, IP, MAC, VM UUID, bridge or interface">'
-        f'<select name="status">{m._v48134_status_options(status)}</select>'
-        f'{_group_select(group_id)}'
-        f'<select name="per_page"><option value="100" {"selected" if per_page == 100 else ""}>100 rows</option><option value="200" {"selected" if per_page == 200 else ""}>200 rows</option><option value="500" {"selected" if per_page == 500 else ""}>500 rows</option></select>'
-        '<button>Filter</button>'
-        f'<a class="clear" href="{m.url_for("admin_page", section="vms")}">Reset</a></form>'
-    )
-    return (
-        '<div class="card"><div class="section-head"><div><h3>VM management</h3>'
-        f'<p>{total:,} matching VM(s). Each row has direct Hide, Restore and Purge actions.</p>'
-        f'</div></div>{filters}<div class="table-wrap"><table class="admin-clean-table node-groups-admin-vms">'
-        f'<thead><tr>{"".join("<th>" + header + "</th>" for header in headers)}</tr></thead>'
-        f'<tbody>{body_html}</tbody></table></div>{admin_pager("vms", q, status, page_no, max_page, per_page)}</div>'
-    )
+    html = _BASE["admin_vms_section"](q, status, page_no, per_page)
+    html = html.replace('<table class="admin-clean-table">', '<table class="admin-clean-table node-groups-admin-vms">', 1)
+    selected = _admin_group_filter()
+    html = _insert_once(html, '<select name="per_page">', _group_select(selected), before=True)
+    html = html.replace('<th>VM UUID</th>', '<th>NODE GROUP</th><th>VM UUID</th>', 1)
+    html = html.replace('colspan="6" class="empty">No VMs', 'colspan="7" class="empty">No VMs', 1)
+    return _inject_admin_vm_rows(html)
+
 
 def admin_page():
     m = _m()
@@ -1504,64 +1319,8 @@ def admin_users_page():
     deny = require_admin()
     if deny:
         return deny
-    actor_role = current_role()
-    conn = m.db()
-    try:
-        if actor_role == "admin":
-            users = conn.execute("""
-                SELECT id,username,role,is_active,created_at,updated_at,last_login
-                  FROM dashboard_users
-                 WHERE role IN ('viewer','admin')
-                 ORDER BY role DESC,LOWER(username),id
-            """).fetchall()
-        else:
-            users = conn.execute("""
-                SELECT id,username,role,is_active,created_at,updated_at,last_login
-                  FROM dashboard_users
-                 ORDER BY CASE role WHEN 'super_admin' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END,
-                          LOWER(username),id
-            """).fetchall()
-    finally:
-        conn.close()
-    current_id = int(m.current_dashboard_user_id() or 0)
-    csrf = m.escape(m.csrf_token(), quote=True)
-    body = []
-    roles = ("viewer", "admin", "super_admin") if actor_role == "super_admin" else ("viewer", "admin")
-    for user_id, username, role, is_active, created_at, updated_at, last_login in users:
-        role = clean_role(role)
-        if actor_role == "admin" and role == "super_admin":
-            continue
-        is_current = int(user_id) == current_id
-        options = ''.join(
-            '<option value="%s"%s>%s</option>' % (
-                m.escape(item, quote=True), ' selected' if item == role else '', m.escape(item),
-            ) for item in roles
-        )
-        role_control = (
-            '<input type="hidden" name="role" value="%s"><select disabled>%s</select>' %
-            (m.escape(role, quote=True), options)
-            if is_current else '<select name="role">%s</select>' % options
-        )
-        badges = '<span class="vm-state active">CURRENT</span>' if is_current else ''
-        status = "active" if is_active else "disabled"
-        status_cls = "active" if is_active else "stale"
-        action = "disable" if is_active else "enable"
-        action_label = "Disable" if is_active else "Enable"
-        controls = f'''<form class="inline-form" method="post" action="{m.url_for("admin_user_action")}" onsubmit="return confirm('Update this user?')">
-          <input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="user_id" value="{int(user_id)}"><input type="hidden" name="action" value="reset_password">
-          <input name="new_password" type="password" placeholder="New password" autocomplete="new-password">{role_control}<button class="btn" type="submit">Reset</button></form>'''
-        if not is_current:
-            controls += m.admin_form(m.url_for('admin_user_action'), action_label, {'user_id': user_id, 'action': action}, danger=False, confirm=f'{action_label} this user?')
-            controls += m.admin_form(m.url_for('admin_user_action'), 'Delete', {'user_id': user_id, 'action': 'delete'}, danger=True, confirm='Delete this dashboard user?')
-        body.append(f'''<tr><td>{int(user_id)}</td><td class="mono"><b>{m.escape(username)}</b> {badges}</td><td>{m.escape(role)}</td><td><span class="vm-state {status_cls}">{status.upper()}</span></td><td>{m.fmt_full(created_at)}</td><td>{m.fmt_full(last_login)}</td><td>{controls}</td></tr>''')
-    role_options = ''.join('<option value="%s">%s</option>' % (r, r) for r in roles)
-    body_html = ''.join(body) or '<tr><td colspan="7" class="empty">No dashboard users</td></tr>'
-    note = 'Admin can manage Viewer and Admin accounts. Super Admin accounts are not visible to Admin.' if actor_role == 'admin' else 'Super Admin can manage all dashboard roles. The current account and the last enabled Super Admin are protected by backend checks.'
-    content = f'''<div class="card"><h3>Dashboard Users</h3><a href="{m.url_for("admin_page")}">Back to Admin</a><a href="{m.url_for("admin_logs_page", type="account")}">Account logs</a><div class="admin-note">{m.escape(note)}</div></div>
-    <div class="card"><h3>Create User</h3><form method="post" action="{m.url_for("admin_create_user")}" onsubmit="return confirm('Create this user?')"><input type="hidden" name="csrf_token" value="{csrf}"><div class="form-grid"><div><label>Username</label><input name="username" autocomplete="username" required></div><div><label>Password</label><input name="password" type="password" autocomplete="new-password" required></div><div><label>Role</label><select name="role">{role_options}</select></div><div><button class="btn" type="submit">Create user</button></div></div></form></div>
-    <div class="card"><div class="table-title-row"><h3>Users</h3><div class="count-badges"><span>Users <b>{len(users)}</b></span></div></div><div class="table-wrap"><table><thead><tr><th>ID</th><th>USERNAME</th><th>ROLE</th><th>STATUS</th><th>CREATED</th><th>LAST LOGIN</th><th>ACTION</th></tr></thead><tbody>{body_html}</tbody></table></div></div>'''
-    return m.page("Dashboard Users", content)
-
+    # Admin can view user list; super_admin actions are gated in admin_create_user / admin_user_action
+    return _BASE["admin_users_page_view"]()
 
 
 
@@ -1570,108 +1329,31 @@ def admin_create_user():
     deny = require_admin()
     if deny:
         return deny
-    actor_role = current_role()
+    if not is_super_admin():
+        return m.Response("Forbidden\n", status=403, mimetype="text/plain")
     username = m.clean_username(m.request.form.get("username"))
     password = m.request.form.get("password") or ""
-    requested_role = clean_role(m.request.form.get("role"))
-    allowed = {"viewer", "admin", "super_admin"} if actor_role == "super_admin" else {"viewer", "admin"}
-    if requested_role not in allowed or not username or len(username) < 3 or len(password) < 10:
+    role = clean_role(m.request.form.get("role"))
+    if role not in {"viewer", "admin", "super_admin"} or not username or len(username) < 3 or len(password) < 10:
         return m.Response("Unable to create user with the provided information.\n", status=400, mimetype="text/plain")
     if m.get_dashboard_user(username):
         return m.Response("Unable to create user with the provided information.\n", status=400, mimetype="text/plain")
-    m.upsert_dashboard_user(username, password, role=requested_role, is_active=1)
-    m.log_account_event("user_created", username=username, realm="admin", role=requested_role, detail=f"created_by={_actor()}")
+    m.upsert_dashboard_user(username, password, role=role, is_active=1)
+    m.log_account_event("user_created", username=username, realm="admin", role=role, detail=f"created_by={_actor()}")
     return m.redirect(m.url_for("admin_users_page"))
-
 
 
 
 def admin_user_action():
-    m = _m()
-    deny = require_admin()
-    if deny:
-        return deny
-    user_id = m.safe_int(m.request.form.get("user_id"), 0)
-    action = str(m.request.form.get("action") or "").strip().lower()
-    if user_id <= 0:
-        return m.Response("Missing user_id\n", status=400, mimetype="text/plain")
-    row = m.get_dashboard_user_by_id(user_id)
-    if not row:
+    m = _m(); user_id = m.safe_int(m.request.form.get("user_id"), 0)
+    if current_role() == "admin":
         return m.Response("User not found\n", status=404, mimetype="text/plain")
-    _, username, _, old_role, old_active, *_ = row
-    old_role = clean_role(old_role)
-    actor_role = current_role()
-    current_id = int(m.current_dashboard_user_id() or 0)
-    if actor_role == "admin" and old_role == "super_admin":
-        return m.Response("User not found\n", status=404, mimetype="text/plain")
-    if action in {"disable", "delete"} and user_id == current_id:
-        return m.Response("Safety block: you cannot disable or delete the account you are currently using.\n", status=400, mimetype="text/plain")
-    if action in {"disable", "delete"} and old_role == "super_admin" and active_super_admin_count(user_id) == 0:
-        return m.Response("Safety block: the last enabled Super Admin cannot be disabled or deleted.\n", status=400, mimetype="text/plain")
-    if action == "disable":
-        m.set_dashboard_user_status(user_id, 0)
-        event = "user_disabled"
-    elif action == "enable":
-        m.set_dashboard_user_status(user_id, 1)
-        event = "user_enabled"
-    elif action == "delete":
-        m.delete_dashboard_user(user_id)
-        event = "user_deleted"
-    elif action == "reset_password":
-        new_password = m.request.form.get("new_password") or ""
-        if len(new_password) < 10:
-            return m.Response("New password must be at least 10 characters\n", status=400, mimetype="text/plain")
-        requested_role = clean_role(m.request.form.get("role") or old_role)
-        allowed = {"viewer", "admin", "super_admin"} if actor_role == "super_admin" else {"viewer", "admin"}
-        if requested_role not in allowed:
-            return m.Response("User not found\n", status=404, mimetype="text/plain")
-        if user_id == current_id and requested_role != old_role:
-            return m.Response("Safety block: you cannot change the role of the account you are currently using.\n", status=400, mimetype="text/plain")
-        if old_role == "super_admin" and requested_role != "super_admin" and active_super_admin_count(user_id) == 0:
-            return m.Response("Safety block: the last enabled Super Admin cannot be downgraded.\n", status=400, mimetype="text/plain")
-        m.reset_dashboard_user_password(user_id, new_password, role=requested_role)
-        old_role = requested_role
-        event = "user_password_reset"
-    else:
-        return m.Response("Invalid action\n", status=400, mimetype="text/plain")
-    m.log_account_event(event, username=username, realm="admin", role=old_role, detail=f"actor={_actor()}")
-    return m.redirect(m.url_for("admin_users_page"))
-
-
-
-
-
-def admin_change_password():
-    m = _m()
     deny = require_admin()
-    if deny:
-        return deny
-    row = m.current_dashboard_user()
-    if not row:
-        return m.Response("Forbidden\n", status=403, mimetype="text/plain")
-    user_id, username, password_hash, role, is_active, *_ = row
-    error = success = ""
-    if m.request.method == "POST":
-        current = m.request.form.get("current_password") or ""
-        new_password = m.request.form.get("new_password") or ""
-        confirm = m.request.form.get("confirm_password") or ""
-        if not m.check_password_hash(password_hash, current):
-            error = "Current password is incorrect."
-        elif len(new_password) < 10:
-            error = "New password must be at least 10 characters."
-        elif new_password != confirm:
-            error = "Password confirmation does not match."
-        else:
-            conn = m.db()
-            try:
-                conn.execute("UPDATE dashboard_users SET password_hash=?,updated_at=? WHERE id=?", (m.generate_password_hash(new_password), _ts(), int(user_id)))
-                conn.commit()
-            finally:
-                conn.close()
-            m.log_account_event("password_changed", username=username, realm="admin", role=clean_role(role), detail="self_service=1")
-            success = "Your password has been updated."
-    content = f'''<div class="card login-card"><h3>Change Password</h3><a href="{m.url_for("admin_page")}">Back to Admin</a>{f'<div class="error-box">{m.escape(error)}</div>' if error else ''}{f'<div class="success-box">{m.escape(success)}</div>' if success else ''}<form method="post" action="{m.url_for("admin_change_password")}"><input type="hidden" name="csrf_token" value="{m.escape(m.csrf_token(), quote=True)}"><label>Current Password</label><input name="current_password" type="password" autocomplete="current-password" autofocus><label>New Password</label><input name="new_password" type="password" autocomplete="new-password"><label>Confirm New Password</label><input name="confirm_password" type="password" autocomplete="new-password"><button type="submit">Update Password</button></form></div>'''
-    return m.page("Change Password", content)
+    if deny: return deny
+    if not is_super_admin(): return m.Response("Forbidden\n", status=403, mimetype="text/plain")
+    return _BASE["admin_user_action_view"]()
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -1679,17 +1361,21 @@ def admin_change_password():
 # ---------------------------------------------------------------------------
 
 def get_node_rows(period, q="", sort_by="node", order="asc", target_ts=None):
+    gid = selected_group_id()
+    if not gid:
+        return _BASE["get_node_rows"](period, q, sort_by=sort_by, order=order, target_ts=target_ts)
     rows, start, end = _BASE["get_node_rows"](period, q, sort_by=sort_by, order=order, target_ts=target_ts)
-    allowed = visible_node_names(selected_group_id())
+    allowed = group_nodes(gid)
     return [row for row in rows if str(row[0]) in allowed], start, end
 
 
-
 def get_node_health_rows(q="", sort_by="status", order="asc"):
+    gid = selected_group_id()
+    if not gid:
+        return _BASE["get_node_health_rows"](q=q, sort_by=sort_by, order=order)
     rows = _BASE["get_node_health_rows"](q=q, sort_by=sort_by, order=order)
-    allowed = visible_node_names(selected_group_id())
+    allowed = group_nodes(gid)
     return [row for row in rows if str(row[0]) in allowed]
-
 
 
 def _group_top_raw_rows(period, q, sort_by, order, scope, limit, group_id):
@@ -1776,9 +1462,7 @@ def _group_top_raw_rows(period, q, sort_by, order, scope, limit, group_id):
 def get_top_vm_rows(period, q="", sort_by="total", order="desc", scope="all", limit=100):
     gid = selected_group_id()
     if not gid:
-        rows, selected_bucket, latest_bucket, used_limit = _BASE["get_top_vm_rows"](period, q=q, sort_by=sort_by, order=order, scope=scope, limit=limit)
-        allowed = visible_node_names()
-        return [row for row in rows if str(row[0]) in allowed], selected_bucket, latest_bucket, used_limit
+        return _BASE["get_top_vm_rows"](period, q=q, sort_by=sort_by, order=order, scope=scope, limit=limit)
     m = _m()
     requested_sort = m.clean_top_sort(sort_by)
     requested_order = m.clean_sort_order(order)
@@ -1789,8 +1473,12 @@ def get_top_vm_rows(period, q="", sort_by="total", order="desc", scope="all", li
     fetch_limit = 1000 if ram_sort or disk_sort else requested_limit
     rows, selected_bucket, latest_bucket, _ = _group_top_raw_rows(period, q, base_sort, requested_order, scope, fetch_limit, gid)
     rows = m._v48103_augment_rows_with_ram(rows, period, selected_bucket, (0, 1, 24, 25))
-    allowed = visible_node_names(gid)
-    rows = [r for r in rows if str(r[0]) in allowed]
+    if rows:
+        conn = m.db()
+        try:
+            rows = [r for r in rows if m._v48126_is_visible(conn, r[0], r[1])]
+        finally:
+            conn.close()
     if ram_sort:
         rows = m._v48103_sort_ram_rows(rows, requested_sort, requested_order, extractor=lambda r:(r[25],r[24],r[32],r[33],r[34]), tie_extractor=lambda r:m.safe_float(r[7],0))
     totals = m._v48133_disk_totals_for_pairs([(r[0], r[1]) for r in rows])
@@ -1802,9 +1490,11 @@ def get_top_vm_rows(period, q="", sort_by="total", order="desc", scope="all", li
             if requested_sort == "diskassigned": return assigned
             if requested_sort == "diskallocpct": return allocated/assigned if assigned > 0 else -1.0
             return count
-        rows.sort(key=lambda row: (0 if any(m.safe_int(row[i],0)>0 for i in (35,36,37)) else 1, disk_metric(row) if requested_order=="asc" else -disk_metric(row), m.safe_float(row[7],0)))
+        def key(row):
+            present = any(m.safe_int(row[i],0)>0 for i in (35,36,37)); value=disk_metric(row); tie=m.safe_float(row[7],0)
+            return ((0 if present else 1), value if requested_order=="asc" else -value, tie if requested_order=="asc" else -tie)
+        rows.sort(key=key)
     return rows[:requested_limit], selected_bucket, latest_bucket, requested_limit
-
 
 
 def _inject_group_select(response, marker: str, selected: int = 0, css_class: str = ""):
@@ -1844,18 +1534,20 @@ def _storage_io_params(**updates):
 def _v48140_disk_search_clause(values, summary_alias="s"):
     clauses, params = _BASE["storage_disk_clause"](values, summary_alias)
     gid = _clean_group_id(values.get("group"))
-    clause, group_params = _active_membership_clause(f"{summary_alias}.node", gid, "stg")
-    clauses.append(clause)
-    params.extend(group_params)
+    if gid:
+        clauses.append(f"EXISTS (SELECT 1 FROM node_group_memberships ngm WHERE ngm.node={summary_alias}.node AND ngm.group_id=?)")
+        params.append(gid)
     return clauses, params
 
 
 def _v48137_storage_target(conn, values):
     gid = _clean_group_id(values.get("group"))
+    if not gid:
+        return _BASE["storage_target"](conn, values)
     m = _m(); m.ensure_storage_snapshot_schema(conn)
     requested_at = m._request_target_ts(); node = str(values.get("node") or "").strip()
-    clause, params = _active_membership_clause("node_push_snapshots.node", gid, "stt")
-    where = ["storage_payload IS NOT NULL", clause]
+    where = ["storage_payload IS NOT NULL", "EXISTS (SELECT 1 FROM node_group_memberships gm WHERE gm.node=node_push_snapshots.node AND gm.group_id=?)"]
+    params = [gid]
     if node: where.append("node=?"); params.append(node)
     where_sql = " AND ".join(where)
     latest = m.safe_int((conn.execute(f"SELECT MAX(bucket) FROM node_push_snapshots WHERE {where_sql}", params).fetchone() or [0])[0],0)
@@ -1871,11 +1563,12 @@ def _v48137_storage_target(conn, values):
 
 def _v48137_snapshot_payload_rows(conn, values, target_bucket):
     gid = _clean_group_id(values.get("group"))
+    if not gid:
+        return _BASE["storage_payload_rows"](conn, values, target_bucket)
     if target_bucket <= 0: return []
     node = str(values.get("node") or "").strip()
-    clause, group_params = _active_membership_clause("node_push_snapshots.node", gid, "stp")
-    where = ["storage_payload IS NOT NULL", "bucket<=?", clause]
-    params = [target_bucket] + group_params
+    where = ["storage_payload IS NOT NULL", "bucket<=?", "EXISTS (SELECT 1 FROM node_group_memberships gm WHERE gm.node=node_push_snapshots.node AND gm.group_id=?)"]
+    params = [target_bucket, gid]
     if node: where.append("node=?"); params.append(node)
     where_sql = " AND ".join(where)
     return conn.execute(f"""WITH picked AS (SELECT node,MAX(bucket) bucket FROM node_push_snapshots WHERE {where_sql} GROUP BY node)
@@ -1884,85 +1577,38 @@ def _v48137_snapshot_payload_rows(conn, values, target_bucket):
 
 def _v48137_storage_filter_options(conn, values):
     gid = _clean_group_id(values.get("group"))
-    membership_clause, membership_params = _active_membership_clause("x.node", gid, "sfo")
-    nodes = [
-        str(row[0])
-        for row in conn.execute(
-            f"""SELECT x.node
-              FROM (
-                    SELECT node FROM vm_disk_summary_current
-                    UNION
-                    SELECT node FROM node_storage_mount_summary_current
-                   ) x
-              LEFT JOIN node_inventory ni ON ni.node=x.node
-             WHERE {membership_clause}
-               AND (ni.node IS NULL OR (
-                    COALESCE(ni.status,'active')!='hidden'
-                    AND ni.deleted_at IS NULL
-               ))
-             GROUP BY x.node
-             ORDER BY x.node COLLATE NOCASE""",
-            membership_params,
-        ).fetchall()
-    ]
+    if not gid:
+        return _BASE["storage_filter_options"](conn, values)
+    nodes = [str(r[0]) for r in conn.execute("""
+      SELECT x.node FROM (SELECT node FROM vm_disk_summary_current UNION SELECT node FROM node_storage_mount_summary_current) x
+      JOIN node_group_memberships gm ON gm.node=x.node LEFT JOIN node_inventory ni ON ni.node=x.node
+      WHERE gm.group_id=? AND (ni.node IS NULL OR (COALESCE(ni.status,'active')!='hidden' AND ni.deleted_at IS NULL))
+      GROUP BY x.node ORDER BY x.node COLLATE NOCASE""",(gid,)).fetchall()]
     node_filter = str(values.get("node") or "").strip()
-    mount_clause, mount_params = _active_membership_clause("q.node", gid, "sfm")
-    mount_where = [mount_clause]
-    params = list(mount_params)
-    if node_filter:
-        mount_where.append("q.node=?")
-        params.append(node_filter)
-    mounts = [
-        str(row[0])
-        for row in conn.execute(
-            f"""SELECT q.mount
-              FROM (
-                    SELECT d.node,d.mount
-                      FROM vm_disk_current d
-                      JOIN vm_inventory vi
-                        ON vi.node=d.node AND vi.vm_uuid=d.vm_uuid
-                     WHERE d.role='customer'
-                       AND d.mount!=''
-                       AND COALESCE(vi.status,'active')!='hidden'
-                       AND vi.deleted_at IS NULL
-                    UNION
-                    SELECT s.node,s.mount
-                      FROM node_storage_mount_summary_current s
-                     WHERE s.mount!=''
-                   ) q
-              LEFT JOIN node_inventory ni ON ni.node=q.node
-             WHERE {' AND '.join(mount_where)}
-               AND (ni.node IS NULL OR (
-                    COALESCE(ni.status,'active')!='hidden'
-                    AND ni.deleted_at IS NULL
-               ))
-             GROUP BY q.mount
-             ORDER BY q.mount COLLATE NOCASE""",
-            params,
-        ).fetchall()
-    ]
+    params = [gid]; node_sql = ""
+    if node_filter: node_sql=" AND q.node=?"; params.append(node_filter)
+    mounts = [str(r[0]) for r in conn.execute(f"""
+      SELECT q.mount FROM (
+        SELECT d.node,d.mount FROM vm_disk_current d JOIN vm_inventory vi ON vi.node=d.node AND vi.vm_uuid=d.vm_uuid
+         WHERE d.role='customer' AND d.mount!='' AND COALESCE(vi.status,'active')!='hidden' AND vi.deleted_at IS NULL
+        UNION SELECT s.node,s.mount FROM node_storage_mount_summary_current s WHERE s.mount!=''
+      ) q JOIN node_group_memberships gm ON gm.node=q.node WHERE gm.group_id=? {node_sql}
+      GROUP BY q.mount ORDER BY q.mount COLLATE NOCASE""",params).fetchall()]
     esc = _m().escape
-    node_html = '<option value="">All nodes</option>' + ''.join(
-        f'<option value="{esc(node, quote=True)}"'
-        f'{" selected" if node == node_filter else ""}>{esc(node)}</option>'
-        for node in nodes
-    )
-    mount_html = '<option value="">All storage</option>' + ''.join(
-        f'<option value="{esc(mount, quote=True)}"'
-        f'{" selected" if mount == values.get("mount") else ""}>{esc(mount)}</option>'
-        for mount in mounts
-    )
-    return node_html, mount_html
+    return ('<option value="">All nodes</option>'+''.join(f'<option value="{esc(n,quote=True)}"{" selected" if n==node_filter else ""}>{esc(n)}</option>' for n in nodes),
+            '<option value="">All storage</option>'+''.join(f'<option value="{esc(x,quote=True)}"{" selected" if x==values.get("mount") else ""}>{esc(x)}</option>' for x in mounts))
+
 
 def _v48140_node_group_cards_fast(conn, values, start_ts):
     gid = _clean_group_id(values.get("group"))
+    if not gid:
+        return _BASE["storage_node_cards"](conn, values, start_ts)
     m = _m()
     m._v48140_reconcile_summaries_if_needed(conn)
     sort_map={"node":"g.node COLLATE NOCASE","size":"g.size","used":"g.used","usepct":"CASE WHEN g.size>0 THEN g.used*1.0/g.size ELSE 0 END","read":"g.read_bps","write":"g.write_bps","readiops":"g.read_iops","writeiops":"g.write_iops","util":"g.util_percent","seen":"g.last_seen"}
     if values.get("sort") not in sort_map: values["sort"]="writeiops"
-    membership_clause, membership_params = _active_membership_clause("s.node", gid, "snc")
-    where=["s.last_seen>=?","(ni.node IS NULL OR (COALESCE(ni.status,'active')!='hidden' AND ni.deleted_at IS NULL))",membership_clause]
-    params=[start_ts]+membership_params
+    where=["s.last_seen>=?","(ni.node IS NULL OR (COALESCE(ni.status,'active')!='hidden' AND ni.deleted_at IS NULL))","EXISTS (SELECT 1 FROM node_group_memberships gm WHERE gm.node=s.node AND gm.group_id=?)"]
+    params=[start_ts,gid]
     if values.get("node"): where.append("s.node=?"); params.append(values["node"])
     if values.get("q"):
         p=m.like_pattern(values["q"]); where.append("(s.node LIKE ? OR s.mount LIKE ? OR s.device LIKE ? OR s.block LIKE ? OR s.raid_level LIKE ? OR s.fstype LIKE ? OR COALESCE(b.primary_ipv4,'') LIKE ?)"); params.extend([p]*7)
@@ -2011,27 +1657,24 @@ def _v5058c_common_args(tab, period, q, selected_node, coverage, limit, sort_by,
 
 
 def _v5058c_visible_nodes():
-    gid = selected_group_id()
-    clause, params = _active_membership_clause("ni.node", gid, "cvis")
-    conn = _m().db()
+    gid=selected_group_id()
+    if not gid: return _BASE["consumption_visible_nodes"]()
+    conn=_m().db()
     try:
-        return conn.execute(f"""SELECT ni.node,COALESCE(MAX(CASE WHEN LOWER(COALESCE(ba.role,''))='public' THEN ba.primary_ipv4 END),'') public_ipv4
-          FROM node_inventory ni LEFT JOIN node_bridge_addresses_latest ba ON ba.node=ni.node
-          WHERE {clause} AND COALESCE(ni.status,'active')!='hidden' AND ni.deleted_at IS NULL
-          GROUP BY ni.node ORDER BY LOWER(ni.node)""", params).fetchall()
-    finally:
-        conn.close()
-
+        return conn.execute("""SELECT ni.node,COALESCE(MAX(CASE WHEN LOWER(COALESCE(ba.role,''))='public' THEN ba.primary_ipv4 END),'') public_ipv4
+          FROM node_inventory ni JOIN node_group_memberships gm ON gm.node=ni.node LEFT JOIN node_bridge_addresses_latest ba ON ba.node=ni.node
+          WHERE gm.group_id=? AND COALESCE(ni.status,'active')!='hidden' AND ni.deleted_at IS NULL GROUP BY ni.node ORDER BY LOWER(ni.node)""",(gid,)).fetchall()
+    finally: conn.close()
 
 
 def _consumption_group_where(alias: str):
-    clause, params = _active_membership_clause(f"{alias}.node", selected_group_id(), "cgrp")
-    return " AND " + clause, params
-
+    gid=selected_group_id()
+    return (f" AND EXISTS (SELECT 1 FROM node_group_memberships ngm WHERE ngm.node={alias}.node AND ngm.group_id=?)",[gid]) if gid else ("",[])
 
 
 def _v5058c_vm_rows(start,end,selected_node,q,coverage,sort_by,order,page_no,limit):
     gid=selected_group_id()
+    if not gid: return _BASE["consumption_vm_rows"](start,end,selected_node,q,coverage,sort_by,order,page_no,limit)
     m=_m(); ctes,params=m._v5058c_vm_ctes(start,end,selected_node); search_sql,search_params=m._v5058c_search_clause("vm",q); group_sql,group_params=_consumption_group_where("vm_rows")
     where_sql=" WHERE 1=1"+search_sql+m._v5058c_coverage_clause(coverage)+group_sql; order_column=m.V5058C_VM_SORTS[sort_by]; tie="ASC" if sort_by in {"uuid","node"} and order=="asc" else "DESC"; page_no=max(1,page_no)
     def fetch(offset):
@@ -2045,6 +1688,7 @@ def _v5058c_vm_rows(start,end,selected_node,q,coverage,sort_by,order,page_no,lim
 
 def _v5058c_node_rows(start,end,q,coverage,sort_by,order,page_no,limit):
     gid=selected_group_id()
+    if not gid: return _BASE["consumption_node_rows"](start,end,q,coverage,sort_by,order,page_no,limit)
     m=_m(); ctes,params=m._v5058c_node_ctes(start,end); search_sql,search_params=m._v5058c_search_clause("node",q); group_sql,group_params=_consumption_group_where("node_rows")
     where_sql=" WHERE 1=1"+search_sql+m._v5058c_coverage_clause(coverage)+group_sql; col=m.V5058C_NODE_SORTS[sort_by]; tie="ASC" if sort_by=="node" and order=="asc" else "DESC"; page_no=max(1,page_no)
     def fetch(offset):
@@ -2058,160 +1702,45 @@ def _v5058c_node_rows(start,end,q,coverage,sort_by,order,page_no,limit):
 
 def _v5058c_vm_totals(start,end,selected_node=""):
     gid=selected_group_id()
+    if not gid:return _BASE["consumption_vm_totals"](start,end,selected_node)
     m=_m(); ctes,params=m._v5058c_vm_ctes(start,end,selected_node); conn=m.db()
-    clause,group_params=_active_membership_clause("vm_rows.node",gid,"cvt")
     try:
-        row=conn.execute(ctes+f"""SELECT COALESCE(SUM(public_rx),0),COALESCE(SUM(public_tx),0),COALESCE(SUM(private_rx),0),COALESCE(SUM(private_tx),0) FROM vm_rows WHERE {clause}""",params+group_params).fetchone()
+        row=conn.execute(ctes+"""SELECT COALESCE(SUM(public_rx),0),COALESCE(SUM(public_tx),0),COALESCE(SUM(private_rx),0),COALESCE(SUM(private_tx),0) FROM vm_rows WHERE EXISTS (SELECT 1 FROM node_group_memberships gm WHERE gm.node=vm_rows.node AND gm.group_id=?)""",params+[gid]).fetchone()
         return {"vm_public_rx":m.safe_int(row[0] if row else 0,0),"vm_public_tx":m.safe_int(row[1] if row else 0,0),"vm_private_rx":m.safe_int(row[2] if row else 0,0),"vm_private_tx":m.safe_int(row[3] if row else 0,0)}
     finally:conn.close()
 
 
 def _v5058c_node_totals(start,end,selected_node=""):
     gid=selected_group_id()
+    if not gid:return _BASE["consumption_node_totals"](start,end,selected_node)
     m=_m(); ctes,params=m._v5058c_node_ctes(start,end); conn=m.db()
-    clause,group_params=_active_membership_clause("node_rows.node",gid,"cnt")
     try:
-        row=conn.execute(ctes+f"""SELECT COALESCE(SUM(physical_public_rx),0),COALESCE(SUM(physical_public_tx),0),COALESCE(SUM(physical_private_rx),0),COALESCE(SUM(physical_private_tx),0) FROM node_rows WHERE {clause}""",params+group_params).fetchone()
+        row=conn.execute(ctes+"""SELECT COALESCE(SUM(physical_public_rx),0),COALESCE(SUM(physical_public_tx),0),COALESCE(SUM(physical_private_rx),0),COALESCE(SUM(physical_private_tx),0) FROM node_rows WHERE EXISTS (SELECT 1 FROM node_group_memberships gm WHERE gm.node=node_rows.node AND gm.group_id=?)""",params+[gid]).fetchone()
         return {"physical_public_rx":m.safe_int(row[0] if row else 0,0),"physical_public_tx":m.safe_int(row[1] if row else 0,0),"physical_private_rx":m.safe_int(row[2] if row else 0,0),"physical_private_tx":m.safe_int(row[3] if row else 0,0)}
     finally:conn.close()
 
 
 def _consumption_group_page():
-    m = _m()
-    period = m._v5058c_period(m.request.args.get("period"))
-    _label, seconds = m.V5058C_PERIODS[period]
-    end = m.now_ts()
-    start = end - seconds
-    selected = selected_group_id()
-    q = str(m.request.args.get("q") or "").strip().lower()
-    sort = str(m.request.args.get("sort") or "total").strip().lower()
-    order = str(m.request.args.get("order") or "desc").strip().lower()
-    allowed_sort = {"group", "nodes", "vms", "rx", "tx", "total", "physical", "vm"}
-    if sort not in allowed_sort:
-        sort = "total"
-    if order not in {"asc", "desc"}:
-        order = "desc"
-
-    vm_ctes, vm_params = m._v5058c_vm_ctes(start, end, "")
-    node_ctes, node_params = m._v5058c_node_ctes(start, end)
-    conn = m.db()
+    m=_m(); period=m._v5058c_period(m.request.args.get("period")); label,seconds=m.V5058C_PERIODS[period]; end=m.now_ts(); start=end-seconds; selected=selected_group_id()
+    vm_ctes,vm_params=m._v5058c_vm_ctes(start,end,""); node_ctes,node_params=m._v5058c_node_ctes(start,end); conn=m.db()
     try:
-        vm = {
-            int(row[0]): row[1:]
-            for row in conn.execute(
-                vm_ctes + """SELECT gm.group_id,COUNT(*),
-                    COALESCE(SUM(public_rx),0),COALESCE(SUM(public_tx),0),
-                    COALESCE(SUM(private_rx),0),COALESCE(SUM(private_tx),0)
-                  FROM vm_rows
-                  JOIN node_group_memberships gm ON gm.node=vm_rows.node
-                  JOIN node_groups g ON g.id=gm.group_id AND g.is_active=1
-                 GROUP BY gm.group_id""",
-                vm_params,
-            ).fetchall()
-        }
-        node = {
-            int(row[0]): row[1:]
-            for row in conn.execute(
-                node_ctes + """SELECT gm.group_id,COUNT(*),
-                    COALESCE(SUM(physical_public_rx),0),COALESCE(SUM(physical_public_tx),0),
-                    COALESCE(SUM(physical_private_rx),0),COALESCE(SUM(physical_private_tx),0)
-                  FROM node_rows
-                  JOIN node_group_memberships gm ON gm.node=node_rows.node
-                  JOIN node_groups g ON g.id=gm.group_id AND g.is_active=1
-                 GROUP BY gm.group_id""",
-                node_params,
-            ).fetchall()
-        }
-    finally:
-        conn.close()
-
-    records = []
-    for group in all_group_rows(visibility="active"):
-        gid, name, _desc, country, _active, _system, _node_count, _vm_count, *_ = group
-        gid = int(gid)
-        if selected and gid != selected:
-            continue
-        if q and q not in str(name).lower():
-            continue
-        node_values = node.get(gid, (0, 0, 0, 0, 0))
-        vm_values = vm.get(gid, (0, 0, 0, 0, 0))
-        physical_rx = int(node_values[1] or 0) + int(node_values[3] or 0)
-        physical_tx = int(node_values[2] or 0) + int(node_values[4] or 0)
-        vm_rx = int(vm_values[1] or 0) + int(vm_values[3] or 0)
-        vm_tx = int(vm_values[2] or 0) + int(vm_values[4] or 0)
-        rx = physical_rx + vm_rx
-        tx = physical_tx + vm_tx
-        records.append({
-            "id": gid,
-            "name": str(name),
-            "country": str(country or ""),
-            "nodes": int(node_values[0] or 0),
-            "vms": int(vm_values[0] or 0),
-            "rx": rx,
-            "tx": tx,
-            "total": rx + tx,
-            "physical": physical_rx + physical_tx,
-            "vm": vm_rx + vm_tx,
-        })
-
-    records.sort(key=lambda item: item["name"].lower())
-    if sort == "group":
-        records.sort(key=lambda item: item["name"].lower(), reverse=order == "desc")
-    else:
-        records.sort(key=lambda item: int(item[sort]), reverse=order == "desc")
-
-    def sort_link(label, key):
-        next_order = "desc" if sort == key and order == "asc" else "asc"
-        href = m.url_for(
-            "bandwidth_consumption_page",
-            tab="group",
-            period=period,
-            group=selected or None,
-            q=q or None,
-            sort=key,
-            order=next_order,
-        )
-        arrow = " ↑" if sort == key and order == "asc" else " ↓" if sort == key else ""
-        return '<a class="sort-link" href="%s">%s%s</a>' % (
-            m.escape(href, quote=True), m.escape(label), arrow,
-        )
-
-    body = []
-    for item in records:
-        href = m.url_for("bandwidth_consumption_page", tab="node", period=period, group=item["id"])
-        body.append(
-            f'<tr><td><a href="{m.escape(href, quote=True)}"><b>{flag_html(item["country"])}{m.escape(item["name"])}</b></a></td>'
-            f'<td class="num">{item["nodes"]:,}</td><td class="num">{item["vms"]:,}</td>'
-            f'<td class="num">{m.human(item["rx"])}</td><td class="num">{m.human(item["tx"])}</td>'
-            f'<td class="num v5058c-total">{m.human(item["total"])}</td>'
-            f'<td class="num">{m.human(item["physical"])}</td><td class="num">{m.human(item["vm"])}</td></tr>'
-        )
-    body_html = ''.join(body) or '<tr><td colspan="8" class="empty">No Node Group consumption in this range</td></tr>'
-    periods = ''.join(
-        f'<a class="{"active" if key == period else ""}" href="{m.url_for("bandwidth_consumption_page", tab="group", period=key, group=selected or None, q=q or None, sort=sort, order=order)}">{m.escape(value[0])}</a>'
-        for key, value in m.V5058C_PERIODS.items()
-    )
-    tabs = (
-        f'<div class="v5058c-tabs"><a href="{m.url_for("bandwidth_consumption_page", tab="vm", period=period)}">VM Consumption</a>'
-        f'<a href="{m.url_for("bandwidth_consumption_page", tab="node", period=period)}">Node Consumption</a>'
-        f'<a class="active" href="{m.url_for("bandwidth_consumption_page", tab="group", period=period)}">Node Group</a></div>'
-    )
-    reset_href = m.url_for("bandwidth_consumption_page", tab="group", period=period)
-    content = (
-        '<div class="card v5058c-shell"><div class="v5058c-head"><div><h2>Consumption</h2>'
-        '<p>Existing consumption counters aggregated by inherited Node Group. RX/TX are raw byte sums from the same Node and VM consumption sources.</p></div>'
-        f'<div class="v5058c-range"><div class="v5058c-range-block"><span>TIME RANGE</span><div class="v5058c-periods">{periods}</div></div></div></div>'
-        f'{tabs}<form class="v5058c-toolbar" method="get"><input type="hidden" name="tab" value="group"><input type="hidden" name="period" value="{period}">'
-        f'<input type="hidden" name="sort" value="{m.escape(sort, quote=True)}"><input type="hidden" name="order" value="{m.escape(order, quote=True)}">'
-        f'<div class="v5058c-search"><input name="q" value="{m.escape(q, quote=True)}" placeholder="Search Node Group"><span>⌕</span></div>'
-        f'{_group_select(selected)}<button type="submit">Apply</button><a class="clear" href="{m.escape(reset_href, quote=True)}">Reset</a></form>'
-        '<div class="v5058c-table-wrap table-wrap"><table class="v5058c-table v5058c-node-table"><thead><tr>'
-        f'<th>{sort_link("NODE GROUP", "group")}</th><th>{sort_link("NODES", "nodes")}</th><th>{sort_link("VMS", "vms")}</th>'
-        f'<th>{sort_link("RX", "rx")}</th><th>{sort_link("TX", "tx")}</th><th>{sort_link("TOTAL", "total")}</th>'
-        f'<th>{sort_link("PHYSICAL", "physical")}</th><th>{sort_link("VM", "vm")}</th>'
-        f'</tr></thead><tbody>{body_html}</tbody></table></div></div>'
-    )
+        vm={int(r[0]):r[1:] for r in conn.execute(vm_ctes+"""SELECT gm.group_id,COUNT(*),COALESCE(SUM(public_rx),0),COALESCE(SUM(public_tx),0),COALESCE(SUM(private_rx),0),COALESCE(SUM(private_tx),0) FROM vm_rows JOIN node_group_memberships gm ON gm.node=vm_rows.node GROUP BY gm.group_id""",vm_params).fetchall()}
+        node={int(r[0]):r[1:] for r in conn.execute(node_ctes+"""SELECT gm.group_id,COUNT(*),COALESCE(SUM(physical_public_rx),0),COALESCE(SUM(physical_public_tx),0),COALESCE(SUM(physical_private_rx),0),COALESCE(SUM(physical_private_tx),0) FROM node_rows JOIN node_group_memberships gm ON gm.node=node_rows.node GROUP BY gm.group_id""",node_params).fetchall()}
+    finally:conn.close()
+    rows=[]
+    for g in all_group_rows():
+        gid,name,desc,country,active,system,node_count,vm_count,*_=g
+        if selected and int(gid)!=selected:continue
+        nv=node.get(int(gid),(0,0,0,0,0)); vv=vm.get(int(gid),(0,0,0,0,0)); href=m.url_for("bandwidth_consumption_page",tab="node",period=period,group=gid)
+        rows.append(f'''<tr><td><a href="{m.escape(href,quote=True)}"><b>{flag_html(country)}{m.escape(name)}</b></a></td><td class="num">{int(nv[0] or 0)}</td><td class="num">{int(vv[0] or 0)}</td><td class="num">{m.human(int(nv[1] or 0)+int(nv[2] or 0))}</td><td class="num">{m.human(int(nv[3] or 0)+int(nv[4] or 0))}</td><td class="num">{m.human(int(vv[1] or 0)+int(vv[2] or 0))}</td><td class="num">{m.human(int(vv[3] or 0)+int(vv[4] or 0))}</td></tr>''')
+    body="".join(rows) or '<tr><td colspan="7" class="empty">No Node Group consumption in this range</td></tr>'
+    periods="".join(f'<a class="{"active" if k==period else ""}" href="{m.url_for("bandwidth_consumption_page",tab="group",period=k,group=selected or None)}">{m.escape(v[0])}</a>' for k,v in m.V5058C_PERIODS.items())
+    tabs=f'''<div class="v5058c-tabs"><a href="{m.url_for('bandwidth_consumption_page',tab='vm',period=period)}">VM Consumption</a><a href="{m.url_for('bandwidth_consumption_page',tab='node',period=period)}">Node Consumption</a><a class="active" href="{m.url_for('bandwidth_consumption_page',tab='group',period=period)}">Node Group</a></div>'''
+    content=f'''<div class="card v5058c-shell"><div class="v5058c-head"><div><h2>Consumption</h2><p>Existing consumption formulas aggregated by inherited Node Group.</p></div><div class="v5058c-range"><div class="v5058c-range-block"><span>TIME RANGE</span><div class="v5058c-periods">{periods}</div></div></div></div>{tabs}<form class="v5058c-toolbar" method="get"><input type="hidden" name="tab" value="group"><input type="hidden" name="period" value="{period}">{_group_select(selected)}<button type="submit">Apply</button><a class="clear" href="{m.url_for('bandwidth_consumption_page',tab='group',period=period)}">Reset</a></form><div class="v5058c-table-wrap table-wrap"><table class="v5058c-table v5058c-node-table"><thead><tr><th>NODE GROUP</th><th>NODES</th><th>VMS</th><th>PHYSICAL PUBLIC</th><th>PHYSICAL PRIVATE</th><th>VM PUBLIC</th><th>VM PRIVATE</th></tr></thead><tbody>{body}</tbody></table></div></div>'''
+    # Reuse the exact baseline CSS extracted from app.py at install time. No
+    # baseline Consumption query is executed in the additive group view.
     return m.page("Consumption", _CONSUMPTION_STYLE + content)
+
 
 def bandwidth_consumption_page():
     if str(_m().request.args.get("tab") or "").strip().lower()=="group": return _consumption_group_page()
@@ -2239,143 +1768,51 @@ def _v48128_filter_form(tab, values, nodes):
 
 
 def _v48126_visible_nodes():
-    m = _m()
-    gid = selected_group_id()
-    clause, params = _active_membership_clause("a.node", gid, "avis")
-    conn = m.db()
+    gid=selected_group_id()
+    if not gid:return _BASE["abuse_visible_nodes"]()
+    m=_m(); conn=m.db()
     try:
-        return [str(r[0]) for r in conn.execute(f"""SELECT DISTINCT a.node
-          FROM vm_abuse_state a LEFT JOIN node_inventory ni ON ni.node=a.node
-          WHERE {clause} AND a.last_seen>=?
-            AND (ni.node IS NULL OR (COALESCE(ni.status,'active')!='hidden' AND ni.deleted_at IS NULL))
-          ORDER BY a.node COLLATE NOCASE""", params + [m.now_ts()-7*86400]).fetchall()]
-    finally:
-        conn.close()
-
+        return [str(r[0]) for r in conn.execute("""SELECT DISTINCT a.node FROM vm_abuse_state a JOIN node_group_memberships gm ON gm.node=a.node LEFT JOIN node_inventory ni ON ni.node=a.node
+          WHERE gm.group_id=? AND a.last_seen>=? AND (ni.node IS NULL OR (COALESCE(ni.status,'active')!='hidden' AND ni.deleted_at IS NULL)) ORDER BY a.node COLLATE NOCASE""",(gid,m.now_ts()-7*86400)).fetchall()]
+    finally:conn.close()
 
 
 def _v48127_event_where(values):
-    where, params = _BASE["abuse_event_where"](values)
-    gid = _clean_group_id(values.get("group"))
-    clause, group_params = _active_membership_clause("i.node", gid, "aevt")
-    where.append(clause)
-    params.extend(group_params)
-    return where, params
-
+    where,params=_BASE["abuse_event_where"](values)
+    gid=_clean_group_id(values.get("group"))
+    if gid: where.append("EXISTS (SELECT 1 FROM node_group_memberships gm WHERE gm.node=i.node AND gm.group_id=?)"); params.append(gid)
+    return where,params
 
 
 def _v48139_current_rows(values):
-    gid = _clean_group_id(values.get("group"))
-    m = _m()
-    cfg = m.get_abuse_settings()
-    group_clause, group_params = _active_membership_clause("a.node", gid, "acur")
-    where = [
-        "a.is_abuse=1",
-        "a.last_seen>=?",
-        "a.policy_revision=?",
-        "a.engine_version=?",
-        m._v48126_visible_sql("ni", "vi"),
-        m._v48126_type_condition("a", values["type"]),
-        "a.severity>=?",
-        group_clause,
-    ]
-    params = [
-        m.now_ts() - m.FAST_CURRENT_STALE_SECONDS,
-        cfg["revision"],
-        m.ABUSE_ENGINE_VERSION,
-        values["min_severity"],
-    ] + group_params
-    if values["node"]:
-        where.append("a.node=?")
-        params.append(values["node"])
+    gid=_clean_group_id(values.get("group"))
+    if not gid:return _BASE["abuse_current_rows"](values)
+    m=_m(); cfg=m.get_abuse_settings()
+    where=["a.is_abuse=1","a.last_seen>=?","a.policy_revision=?","a.engine_version=?",m._v48126_visible_sql("ni","vi"),m._v48126_type_condition("a",values["type"]),"a.severity>=?","EXISTS (SELECT 1 FROM node_group_memberships gm WHERE gm.node=a.node AND gm.group_id=?)"]
+    params=[m.now_ts()-m.FAST_CURRENT_STALE_SECONDS,cfg["revision"],m.ABUSE_ENGINE_VERSION,values["min_severity"],gid]
+    if values["node"]:where.append("a.node=?");params.append(values["node"])
     if values["q"]:
-        pattern = m.like_pattern(values["q"])
-        where.append("(a.node LIKE ? OR a.vm_uuid LIKE ? OR a.abuse_flags LIKE ?)")
-        params.extend([pattern, pattern, pattern])
-
-    sort = values.get("sort") or "severity"
-    order = values.get("order") or "desc"
-    sort_map = {
-        "node": "a.node COLLATE NOCASE",
-        "uuid": "a.vm_uuid COLLATE NOCASE",
-        "type": "a.abuse_flags COLLATE NOCASE",
-        "severity": "a.severity",
-        "rx_mbps": "COALESCE(a.rx_mbps,0)",
-        "tx_mbps": "COALESCE(a.tx_mbps,0)",
-        "rx_peak": "COALESCE(a.rx_peak_pps,0)",
-        "tx_peak": "COALESCE(a.tx_peak_pps,0)",
-        "cpu": "COALESCE(a.cpu_full_percent,0)",
-        "cpucore": "COALESCE(a.cpu_core_percent,0)",
-        "ram": "COALESCE(a.ram_guest_used_percent,-1)",
-        "ramused": "CASE WHEN COALESCE(a.ram_guest_used_percent,-1)>=0 THEN MAX(0,COALESCE(a.ram_available_kib,0)-COALESCE(a.ram_usable_kib,0)) ELSE -1 END",
-        "ramrss": "COALESCE(a.ram_rss_kib,0)",
-        "ramassigned": "COALESCE(a.ram_current_kib,0)",
-        "diskallocated": "COALESCE(ds.allocated_bytes,0)",
-        "diskassigned": "COALESCE(ds.assigned_bytes,0)",
-        "diskallocpct": "COALESCE(ds.allocation_ratio,-1)",
-        "diskslots": "COALESCE(ds.disk_count,0)",
-        "diskr": "COALESCE(a.disk_read_bps,0)",
-        "diskw": "COALESCE(a.disk_write_bps,0)",
-        "readiops": "COALESCE(a.disk_read_iops,0)",
-        "writeiops": "COALESCE(a.disk_write_iops,0)",
-        "last_seen": "a.last_seen",
-    }
-    if sort == "duration":
-        order_sql = f"a.abuse_since {'ASC' if order == 'desc' else 'DESC'}"
-    else:
-        order_sql = f"{sort_map.get(sort, sort_map['severity'])} {'ASC' if order == 'asc' else 'DESC'}"
-
-    where_sql = " AND ".join(where)
-    offset = (values["page"] - 1) * values["limit"]
-    conn = m.db()
+        p=m.like_pattern(values["q"]);where.append("(a.node LIKE ? OR a.vm_uuid LIKE ? OR a.abuse_flags LIKE ?)");params.extend([p,p,p])
+    sort=values.get("sort") or "severity"; order=values.get("order") or "desc"
+    sort_map={"node":"a.node COLLATE NOCASE","uuid":"a.vm_uuid COLLATE NOCASE","type":"a.abuse_flags COLLATE NOCASE","severity":"a.severity","rx_mbps":"COALESCE(a.rx_mbps,0)","tx_mbps":"COALESCE(a.tx_mbps,0)","rx_peak":"COALESCE(a.rx_peak_pps,0)","tx_peak":"COALESCE(a.tx_peak_pps,0)","cpu":"COALESCE(a.cpu_full_percent,0)","cpucore":"COALESCE(a.cpu_core_percent,0)","ram":"COALESCE(a.ram_guest_used_percent,-1)","ramused":"CASE WHEN COALESCE(a.ram_guest_used_percent,-1)>=0 THEN MAX(0,COALESCE(a.ram_available_kib,0)-COALESCE(a.ram_usable_kib,0)) ELSE -1 END","ramrss":"COALESCE(a.ram_rss_kib,0)","ramassigned":"COALESCE(a.ram_current_kib,0)","diskallocated":"COALESCE(ds.allocated_bytes,0)","diskassigned":"COALESCE(ds.assigned_bytes,0)","diskallocpct":"COALESCE(ds.allocation_ratio,-1)","diskslots":"COALESCE(ds.disk_count,0)","diskr":"COALESCE(a.disk_read_bps,0)","diskw":"COALESCE(a.disk_write_bps,0)","readiops":"COALESCE(a.disk_read_iops,0)","writeiops":"COALESCE(a.disk_write_iops,0)","last_seen":"a.last_seen"}
+    order_sql=f"a.abuse_since {'ASC' if order=='desc' else 'DESC'}" if sort=="duration" else f"{sort_map.get(sort,sort_map['severity'])} {'ASC' if order=='asc' else 'DESC'}"
+    where_sql=" AND ".join(where);offset=(values["page"]-1)*values["limit"];conn=m.db()
     try:
-        changed = m._v48140_reconcile_summaries_if_needed(conn)
-        if changed:
-            conn.commit()
-        total = m.safe_int(
-            conn.execute(
-                f"SELECT COUNT(*) FROM vm_abuse_state a "
-                "LEFT JOIN node_inventory ni ON ni.node=a.node "
-                "LEFT JOIN vm_inventory vi ON vi.node=a.node AND vi.vm_uuid=a.vm_uuid "
-                f"WHERE {where_sql}",
-                params,
-            ).fetchone()[0],
-            0,
-        )
-        rows = conn.execute(
-            f"""SELECT a.node,a.vm_uuid,a.abuse_since,a.last_seen,a.abuse_flags,a.severity,a.rx_mbps,a.tx_mbps,a.rx_pps,a.tx_pps,a.rx_peak_pps,a.tx_peak_pps,a.seconds_over_rx_pps,a.seconds_over_tx_pps,
-              COALESCE(a.network_rx_mbps_streak_seconds,0),COALESCE(a.network_tx_mbps_streak_seconds,0),a.cpu_full_percent,a.cpu_core_percent,a.vcpu_current,a.cpu_streak_seconds,a.ram_rss_percent,a.ram_guest_used_percent,a.ram_usable_percent,a.ram_streak_seconds,
-              a.ram_current_kib,a.ram_rss_kib,a.ram_available_kib,a.ram_usable_kib,a.disk_read_bps,a.disk_write_bps,a.disk_read_iops,a.disk_write_iops,a.disk_streak_seconds,COALESCE(b.primary_ipv4,''),COALESCE(ds.allocated_bytes,0),COALESCE(ds.assigned_bytes,0),COALESCE(ds.disk_count,0)
-              FROM vm_abuse_state a LEFT JOIN node_inventory ni ON ni.node=a.node LEFT JOIN vm_inventory vi ON vi.node=a.node AND vi.vm_uuid=a.vm_uuid LEFT JOIN node_bridge_addresses_latest b ON b.node=a.node AND b.bridge=? LEFT JOIN vm_disk_summary_current ds ON ds.node=a.node AND ds.vm_uuid=a.vm_uuid
-              WHERE {where_sql} ORDER BY {order_sql},a.node COLLATE NOCASE,a.vm_uuid COLLATE NOCASE LIMIT ? OFFSET ?""",
-            [m.PUBLIC_BRIDGE] + params + [values["limit"], offset],
-        ).fetchall()
-        counts = {}
-        for key in ("network", "cpu", "ram", "disk"):
-            count_clause, count_group_params = _active_membership_clause(
-                "a.node", gid, f"acnt_{key}"
-            )
-            count_params = [
-                m.now_ts() - m.FAST_CURRENT_STALE_SECONDS,
-                cfg["revision"],
-                m.ABUSE_ENGINE_VERSION,
-            ] + count_group_params
-            counts[key] = m.safe_int(
-                conn.execute(
-                    f"""SELECT COUNT(*) FROM vm_abuse_state a
-                      LEFT JOIN node_inventory ni ON ni.node=a.node
-                      LEFT JOIN vm_inventory vi ON vi.node=a.node AND vi.vm_uuid=a.vm_uuid
-                      WHERE a.is_abuse=1 AND a.last_seen>=? AND a.policy_revision=? AND a.engine_version=?
-                        AND {m._v48126_visible_sql('ni','vi')}
-                        AND {m._v48126_type_condition('a', key)}
-                        AND {count_clause}""",
-                    count_params,
-                ).fetchone()[0],
-                0,
-            )
-        return rows, total, counts
-    finally:
-        conn.close()
+        changed=m._v48140_reconcile_summaries_if_needed(conn)
+        if changed:conn.commit()
+        total=m.safe_int(conn.execute(f"SELECT COUNT(*) FROM vm_abuse_state a LEFT JOIN node_inventory ni ON ni.node=a.node LEFT JOIN vm_inventory vi ON vi.node=a.node AND vi.vm_uuid=a.vm_uuid WHERE {where_sql}",params).fetchone()[0],0)
+        rows=conn.execute(f"""SELECT a.node,a.vm_uuid,a.abuse_since,a.last_seen,a.abuse_flags,a.severity,a.rx_mbps,a.tx_mbps,a.rx_pps,a.tx_pps,a.rx_peak_pps,a.tx_peak_pps,a.seconds_over_rx_pps,a.seconds_over_tx_pps,
+          COALESCE(a.network_rx_mbps_streak_seconds,0),COALESCE(a.network_tx_mbps_streak_seconds,0),a.cpu_full_percent,a.cpu_core_percent,a.vcpu_current,a.cpu_streak_seconds,a.ram_rss_percent,a.ram_guest_used_percent,a.ram_usable_percent,a.ram_streak_seconds,
+          a.ram_current_kib,a.ram_rss_kib,a.ram_available_kib,a.ram_usable_kib,a.disk_read_bps,a.disk_write_bps,a.disk_read_iops,a.disk_write_iops,a.disk_streak_seconds,COALESCE(b.primary_ipv4,''),COALESCE(ds.allocated_bytes,0),COALESCE(ds.assigned_bytes,0),COALESCE(ds.disk_count,0)
+          FROM vm_abuse_state a LEFT JOIN node_inventory ni ON ni.node=a.node LEFT JOIN vm_inventory vi ON vi.node=a.node AND vi.vm_uuid=a.vm_uuid LEFT JOIN node_bridge_addresses_latest b ON b.node=a.node AND b.bridge=? LEFT JOIN vm_disk_summary_current ds ON ds.node=a.node AND ds.vm_uuid=a.vm_uuid
+          WHERE {where_sql} ORDER BY {order_sql},a.node COLLATE NOCASE,a.vm_uuid COLLATE NOCASE LIMIT ? OFFSET ?""",[m.PUBLIC_BRIDGE]+params+[values["limit"],offset]).fetchall()
+        counts={}
+        for key in ("network","cpu","ram","disk"):
+            counts[key]=m.safe_int(conn.execute(f"""SELECT COUNT(*) FROM vm_abuse_state a LEFT JOIN node_inventory ni ON ni.node=a.node LEFT JOIN vm_inventory vi ON vi.node=a.node AND vi.vm_uuid=a.vm_uuid
+              WHERE a.is_abuse=1 AND a.last_seen>=? AND a.policy_revision=? AND a.engine_version=? AND {m._v48126_visible_sql('ni','vi')} AND {m._v48126_type_condition('a',key)} AND EXISTS (SELECT 1 FROM node_group_memberships gm WHERE gm.node=a.node AND gm.group_id=?)""",(m.now_ts()-m.FAST_CURRENT_STALE_SECONDS,cfg["revision"],m.ABUSE_ENGINE_VERSION,gid)).fetchone()[0],0)
+        return rows,total,counts
+    finally:conn.close()
+
 
 # ---------------------------------------------------------------------------
 # r6 Node Groups monitoring, flag decoration and bulk management
@@ -2489,48 +1926,72 @@ def _filtered_sorted_group_summaries():
     m = _m()
     rows = _node_group_summary_data()
     q = str(m.request.args.get("q") or "").strip().lower()
+    node_q = str(m.request.args.get("node_q") or q or "").strip().lower()
     status = str(m.request.args.get("status") or "").strip().lower()
     abuse = str(m.request.args.get("abuse") or "").strip().lower()
     online = str(m.request.args.get("online") or "").strip().lower()
-    if q:
-        pattern = "%" + q.replace("%", "\\%").replace("_", "\\_") + "%"
+    if node_q:
         conn = m.db()
         try:
-            matched = {int(r[0]) for r in conn.execute("""
-                SELECT DISTINCT g.id
-                  FROM node_groups g
-                  LEFT JOIN node_group_memberships gm ON gm.group_id=g.id
-                  LEFT JOIN node_inventory ni ON ni.node=gm.node
-                  LEFT JOIN node_bridge_addresses_latest ba ON ba.node=ni.node
-                 WHERE g.is_active=1 AND (
-                       LOWER(g.name) LIKE ? OR LOWER(COALESCE(g.description,'')) LIKE ?
-                       OR LOWER(COALESCE(g.country_code,'')) LIKE ? OR LOWER(COALESCE(ni.node,'')) LIKE ?
-                       OR LOWER(COALESCE(ba.primary_ipv4,'')) LIKE ? OR LOWER(COALESCE(ba.ipv4_json,'[]')) LIKE ?)
-            """, (pattern, pattern, pattern, pattern, pattern, pattern)).fetchall()}
+            found = {
+                int(row[0])
+                for row in conn.execute(
+                    """SELECT DISTINCT gm.group_id
+                         FROM node_group_memberships gm
+                         JOIN node_inventory ni ON ni.node=gm.node
+                         JOIN node_groups g ON g.id=gm.group_id
+                        WHERE g.is_active=1
+                          AND COALESCE(ni.status,'active')!='hidden'
+                          AND ni.deleted_at IS NULL
+                          AND LOWER(ni.node) LIKE ?""",
+                    ("%" + node_q.replace("%", "\\%").replace("_", "\\_") + "%",),
+                ).fetchall()
+            }
         finally:
             conn.close()
-        rows = [row for row in rows if row["id"] in matched]
+        rows = [row for row in rows if row["id"] in found]
+    if q:
+        rows = [row for row in rows if q in row["name"].lower() or q in row["description"].lower()]
     if status:
         rows = [row for row in rows if row["status"] == status]
-    if abuse == "yes": rows = [row for row in rows if row["abuse_count"] > 0]
-    if abuse == "no": rows = [row for row in rows if row["abuse_count"] == 0]
-    if online == "online": rows = [row for row in rows if row["status"] not in {"offline", "unknown", "empty"}]
-    if online == "offline": rows = [row for row in rows if row["status"] == "offline"]
+    if abuse == "yes":
+        rows = [row for row in rows if row["abuse_count"] > 0]
+    if abuse == "no":
+        rows = [row for row in rows if row["abuse_count"] == 0]
+    if online == "online":
+        rows = [row for row in rows if row["status"] not in {"offline", "unknown", "empty"}]
+    if online == "offline":
+        rows = [row for row in rows if row["status"] == "offline"]
+
     sort = str(m.request.args.get("sort") or "status").strip().lower()
     order = str(m.request.args.get("order") or "asc").strip().lower()
-    if sort not in {"name", "nodes", "vms", "abuse", "updated", "status"}: sort = "status"
-    if order not in {"asc", "desc"}: order = "asc"
+    if sort not in {"name", "nodes", "vms", "abuse", "updated", "status"}:
+        sort = "status"
+    if order not in {"asc", "desc"}:
+        order = "asc"
     descending = order == "desc"
-    rows.sort(key=lambda row: row["name"].lower())
-    if sort == "name": rows.sort(key=lambda row: row["name"].lower(), reverse=descending)
-    elif sort == "updated":
-        available=[r for r in rows if int(r["last_update"] or 0)>0]; missing=[r for r in rows if int(r["last_update"] or 0)<=0]
-        available.sort(key=lambda r:int(r["last_update"]),reverse=descending); rows=available+missing
-    else:
-        key={"nodes":lambda r:int(r["node_count"]),"vms":lambda r:int(r["vm_count"]),"abuse":lambda r:int(r["abuse_count"]),"status":lambda r:_status_rank(r["status"])}[sort]
-        rows.sort(key=key,reverse=descending)
-    return rows
 
+    # Stable name-first pass keeps equal-value ties deterministic and keeps the
+    # group-name tie breaker ascending for the default severity ordering.
+    rows.sort(key=lambda row: row["name"].lower())
+    if sort == "name":
+        rows.sort(key=lambda row: row["name"].lower(), reverse=descending)
+    elif sort == "updated":
+        rows.sort(
+            key=lambda row: (
+                row["last_update"] <= 0,
+                -int(row["last_update"] or 0) if descending else int(row["last_update"] or 0),
+            )
+        )
+    else:
+        value = {
+            "nodes": lambda row: int(row["node_count"]),
+            "vms": lambda row: int(row["vm_count"]),
+            "abuse": lambda row: int(row["abuse_count"]),
+            "status": lambda row: _status_rank(row["status"]),
+        }[sort]
+        rows.sort(key=value, reverse=descending)
+    return rows
 
 def _sort_link(label,key):
     m=_m(); args=m.request.args.to_dict(flat=True); current=str(args.get('sort') or 'status'); order=str(args.get('order') or 'asc'); args['sort']=key; args['order']='desc' if current==key and order=='asc' else 'asc'; return '<a class="sort-link" href="%s">%s</a>'%(m.escape(m.url_for('node_groups_page',**args),quote=True),m.escape(label))
@@ -2548,7 +2009,7 @@ def node_groups_page():
     m=_m(); deny=m.require_dashboard()
     if deny:return deny
     rows=_filtered_sorted_group_summaries(); role=current_role()
-    toolbar=f'''<form class="search node-group-filters" method="get"><input type="hidden" name="sort" value="{m.escape(m.request.args.get('sort') or 'status',quote=True)}"><input type="hidden" name="order" value="{m.escape(m.request.args.get('order') or 'asc',quote=True)}"><input name="q" value="{m.escape(m.request.args.get('q') or '',quote=True)}" placeholder="Search group, node or IP"><select name="status"><option value="">All statuses</option>{''.join('<option value="%s"%s>%s</option>'%(s,' selected' if m.request.args.get('status')==s else '',s.title()) for s in ('offline','critical','warning','healthy','empty','unknown'))}</select><select name="abuse"><option value="">All abuse</option><option value="yes"{' selected' if m.request.args.get('abuse')=='yes' else ''}>Has current abuse</option><option value="no"{' selected' if m.request.args.get('abuse')=='no' else ''}>No current abuse</option></select><select name="online"><option value="">All connectivity</option><option value="online"{' selected' if m.request.args.get('online')=='online' else ''}>Online</option><option value="offline"{' selected' if m.request.args.get('online')=='offline' else ''}>Offline</option></select><button type="submit">Apply</button><a class="btn" href="{m.url_for('node_groups_page')}">Reset</a></form>'''
+    toolbar=f'''<form class="search node-group-filters" method="get"><input type="hidden" name="sort" value="{m.escape(m.request.args.get('sort') or 'status',quote=True)}"><input type="hidden" name="order" value="{m.escape(m.request.args.get('order') or 'asc',quote=True)}"><input name="q" value="{m.escape(m.request.args.get('q') or m.request.args.get('node_q') or '',quote=True)}" placeholder="Search group or node"><select name="status"><option value="">All statuses</option>{''.join('<option value="%s"%s>%s</option>'%(s,' selected' if m.request.args.get('status')==s else '',s.title()) for s in ('offline','critical','warning','healthy','empty','unknown'))}</select><select name="abuse"><option value="">All abuse</option><option value="yes"{' selected' if m.request.args.get('abuse')=='yes' else ''}>Has current abuse</option><option value="no"{' selected' if m.request.args.get('abuse')=='no' else ''}>No current abuse</option></select><select name="online"><option value="">All connectivity</option><option value="online"{' selected' if m.request.args.get('online')=='online' else ''}>Online</option><option value="offline"{' selected' if m.request.args.get('online')=='offline' else ''}>Offline</option></select><button type="submit">Apply</button><a class="btn" href="{m.url_for('node_groups_page')}">Reset</a></form>'''
     header=f'''<div class="card"><div class="section-head"><div><span class="eyebrow">MONITORING</span><h2>Node Groups</h2><p>Current group health from existing node cache, inventory and Current Abuse state.</p></div>{'<a class="btn" href="'+m.url_for('admin_page',section='groups')+'">Manage groups</a>' if role in {'admin','super_admin'} else ''}</div>{toolbar}<div class="table-hint">Sort: {_sort_link('Group','name')} · {_sort_link('Nodes','nodes')} · {_sort_link('VMs','vms')} · {_sort_link('Abuse','abuse')} · {_sort_link('Last Update','updated')} · {_sort_link('Status','status')}</div></div>'''
     script = r'''<script>(function(){
 const key='virtinfra-node-groups-r6';
@@ -2560,7 +2021,7 @@ async function load(detail,force){
   if(!detail.open&&!force)return;
   const url=new URL('/node-groups/'+id+'/nodes',location.origin);
   url.searchParams.set('sort',sort);url.searchParams.set('order',order);
-  url.searchParams.set('q',new URLSearchParams(location.search).get('q')||'');
+  url.searchParams.set('node_q',new URLSearchParams(location.search).get('node_q')||'');
   try{
     const response=await fetch(url,{headers:{'X-Requested-With':'fetch'}});
     if(!response.ok)return;
@@ -2591,7 +2052,7 @@ async function refresh(){
     await init();requestAnimationFrame(()=>window.scrollTo(x,y));
   }catch(e){}
 }
-document.addEventListener('DOMContentLoaded',()=>{init();setInterval(refresh,30000);});
+document.addEventListener('DOMContentLoaded',()=>{init();setInterval(refresh,5000);});
 })();</script>'''
     css='''<style>.node-group-list{display:grid;gap:8px}.node-group-monitor{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}.node-group-monitor>summary{display:grid;grid-template-columns:18px minmax(180px,1fr) repeat(3,minmax(86px,auto)) minmax(110px,auto) minmax(82px,auto);gap:10px;align-items:center;padding:11px 13px;cursor:pointer;list-style:none}.node-group-monitor>summary::-webkit-details-marker{display:none}.node-group-monitor[open] .ng-chevron{transform:rotate(90deg)}.ng-chevron{transition:transform .15s}.ng-name{display:flex;align-items:center;min-width:0}.ng-abuse{font-weight:800}.node-group-detail{border-top:1px solid var(--line);padding:10px}.node-group-detail table{min-width:1180px}.node-group-filters{margin:12px 0}.node-group-filters input{min-width:145px}@media(max-width:900px){.node-group-monitor>summary{grid-template-columns:18px 1fr auto}.ng-num,.ng-update{display:none}}</style>'''
     return m.page('Node Groups',css+header+'<div id="node-group-list" class="node-group-list">'+_group_summary_html(rows)+'</div>'+script)
@@ -2603,40 +2064,13 @@ def node_groups_summary():
     return m.Response(_group_summary_html(_filtered_sorted_group_summaries()),mimetype='text/html')
 
 
-def _node_group_detail_rows(group_id: int):
-    m = _m()
-    cfg = m.get_abuse_settings()
-    stale = _ts() - m.FAST_CURRENT_STALE_SECONDS
-    q = str(m.request.args.get('q') or '').strip().lower()
-    params = [stale, cfg['revision'], m.ABUSE_ENGINE_VERSION, group_id]
-    search = ''
-    if q:
-        pattern = '%' + q.replace('%','\\%').replace('_','\\_') + '%'
-        search = """ AND (LOWER(ni.node) LIKE ? OR EXISTS (
-            SELECT 1 FROM node_bridge_addresses_latest ba WHERE ba.node=ni.node
-              AND (LOWER(COALESCE(ba.primary_ipv4,'')) LIKE ? OR LOWER(COALESCE(ba.ipv4_json,'[]')) LIKE ?)))"""
-        params.extend([pattern, pattern, pattern])
-    conn = m.db()
+def _node_group_detail_rows(group_id:int):
+    m=_m(); cfg=m.get_abuse_settings(); stale=_ts()-m.FAST_CURRENT_STALE_SECONDS; node_q=str(m.request.args.get('node_q') or '').strip().lower(); params=[stale,cfg['revision'],m.ABUSE_ENGINE_VERSION,group_id]; search=''
+    if node_q: search=" AND LOWER(ni.node) LIKE ?"; params.append('%'+node_q.replace('%','\\%').replace('_','\\_')+'%')
+    conn=m.db()
     try:
-        return conn.execute("""WITH vm_counts AS (
-            SELECT vi.node,COUNT(*) vm_count FROM vm_inventory vi JOIN node_inventory ni2 ON ni2.node=vi.node
-             WHERE COALESCE(vi.status,'active')!='hidden' AND vi.deleted_at IS NULL
-               AND COALESCE(ni2.status,'active')!='hidden' AND ni2.deleted_at IS NULL GROUP BY vi.node),
-        abuse_counts AS (
-            SELECT a.node,COUNT(DISTINCT a.vm_uuid) abuse_count FROM vm_abuse_state a
-            JOIN vm_inventory vi ON vi.node=a.node AND vi.vm_uuid=a.vm_uuid
-             WHERE a.is_abuse=1 AND a.last_seen>=? AND a.policy_revision=? AND a.engine_version=?
-               AND COALESCE(vi.status,'active')!='hidden' AND vi.deleted_at IS NULL GROUP BY a.node)
-        SELECT ni.node,COALESCE(v.vm_count,0),ncf.load1,ncf.load5,ncf.load15,ncf.cpu_percent,
-               ncf.mem_used,ncf.mem_total,ncf.disk_read_bps,ncf.disk_write_bps,COALESCE(a.abuse_count,0),
-               COALESCE(ncf.last_seen,ni.last_push,0),g.name,g.country_code
-          FROM node_group_memberships gm JOIN node_groups g ON g.id=gm.group_id
-          JOIN node_inventory ni ON ni.node=gm.node LEFT JOIN node_current_fast ncf ON ncf.node=ni.node
-          LEFT JOIN vm_counts v ON v.node=ni.node LEFT JOIN abuse_counts a ON a.node=ni.node
-         WHERE gm.group_id=? AND g.is_active=1 AND COALESCE(ni.status,'active')!='hidden' AND ni.deleted_at IS NULL""" + search, params).fetchall()
-    finally:
-        conn.close()
-
+        return conn.execute("""WITH vm_counts AS (SELECT vi.node,COUNT(*) vm_count FROM vm_inventory vi JOIN node_inventory ni2 ON ni2.node=vi.node WHERE COALESCE(vi.status,'active')!='hidden' AND vi.deleted_at IS NULL AND COALESCE(ni2.status,'active')!='hidden' AND ni2.deleted_at IS NULL GROUP BY vi.node),abuse_counts AS (SELECT a.node,COUNT(DISTINCT a.vm_uuid) abuse_count FROM vm_abuse_state a JOIN vm_inventory vi ON vi.node=a.node AND vi.vm_uuid=a.vm_uuid WHERE a.is_abuse=1 AND a.last_seen>=? AND a.policy_revision=? AND a.engine_version=? AND COALESCE(vi.status,'active')!='hidden' AND vi.deleted_at IS NULL GROUP BY a.node) SELECT ni.node,COALESCE(v.vm_count,0),ncf.load1,ncf.load5,ncf.load15,ncf.cpu_percent,ncf.mem_used,ncf.mem_total,ncf.disk_read_bps,ncf.disk_write_bps,COALESCE(a.abuse_count,0),COALESCE(ncf.last_seen,ni.last_push,0),g.name,g.country_code FROM node_group_memberships gm JOIN node_groups g ON g.id=gm.group_id JOIN node_inventory ni ON ni.node=gm.node LEFT JOIN node_current_fast ncf ON ncf.node=ni.node LEFT JOIN vm_counts v ON v.node=ni.node LEFT JOIN abuse_counts a ON a.node=ni.node WHERE gm.group_id=? AND COALESCE(ni.status,'active')!='hidden' AND ni.deleted_at IS NULL"""+search,params).fetchall()
+    finally:conn.close()
 
 
 def _sort_node_detail(rows, sort, order):
@@ -2680,22 +2114,9 @@ def node_group_nodes(group_id):
         return '<a href="#" data-ng-sort="%s"%s>%s</a>'%(key,' title="'+m.escape(title,quote=True)+'"' if title else '',m.escape(label))
     body=[]
     for r in rows:
-        node,vmc,l1,l5,l15,cpu,mu,mt,rb,wb,abuse,last,name,country=r
-        status=m.health_state(int(last or 0)) if int(last or 0)>0 else 'unknown'
-        if status == 'down':
-            status = 'offline'
-        abuse_href=m.url_for('vm_abuse_page',group=group_id,node=node)
+        node,vmc,l1,l5,l15,cpu,mu,mt,rb,wb,abuse,last,name,country=r; status=m.health_state(int(last or 0)) if int(last or 0)>0 else 'unknown'; abuse_href=m.url_for('vm_abuse_page',group=group_id,node=node)
         load='N/A' if l1 is None else f'{float(l1):.1f} / {float(l5 or 0):.1f} / {float(l15 or 0):.1f}'
-        if mt is None or int(mt or 0) <= 0:
-            ram_html = 'N/A'
-        else:
-            ram_pct = max(0.0, min(100.0, float(mu or 0) * 100.0 / float(mt)))
-            ram_html = m.metric_pill(
-                m.human(int(mu or 0)) + ' / ' + m.human(int(mt or 0)),
-                m.metric_level(ram_pct, 80, 90),
-                f'Host RAM used {ram_pct:.1f}% · warning >=80%, critical >=90%',
-            )
-        body.append(f'''<tr><td>{flag_html(country)}<a href="{m.url_for('node_page',node=node)}"><b>{m.escape(node)}</b></a></td><td class="num">{int(vmc or 0):,}</td><td class="num">{load}</td><td class="num">{'N/A' if cpu is None else f'{float(cpu):.1f}%'}</td><td class="num">{ram_html}</td><td class="num">{'N/A' if rb is None else m._disk_io_rate(float(rb or 0))}</td><td class="num">{'N/A' if wb is None else m._disk_io_rate(float(wb or 0))}</td><td class="num"><a href="{m.escape(abuse_href,quote=True)}" onclick="event.stopPropagation()">{int(abuse or 0):,}</a></td><td title="{m.escape(m.fmt_full(last),quote=True) if last else 'Never'}">{_relative_update(last)}</td><td><span class="vm-state {m.escape(status)}">{m.escape(status.upper())}</span></td></tr>''')
+        body.append(f'''<tr><td>{flag_html(country)}<a href="{m.url_for('node_page',node=node)}"><b>{m.escape(node)}</b></a></td><td class="num">{int(vmc or 0):,}</td><td class="num">{load}</td><td class="num">{'N/A' if cpu is None else f'{float(cpu):.1f}%'}</td><td class="num">{'N/A' if mt is None else m.human(int(mu or 0))+' / '+m.human(int(mt or 0))}</td><td class="num">{'N/A' if rb is None else m._disk_io_rate(float(rb or 0))}</td><td class="num">{'N/A' if wb is None else m._disk_io_rate(float(wb or 0))}</td><td class="num"><a href="{m.escape(abuse_href,quote=True)}" onclick="event.stopPropagation()">{int(abuse or 0):,}</a></td><td title="{m.escape(m.fmt_full(last),quote=True) if last else 'Never'}">{_relative_update(last)}</td><td><span class="vm-state {m.escape(status)}">{m.escape(status.upper())}</span></td></tr>''')
     headers=[link('NODE','node'),link('VM COUNT','vms'),link('LOAD 1 / 5 / 15','load','Sorted by latest 1-minute load'),link('CPU','cpu'),link('RAM USED','ram_used')+' / '+link('TOTAL','ram_total'),link('DISK READ','read'),link('DISK WRITE','write'),link('ABUSE VM','abuse'),link('LAST UPDATE','updated'),link('STATUS','status')]
     html='<div class="table-wrap"><table><thead><tr>'+''.join('<th>'+h+'</th>' for h in headers)+'</tr></thead><tbody>'+(''.join(body) or '<tr><td colspan="10" class="empty">No visible nodes in this group.</td></tr>')+'</tbody></table></div>'
     return m.Response(html,mimetype='text/html')
@@ -2718,18 +2139,17 @@ def admin_node_groups_bulk():
     m=_m(); deny=require_admin()
     if deny:return deny
     action=str(m.request.form.get('action') or '').strip().lower(); scope=str(m.request.form.get('selection_scope') or 'selected').strip().lower(); target=m.safe_int(m.request.form.get('group_id'),0)
-    if action in {'remove_group','move_ungrouped'}:target=system_group_id()
+    if action in {'remove_group','move_ungrouped','move_all_ungrouped'}:target=system_group_id()
     if action=='move_all_ungrouped':
         source=m.safe_int(m.request.form.get('source_group_id'),0); row=group_row(source)
         if not row or row[5]:return m.Response('Invalid source group\n',status=400,mimetype='text/plain')
-        target=system_group_id()
         nodes=sorted(group_nodes(source))
     elif scope=='matching':nodes=_matching_admin_nodes()
     else:nodes=list(dict.fromkeys(str(x or '').strip() for x in m.request.form.getlist('nodes') if str(x or '').strip()))
     if not nodes:return m.Response('Select at least one node\n',status=400,mimetype='text/plain')
     if target<=0:return m.Response('Select a Node Group\n',status=400,mimetype='text/plain')
     result=assign_nodes(nodes,target,_actor())
-    return m.redirect(m.url_for('admin_page',section='groups' if action=='move_all_ungrouped' else 'nodes',dbmsg=f"Updated {result['changed']} node membership(s)."))
+    return m.redirect(m.url_for('admin_page',section='nodes',dbmsg=f"Updated {result['changed']} node membership(s)."))
 
 
 
@@ -2758,7 +2178,6 @@ def install(module):
         "index_view":app.view_functions["index"],"top_view":app.view_functions["top_page"],"node_health_view":app.view_functions["node_health_page"],
         "admin_bulk_nodes":app.view_functions["admin_bulk_nodes"],
         "admin_users_page_view":app.view_functions["admin_users_page"],"admin_user_action_view":app.view_functions["admin_user_action"],
-        "admin_change_password_view":app.view_functions["admin_change_password"],
         "storage_params":module._storage_io_params,"storage_disk_clause":module._v48140_disk_search_clause,"storage_target":module._v48137_storage_target,
         "storage_payload_rows":module._v48137_snapshot_payload_rows,"storage_filter_options":module._v48137_storage_filter_options,"storage_node_cards":module._v48140_node_group_cards_fast,
         "storage_view":app.view_functions["storage_io_page"],
@@ -2778,7 +2197,7 @@ def install(module):
         "_v48128_filter_values":_v48128_filter_values,"_v48128_filter_form":_v48128_filter_form,"_v48126_visible_nodes":_v48126_visible_nodes,"_v48127_event_where":_v48127_event_where,"_v48139_current_rows":_v48139_current_rows,
     }
     for name,value in replacements.items():setattr(module,name,value)
-    view_replacements={"index":index,"top_page":top_page,"node_health_page":node_health_page,"storage_io_page":storage_io_page,"bandwidth_consumption_page":bandwidth_consumption_page,"admin_page":admin_page,"admin_users_page":admin_users_page,"admin_create_user":admin_create_user,"admin_user_action":admin_user_action,"admin_change_password":admin_change_password,"admin_bulk_nodes":admin_bulk_nodes,"dashboard_login":dashboard_login,"admin_login":admin_login,"admin_setup":admin_setup}
+    view_replacements={"index":index,"top_page":top_page,"node_health_page":node_health_page,"storage_io_page":storage_io_page,"bandwidth_consumption_page":bandwidth_consumption_page,"admin_page":admin_page,"admin_users_page":admin_users_page,"admin_create_user":admin_create_user,"admin_user_action":admin_user_action,"admin_bulk_nodes":admin_bulk_nodes,"dashboard_login":dashboard_login,"admin_login":admin_login,"admin_setup":admin_setup}
     for endpoint,view in view_replacements.items():app.view_functions[endpoint]=view
     routes=[
         ("/admin/node-groups/create","admin_node_groups_create",admin_node_groups_create,["POST"]),

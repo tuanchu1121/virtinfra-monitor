@@ -2,5 +2,5 @@
 .node-group-badge{display:inline-flex;align-items:center;min-height:20px;white-space:nowrap}
 .node-group-badge .node-group-flag,.ng-name .node-group-flag{flex:0 0 20px}
 
-.node-groups-admin-vms .action-menu>div{width:172px;min-width:172px}
-@media(max-width:1024px){.node-groups-admin-vms .action-menu>div{width:145px;min-width:145px}}
+.node-groups-admin-vms .action-menu>div,.node-groups-admin-vms .action-menu button{min-width:156px}
+@media(max-width:1024px){.node-groups-admin-vms .action-menu>div,.node-groups-admin-vms .action-menu button{min-width:129px}}

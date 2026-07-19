@@ -71,32 +71,19 @@ def main() -> int:
 
         old_headers = header_texts(before.find_all("th"))
         new_headers = header_texts(after.find_all("th"))
-        comparable_old_headers = old_headers
-        if name in {"admin-nodes", "admin-vms"}:
-            # The empty checkbox column is intentionally removed together with
-            # Selected/All Matching bulk controls. Every data header remains.
-            comparable_old_headers = [header for header in old_headers if header]
-        item["old_table_headers_preserved"] = is_subsequence(comparable_old_headers, new_headers)
+        item["old_table_headers_preserved"] = is_subsequence(old_headers, new_headers)
         item["headers_before"] = old_headers
         item["headers_after"] = new_headers
 
         old_buttons = Counter(texts(before.find_all("button")))
         new_buttons = Counter(texts(after.find_all("button")))
         if name == "admin-overview":
-            # Accounting cleanup controls remain available under Super Admin
-            # Maintenance and are intentionally not duplicated on Overview.
+            # r6 intentionally moves the accounting cleanup buttons to the
+            # Super Admin Maintenance page.
             allowed_moved = {"Run cleanup now", "Clear history"}
             item["old_buttons_preserved"] = all(
                 key in allowed_moved or new_buttons[key] >= count
                 for key, count in old_buttons.items()
-            )
-        elif name in {"admin-nodes", "admin-vms"}:
-            # One bulk Apply button is intentionally removed. Row-level Hide,
-            # Restore and Purge controls must still be preserved.
-            allowed = Counter(old_buttons)
-            allowed["Apply"] = max(0, allowed["Apply"] - 1)
-            item["old_buttons_preserved"] = all(
-                new_buttons[key] >= count for key, count in allowed.items()
             )
         else:
             item["old_buttons_preserved"] = all(new_buttons[key] >= count for key, count in old_buttons.items())
@@ -145,7 +132,7 @@ def main() -> int:
     lines = [
         "# Node Groups UI Regression Report", "",
         "The comparison uses deterministic HTML snapshots with the same seeded inventory and fixed time.",
-        "All original inline `<style>` blocks must remain byte-identical. Existing cards, data headers, row actions, filters, navigation entries and table wrappers must be preserved, except the explicitly removed Nodes/VMs bulk checkbox column and bulk Apply button.", "",
+        "All original inline `<style>` blocks must remain byte-identical. Existing cards, headers, buttons, filters, navigation entries and table wrappers must be preserved.", "",
         "| Page | Cards | Old headers | Old buttons | Old filters | Group filter | CSS | Navigation | Result |",
         "|---|---:|---|---|---|---:|---|---|---|",
     ]

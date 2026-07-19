@@ -35,7 +35,7 @@ import stat
 from pathlib import Path
 
 API = os.environ.get("VIRTINFRA_AGENT_API") or os.environ.get("BW_AGENT_API", "http://103.199.19.207:8080/push")
-TOKEN = os.environ.get("VIRTINFRA_AGENT_TOKEN") or os.environ.get("BW_AGENT_TOKEN", "123456")
+TOKEN = os.environ.get("VIRTINFRA_AGENT_TOKEN") or os.environ.get("BW_AGENT_TOKEN") or ""  # no default; must be set via env
 STATE = os.environ.get("VIRTINFRA_AGENT_STATE") or os.environ.get("BW_AGENT_STATE", "/var/lib/virtinfra-agent/state.json")
 NODE_NAME = (os.environ.get("VIRTINFRA_AGENT_NODE") or os.environ.get("BW_AGENT_NODE") or os.uname().nodename).strip()
 

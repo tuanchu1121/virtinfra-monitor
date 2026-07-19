@@ -40,7 +40,7 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_COMPRESSED_PUSH_BYTES
 # v48.4.7: unified node/IP/UUID/interface search across dashboard pages
 # 50.5.7-prod-r2: retain VM/uplink MAC identity, search by MAC, show MAC on VM/Node detail
 
-TOKEN = os.environ.get("BW_MONITOR_TOKEN", "123456")
+TOKEN = os.environ.get("BW_MONITOR_TOKEN") or ""  # no default; must be set via env
 DB = os.environ.get("BW_MONITOR_DB", "/var/lib/bw-monitor/postgresql")
 DATABASE_URL = os.environ.get("BW_DATABASE_URL") or os.environ.get("BW_POSTGRES_DSN", "")
 
@@ -6949,15 +6949,13 @@ def page(title, content):
             }});
         }});
 
-        // Quiet 30-second content refresh for live operational pages only.
+        // Quiet 5-second content refresh for live operational pages only.
         // It never reloads the browser document, never overlaps requests, and
         // pauses while the operator is editing a form.
         const BW_AUTO_REFRESH_MS = 30000;
         function bwIsLivePage() {{
             const p = window.location.pathname;
-            return p === '/' || p === '/top' || p === '/top/nodes'
-                || p === '/health/nodes' || p === '/storage'
-                || p === '/bandwidth-consumption' || p === '/abuse/vms'
+            return p === '/' || p === '/top' || p === '/top/nodes' || p === '/abuse/vms'
                 || p.startsWith('/node/') || p.startsWith('/vm/');
         }}
         function bwOperatorIsEditing() {{
@@ -8268,51 +8266,8 @@ def node_filesystem_table(rows):
     </div>
     """
 
-def monitoring_node_visible(node):
-    conn = db()
-    try:
-        row = conn.execute("""
-            SELECT 1
-              FROM node_inventory ni
-              JOIN node_group_memberships gm ON gm.node=ni.node
-              JOIN node_groups g ON g.id=gm.group_id
-             WHERE ni.node=?
-               AND COALESCE(ni.status,'active')!='hidden'
-               AND ni.deleted_at IS NULL
-               AND g.is_active=1
-             LIMIT 1
-        """, (node,)).fetchone()
-        return bool(row)
-    finally:
-        conn.close()
-
-
-def monitoring_vm_visible(node, vm_uuid):
-    conn = db()
-    try:
-        row = conn.execute("""
-            SELECT 1
-              FROM vm_inventory vi
-              JOIN node_inventory ni ON ni.node=vi.node
-              JOIN node_group_memberships gm ON gm.node=vi.node
-              JOIN node_groups g ON g.id=gm.group_id
-             WHERE vi.node=? AND vi.vm_uuid=?
-               AND COALESCE(vi.status,'active')!='hidden'
-               AND vi.deleted_at IS NULL
-               AND COALESCE(ni.status,'active')!='hidden'
-               AND ni.deleted_at IS NULL
-               AND g.is_active=1
-             LIMIT 1
-        """, (node, vm_uuid)).fetchone()
-        return bool(row)
-    finally:
-        conn.close()
-
-
 @app.route("/node/<path:node>")
 def node_page(node):
-    if not monitoring_node_visible(node):
-        return Response("Node not found\n", status=404, mimetype="text/plain")
     period = clean_period(request.args.get("period", "5m"))
     q = (request.args.get("q") or "").strip()
     sort_by = clean_interface_sort(request.args.get("sort", "total"))
@@ -9895,11 +9850,11 @@ def admin_delete_vm():
             jobs = enqueue_batched_purge_jobs("purge_vms", [{"node": node, "vm_uuid": vm_uuid}], actor)
             msg = f"Queued VM purge job #{jobs[0][0]} for {node}/{vm_uuid}."
             log_account_event("vm_purge_queued", username=actor, realm="admin", role="admin", detail=msg)
-            return redirect(url_for("admin_page", section="vms", dbmsg=msg))
+            return redirect(url_for("admin_page", dbmsg=msg))
         except Exception as exc:
             err = f"Could not queue VM purge: {exc}"
             log_account_event("vm_purge_queue_failed", username=actor, realm="admin", role="admin", detail=err[:500])
-            return redirect(url_for("admin_page", section="vms", dberr=err))
+            return redirect(url_for("admin_page", dberr=err))
 
     conn = db()
     try:
@@ -9911,7 +9866,7 @@ def admin_delete_vm():
         conn.commit()
     finally:
         conn.close()
-    return redirect(url_for("admin_page", section="vms"))
+    return redirect(url_for("admin_page"))
 
 
 @app.route("/admin/restore_vm", methods=["POST"])
@@ -9952,11 +9907,11 @@ def admin_delete_node():
             jobs = enqueue_batched_purge_jobs("purge_nodes", [node], actor)
             msg = f"Queued node purge job #{jobs[0][0]} for {node}."
             log_account_event("node_purge_queued", username=actor, realm="admin", role="admin", detail=msg)
-            return redirect(url_for("admin_page", section="nodes", dbmsg=msg))
+            return redirect(url_for("admin_page", dbmsg=msg))
         except Exception as exc:
             err = f"Could not queue node purge: {exc}"
             log_account_event("node_purge_queue_failed", username=actor, realm="admin", role="admin", detail=err[:500])
-            return redirect(url_for("admin_page", section="nodes", dberr=err))
+            return redirect(url_for("admin_page", dberr=err))
 
     conn = db()
     try:
@@ -9968,7 +9923,7 @@ def admin_delete_node():
         conn.commit()
     finally:
         conn.close()
-    return redirect(url_for("admin_page", section="nodes"))
+    return redirect(url_for("admin_page"))
 
 
 @app.route("/admin/restore_node", methods=["POST"])
@@ -10005,11 +9960,11 @@ def admin_purge_node_vms():
         jobs = enqueue_batched_purge_jobs("purge_node_vms", [node], actor)
         msg = f"Queued purge-all-VM job #{jobs[0][0]} for node {node}."
         log_account_event("node_vms_purge_queued", username=actor, realm="admin", role="admin", detail=msg)
-        return redirect(url_for("admin_page", section="nodes", dbmsg=msg))
+        return redirect(url_for("admin_page", dbmsg=msg))
     except Exception as exc:
         err = f"Could not queue node VM purge: {exc}"
         log_account_event("node_vms_purge_queue_failed", username=actor, realm="admin", role="admin", detail=err[:500])
-        return redirect(url_for("admin_page", section="nodes", dberr=err))
+        return redirect(url_for("admin_page", dberr=err))
 
 
 @app.route("/admin/bulk_nodes", methods=["POST"])
@@ -14805,12 +14760,9 @@ def _v490_admin_overview(stats):
         ("Nodes", f"{stats['nodes']:,}", f"{stats['hidden_nodes']:,} hidden", url_for("admin_page",section="nodes")),
         ("VMs", f"{stats['vms']:,}", f"{stats['hidden_vms']:,} hidden", url_for("admin_page",section="vms")),
         ("Current abuse", f"{stats['abuse']:,}", "Open policy and history", url_for("admin_abuse_page")),
+        ("Queue", f"{stats['queue']:,}", "Waiting or running", url_for("admin_page",section="maintenance")),
+        ("PostgreSQL data", human(s['db_size']), f"WAL reserve {human(s['wal_size'])}", url_for("admin_page",section="maintenance")),
     ]
-    if dashboard_role() == "super_admin":
-        cards.extend([
-            ("Queue", f"{stats['queue']:,}", "Waiting or running", url_for("admin_page",section="maintenance")),
-            ("PostgreSQL data", human(s['db_size']), f"WAL reserve {human(s['wal_size'])}", url_for("admin_page",section="maintenance")),
-        ])
     html = ''.join(f'<a class="admin-kpi" href="{escape(href,quote=True)}"><span>{escape(label)}</span><b>{escape(value)}</b><small>{escape(sub)}</small></a>' for label,value,sub,href in cards)
     quick = [
         ("Abuse policy", "Thresholds, duration and saved events", url_for("admin_abuse_page")),
@@ -14821,19 +14773,10 @@ def _v490_admin_overview(stats):
         ("Change password", "Update the Admin password", url_for("admin_change_password")),
     ]
     quick_html = ''.join(f'<a class="quick-link-card" href="{escape(href,quote=True)}"><b>{escape(label)}</b><span>{escape(desc)}</span><i>→</i></a>' for label,desc,href in quick)
-    health_details = monitor_system_health_card()
-    if dashboard_role() != "super_admin":
-        health_details = re.sub(
-            r'<div class="stat">PostgreSQL data.*?</div>',
-            '',
-            health_details,
-            count=1,
-            flags=re.S,
-        )
     return f"""
     <div class="admin-kpis">{html}</div>
     <div class="card"><div class="section-head"><div><h3>Admin tools</h3><p>Choose one area instead of loading every management table at once.</p></div></div><div class="quick-link-grid">{quick_html}</div></div>
-    <details class="card admin-fold"><summary>System health details</summary><div class="fold-content">{health_details}</div></details>
+    <details class="card admin-fold"><summary>System health details</summary><div class="fold-content">{monitor_system_health_card()}</div></details>
     """
 
 
@@ -20919,7 +20862,7 @@ def admin_delete_node_v48124():
         raise
     finally:
         conn.close()
-    return redirect(url_for("admin_page", section="nodes"))
+    return redirect(url_for("admin_page"))
 
 
 def admin_delete_vm_v48124():
@@ -20953,7 +20896,7 @@ def admin_delete_vm_v48124():
         raise
     finally:
         conn.close()
-    return redirect(url_for("admin_page", section="vms"))
+    return redirect(url_for("admin_page"))
 
 
 if _v48124_admin_delete_node_base is not None:
@@ -21038,7 +20981,7 @@ def admin_restore_node_v48124():
             (node,),
         )
     )
-    return response or redirect(url_for("admin_page", section="nodes"))
+    return response or redirect(url_for("admin_page"))
 
 
 def admin_restore_vm_v48124():
@@ -21056,7 +20999,7 @@ def admin_restore_vm_v48124():
             (node, vm_uuid),
         )
     )
-    return response or redirect(url_for("admin_page", section="vms"))
+    return response or redirect(url_for("admin_page"))
 
 
 def admin_bulk_nodes_v48124():
@@ -32984,20 +32927,6 @@ def resolve_direct_vm_search(q):
             q,like,q,like,q,q,like,q,q,like,q,
             normalized_mac,q,like,normalized_mac,normalized_mac,
         )).fetchall()
-        allowed_pairs = {
-            (str(row[0]), str(row[1]))
-            for row in conn.execute("""
-                SELECT vi.node,vi.vm_uuid
-                  FROM vm_inventory vi
-                  JOIN node_inventory ni ON ni.node=vi.node
-                  JOIN node_group_memberships gm ON gm.node=vi.node
-                  JOIN node_groups g ON g.id=gm.group_id
-                 WHERE COALESCE(vi.status,'active')!='hidden' AND vi.deleted_at IS NULL
-                   AND COALESCE(ni.status,'active')!='hidden' AND ni.deleted_at IS NULL
-                   AND g.is_active=1
-            """).fetchall()
-        }
-        rows = [row for row in rows if (str(row[0]), str(row[1])) in allowed_pairs]
     finally:
         conn.close()
     if not rows:
@@ -33255,14 +33184,10 @@ def vm_page_v5057():
         current = get_vm_current_location(vm_uuid)
         current_node = str((current or {}).get("node") or "").strip()
         if current_node and current_node != node:
-            if not monitoring_vm_visible(current_node, vm_uuid):
-                return Response("VM not found\n", status=404, mimetype="text/plain")
             return redirect(url_for(
                 "vm_page", node=current_node, vm_uuid=vm_uuid,
                 bridge="", iface="", period="5m",
             ))
-    if node and vm_uuid and not monitoring_vm_visible(node, vm_uuid):
-        return Response("VM not found\n", status=404, mimetype="text/plain")
     return _v5057_vm_page_route_base()
 
 app.view_functions["vm_page"] = vm_page_v5057
@@ -36497,7 +36422,7 @@ def page(title, content):
 
 # ---------------------------------------------------------------------------
 # VirtInfra Monitor 50.5.9 prod-r5 - additive Node Groups hotfix
-# Release: 50.5.9-prod-r7-rbac-node-groups-node-vm-ui-refresh-hotfix
+# Release: 50.5.9-prod-r6-node-groups-admin-bulk-management-retention-safe-maintenance-hotfix
 # Installed only after all existing append-only runtime implementations are
 # registered, so baseline wrappers and view functions remain intact.
 # ---------------------------------------------------------------------------

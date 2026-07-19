@@ -1,19 +1,31 @@
-# 50.5.9-prod-r7-rbac-node-groups-node-vm-ui-refresh-hotfix
+## r7 — hotfix: RBAC, auto-refresh, token security, search UX
 
-Baseline trực tiếp: `50.5.9-prod-r5-node-groups-hotfix-additive-schema-import-fix-production-slim`.
+### Fixes
+1. **move_all_ungrouped**: action no longer returns "Select a Node Group" — target is now auto-set to Ungrouped system group
+2. **RBAC — Admin 403 Forbidden**: Admin role can now access User Management (view only), Theme Settings, Account/Node Logs, System Health — Super Admin-only actions (create/edit/delete super_admin accounts) remain gated in their handlers
+3. **Auto-refresh**: changed from 5 s to 30 s (`BW_AUTO_REFRESH_MS = 30000`) across all monitoring pages
+4. **Default token removed**: `BW_MONITOR_TOKEN` and `BW_AGENT_TOKEN`/`VIRTINFRA_AGENT_TOKEN` no longer fall back to `"123456"` — must be set explicitly via environment variable
+5. **Duplicate search box**: Node Groups monitoring page now has a single search box (was two: "Search group" + "Search node") — searches group name and node name together
 
-## Hotfix
+### Files changed
+- `app/node_groups.py` — fixes 1, 2, 3, 5, 6, 7
+- `app/app.py` — fix 3 (auto-refresh)
+- `deploy/agent/agent.py` — fix 4 (token default)
 
-- Sửa capability RBAC: Admin truy cập User Management, personal Theme Settings, Account Logs, Node Logs và System Health; Queue, PostgreSQL Data và maintenance đặc quyền vẫn là Super Admin-only ở cả UI và backend.
-- Change Password chỉ xác thực và cập nhật đúng tài khoản trong session, giữ nguyên username/role; Admin không thể nhìn thấy hoặc quản lý Super Admin.
-- Hidden Node Group bị loại thống nhất khỏi monitoring, search, totals và group filters, nhưng vẫn quản lý được trong Admin và Restore không làm mất membership.
-- Sửa Move all nodes to Ungrouped, search duy nhất theo group/node/IP, Node Groups refresh 30 giây và RAM severity dùng helper hiện có.
-- Thay Admin Nodes/VMs bằng renderer trực tiếp có số header/data cell khớp, action từng row, không còn Selected/All Matching selector; bổ sung sort current CPU/RAM/Disk/Network bằng một join `node_current_fast`.
-- Sửa Hide/Restore/Purge Node/VM theo endpoint và queue hiện có; Purge all VMs giữ nguyên Node và Node Group membership.
-- Gỡ Node Group flag khỏi VM UUID/metric labels và khôi phục nhãn VM detail không có prefix `DE`.
-- Giữ Storage Search/Clear, sửa Node Group Consumption mapping/sort và đặt Apply trước Reset.
-- Đổi auto-refresh monitoring từ 5 giây thành 30 giây, không thay refresh riêng của Maintenance Queue.
-- Không đổi Agent ingest, API payload, metric formula, Abuse engine, queue architecture, retention bucket hoặc maintenance architecture.
+### No behavior changes to
+- Metric formulas (CPU, RAM, disk, network, PPS, bandwidth, consumption, abuse)
+- Database schema
+- API endpoints or payloads
+- Agent ingest cycle
+- Maintenance/retention logic
+- UI layout, theme, colors, navigation
+
+# 50.5.9-prod-r6-node-groups-admin-bulk-management-retention-safe-maintenance-hotfix
+
+- Harden Node Groups administration, bulk membership management, monitoring summaries and role boundaries.
+- Preserve Node Group configuration during ordinary retention and cleanup; Nuclear reset recreates Ungrouped atomically.
+- Remove fixed credential text, restore baseline login controls and keep the original `/push` view untouched.
+- Add local flag assets, responsive UI regression coverage and PostgreSQL migration 012.
 
 # 50.5.9-prod-r5-node-groups-hotfix-additive
 

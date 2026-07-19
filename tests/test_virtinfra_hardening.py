@@ -3,7 +3,7 @@ from pathlib import Path
 root=Path(__file__).resolve().parents[1]
 app=(root/'app/app.py').read_text()
 agent=(root/'deploy/agent/agent.py').read_text()
-assert (root/'VERSION').read_text().strip() == '50.5.9-prod-r7-rbac-node-groups-node-vm-ui-refresh-hotfix'
+assert (root/'VERSION').read_text().strip() == '50.5.9-prod-r6-node-groups-admin-bulk-management-retention-safe-maintenance-hotfix'
 assert 'VirtInfra Monitor' in app
 assert 'WAL reserved/recycled' in app
 assert 'SHM {human' not in app

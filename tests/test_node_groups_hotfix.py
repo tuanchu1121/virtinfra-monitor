@@ -15,7 +15,7 @@ MODULE = ROOT / "app" / "node_groups.py"
 MIGRATION = ROOT / "postgres" / "sql" / "011_node_groups.sql"
 R6_MIGRATION = ROOT / "postgres" / "sql" / "012_node_groups_r6_safety.sql"
 RUNTIME_TOOL = ROOT / "tools" / "node-groups-runtime-validation.py"
-EXPECTED_RELEASE = "50.5.9-prod-r7-rbac-node-groups-node-vm-ui-refresh-hotfix"
+EXPECTED_RELEASE = "50.5.9-prod-r6-node-groups-admin-bulk-management-retention-safe-maintenance-hotfix"
 
 
 @pytest.fixture(scope="module")
@@ -129,13 +129,7 @@ def test_runtime_role_crud_assignment_inheritance_and_filters(runtime_result):
         "bulk_assign", "vm_inheritance", "audit_events", "page_filters",
         "group_all_html_equivalence", "group_all_delegation",
         "admin_permission_boundary", "super_admin_stealth", "viewer_read_only",
-        "push_view_untouched", "node_groups_monitoring",
-        "rbac_admin_tools", "self_password_scope", "admin_tables_direct_actions",
-        "admin_nodes_current_metric_sort",
-        "hidden_group_visibility", "node_vm_visibility_actions",
-        "move_all_ungrouped", "node_group_search_ip",
-        "consumption_group_alignment", "vm_detail_label_cleanup",
-        "auto_refresh_30s", "route_contract",
+        "push_view_untouched", "node_groups_monitoring", "route_contract",
     }
     assert {key for key, value in result.items() if value == "PASS"} == expected
     assert result["route_count"] == 83

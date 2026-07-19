@@ -1,6 +1,6 @@
 # Storage V2 compatibility matrix
 
-Release: `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
+Release: `50.5.9-prod-r9-safe-runtime-history-prune`
 
 Status values: **UNCHANGED**, **V2 READ**, **V2 WRITE**, **ADDITIVE**, **FALLBACK AVAILABLE**.
 
@@ -26,7 +26,7 @@ Status values: **UNCHANGED**, **V2 READ**, **V2 WRITE**, **ADDITIVE**, **FALLBAC
 | Public/Private network | VM/node pages | bridge-aware current/history | existing mapping | V2 stores role-aware fields and compact N-NIC snapshot | V2 WRITE/READ | Unknown bridges remain `other`, never forced into Public/Private |
 | Multi-NIC | VM/node charts | N `node_stats` rows | current aggregation | one VM chart row plus `interfaces_json`; N raw rows | V2 WRITE/READ | No hardcoded NIC count |
 | Multi-disk | VM/storage | Agent aggregate plus per-disk current | current disk ingest | Chart keeps authoritative aggregate; per-disk current stays existing | UNCHANGED | No first-disk shortcut |
-| Consumption | `/bandwidth-consumption*`, push endpoint | `node_bandwidth_consumption_2h` | v50.3 module | Same | UNCHANGED | No UUID, formula, UI or retention changes |
+| Consumption | `/bandwidth-consumption*`, push endpoint | `node_bandwidth_consumption_2h` | current Consumption module | Same | UNCHANGED | No UUID, formula, UI or retention changes |
 | Login/session | login/logout routes | user/settings tables | existing auth | Same | UNCHANGED | Secret/session/CSRF untouched |
 | API keys | `/admin/api-keys*` | API key/log tables | existing API auth | Same | UNCHANGED | Scopes/rate limits untouched |
 | API v1 responses | `/api/v1/*` | current/Abuse sources | existing endpoints | Same | UNCHANGED | No field removal/type change |

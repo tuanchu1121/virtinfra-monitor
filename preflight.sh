@@ -29,7 +29,7 @@ fail(){ echo "ERROR: $*" >&2; exit 1; }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.9-prod-r8-safe-dead-code-prune" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.5.9-prod-r9-safe-runtime-history-prune" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/runtime_loader.py \
    && -f app/runtime_layers/manifest.json \
    && -f app/runtime_layers/00_bootstrap_database.py \
@@ -93,6 +93,9 @@ mapfile -d '' pyfiles < <(find app deploy/agent tests tools -type f -name '*.py'
 log "Validate modular runtime architecture"
 "$PYTHON" -m pytest -q tests/test_modular_runtime_architecture.py
 
+log "Validate R9 runtime-history cleanup contract"
+"$PYTHON" -m pytest -q tests/test_r9_runtime_history_prune.py
+
 log "Validate YAML syntax"
 "$PYTHON" - <<'PY'
 from pathlib import Path
@@ -111,7 +114,7 @@ log "Validate v50.5.2 native COPY ingest contract"
 log "Validate v50.5.4 selected-snapshot detail correctness"
 "$PYTHON" -m pytest -q tests/test_v5054_snapshot_detail_correctness.py
 
-log "Validate v50.5.5 PostgreSQL LIKE compatibility hotfix"
+log "Validate v50.5.5 PostgreSQL LIKE compatibility"
 "$PYTHON" -m pytest -q tests/test_v5055_sql_compat_hotfix.py
 
 log "Validate v50.5.6 PostgreSQL-native maintenance compatibility"
@@ -180,7 +183,7 @@ fi
 log "Check documentation for stale runtime architecture"
 if grep -RInE --exclude='MIGRATION_NOT_SUPPORTED.md' \
   '(SQLite WAL|bandwidth\.db|Redis Streams|hybrid data plane|deploy/enterprise|deploy/monitor)' README.md docs; then
-  fail "stale SQLite/hybrid runtime documentation remains"
+  fail "stale datastore/hybrid runtime documentation remains"
 fi
 
 find . -path './.git' -prune -o -path './dist' -prune -o -type d \( -name __pycache__ -o -name .pytest_cache \) -prune -exec rm -rf {} +

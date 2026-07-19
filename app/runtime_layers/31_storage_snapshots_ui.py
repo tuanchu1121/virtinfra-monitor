@@ -1,5 +1,3 @@
-# v48.13.7 retained Storage snapshots, custom time, compact cards and speed
-# ---------------------------------------------------------------------------
 
 V48137_VERSION = "48.13.7"
 V48137_BUILD = "r1"
@@ -8,7 +6,6 @@ import zlib
 
 V48137_STORAGE_PAYLOAD_VERSION = 1
 V48137_STORAGE_DEFAULT_ROWS = 30
-
 
 def ensure_storage_snapshot_schema(conn):
     """Attach compact compressed Storage I/O payloads to retained node pushes.
@@ -21,7 +18,6 @@ def ensure_storage_snapshot_schema(conn):
     ensure_disk_io_schema(conn)
     ensure_column(conn, "node_push_snapshots", "storage_payload", "BLOB")
     ensure_column(conn, "node_push_snapshots", "storage_payload_version", "INTEGER NOT NULL DEFAULT 0")
-
 
 def _v48137_pack_storage_payload(vms, node_host, data_time, interval_seconds):
     disks = []
@@ -91,7 +87,6 @@ def _v48137_pack_storage_payload(vms, node_host, data_time, interval_seconds):
     raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     return dbapi.Binary(zlib.compress(raw, 3))
 
-
 def _v48137_unpack_storage_payload(blob):
     if blob is None:
         return None
@@ -104,8 +99,6 @@ def _v48137_unpack_storage_payload(blob):
     except Exception:
         app.logger.exception("Could not decode retained Storage I/O payload")
         return None
-
-
 
 def _v5054_selected_storage_payload(conn, node, period):
     """Return the exact retained Storage I/O payload for the selected node snapshot.
@@ -132,9 +125,7 @@ def _v5054_selected_storage_payload(conn, node, period):
     payload = _v48137_unpack_storage_payload(row[1])
     return payload, safe_int(row[0], selected_bucket), latest_bucket
 
-
 _ingest_disk_io_current_v48137_base = ingest_disk_io_current
-
 
 def ingest_disk_io_current(conn, node, data_time, interval_seconds, vms, node_host):
     _ingest_disk_io_current_v48137_base(conn, node, data_time, interval_seconds, vms, node_host)
@@ -153,7 +144,6 @@ def ingest_disk_io_current(conn, node, data_time, interval_seconds, vms, node_ho
         # Never reject an Agent push merely because the optional retained disk
         # payload could not be serialized. Current metrics remain available.
         app.logger.exception("Could not retain Storage I/O snapshot for %s", node)
-
 
 def _v48137_storage_target(conn, values):
     """Resolve Storage I/O to the same retained snapshot semantics as Top VM.
@@ -204,7 +194,6 @@ def _v48137_storage_target(conn, values):
         "requested_at": requested_at,
     }
 
-
 def _v48137_snapshot_payload_rows(conn, values, target_bucket):
     if target_bucket <= 0:
         return []
@@ -230,7 +219,6 @@ def _v48137_snapshot_payload_rows(conn, values, target_bucket):
         """,
         params,
     ).fetchall()
-
 
 def _v48137_create_snapshot_shadow_tables(conn, payload_rows):
     """Shadow the two current tables with request-local TEMP snapshot tables."""
@@ -321,9 +309,7 @@ def _v48137_create_snapshot_shadow_tables(conn, payload_rows):
         )
     return {"nodes": len(payload_rows), "disks": len(disk_rows), "storages": len(storage_rows), "min_seen": min_seen, "max_seen": max_seen}
 
-
 _storage_io_params_v48137_base = _storage_io_params
-
 
 def _storage_io_params(**updates):
     values = _storage_io_params_v48137_base(**updates)
@@ -333,7 +319,6 @@ def _storage_io_params(**updates):
     values["limit"] = max(10, min(200, safe_int(values.get("limit"), V48137_STORAGE_DEFAULT_ROWS)))
     values.update(updates)
     return values
-
 
 def _v48137_storage_filter_options(conn, values):
     nodes = [r[0] for r in conn.execute(
@@ -371,11 +356,9 @@ def _v48137_storage_filter_options(conn, values):
         mount_options.append(f'<option value="{escape(item,quote=True)}"{selected}>{escape(item)}</option>')
     return "".join(node_options), "".join(mount_options)
 
-
 # Keep the public helper name used by the route.
 _storage_filter_options = _v48137_storage_filter_options
 _v48133_storage_filter_options = _v48137_storage_filter_options
-
 
 def _storage_period_links(values):
     """Age buttons are an alternative to custom time, so they clear `at`."""
@@ -388,7 +371,6 @@ def _storage_period_links(values):
         links.append(f'<a class="{cls}" href="{escape(href,quote=True)}">{escape(label)}</a>')
     return "".join(links)
 
-
 def _v48137_sort_bar(values, options):
     links = []
     for label, key in options:
@@ -398,7 +380,6 @@ def _v48137_sort_bar(values, options):
         href = _storage_io_url(values, sort=key, order=next_order, page=1)
         links.append(f'<a class="{"active" if active else ""}" href="{escape(href,quote=True)}">{escape(label)}{arrow}</a>')
     return '<div class="storage-card-sort"><span>SORT</span>' + "".join(links) + "</div>"
-
 
 V48137_STORAGE_CSS = r'''
 <style id="v48137-storage-history-cards">
@@ -414,7 +395,6 @@ html[data-theme=dark] .storage-vm-card,html[data-theme=dark] .storage-node-card,
 </style>
 '''
 
-
 def _v48137_summary_metrics(allocated, assigned, rb, wb, ri, wi, label="allocated / assigned"):
     return f'''
       <div class="storage-card-summary">
@@ -424,7 +404,6 @@ def _v48137_summary_metrics(allocated, assigned, rb, wb, ri, wi, label="allocate
         <div class="storage-summary-metric"><span>R IOPS</span><b>{_disk_io_iops(ri)}</b></div>
         <div class="storage-summary-metric"><span>W IOPS</span><b>{_disk_io_iops(wi)}</b></div>
       </div>'''
-
 
 def _v48137_storage_disk_group_cards(conn, values, start_ts):
     groups, details, total = _v48133_storage_disk_groups(conn, values, start_ts)
@@ -456,7 +435,6 @@ def _v48137_storage_disk_group_cards(conn, values, start_ts):
       <div class="table-title-row"><div><h3>VM Disks</h3><div class="table-hint">One VM card, every customer disk nested under its UUID. Select a storage mount for one-disk-per-row forensic comparison.</div></div>{sort_bar}</div>
       <div class="storage-card-list">{''.join(cards)}</div>{_storage_pager(values,total)}
     </div>'''
-
 
 def _v48137_storage_node_group_cards(conn, values, start_ts):
     rows = _v48136_real_storage_rows(conn, values, start_ts)
@@ -528,10 +506,8 @@ def _v48137_storage_node_group_cards(conn, values, start_ts):
       <div class="storage-card-list">{''.join(cards)}</div>{_storage_pager(values,total)}
     </div>'''
 
-
 _v48137_storage_disk_filtered_base = _v48136_storage_disk_filtered_base
 _v48137_storage_node_filtered_base = _v48136_storage_node_filtered_base
-
 
 def _v48133_storage_disk_table(conn, values, start_ts):
     if not str(values.get("mount") or "").strip():
@@ -544,7 +520,6 @@ def _v48133_storage_disk_table(conn, values, start_ts):
         + filtered
     )
 
-
 def _v48133_storage_node_table(conn, values, start_ts):
     if not str(values.get("mount") or "").strip():
         return _v48137_storage_node_group_cards(conn, values, start_ts)
@@ -555,7 +530,6 @@ def _v48133_storage_node_table(conn, values, start_ts):
         + f'<div class="storage-filtered-banner"><div><b>FILTERED FILESYSTEM: {escape(values.get("mount") or "-")}</b><span> · matching node mount rows</span></div><a href="{escape(clear_mount,quote=True)}">Back to grouped All view</a></div>'
         + filtered
     )
-
 
 def _v48137_storage_snapshot_note(snapshot, stats):
     if snapshot["mode"] == "live":
@@ -573,7 +547,6 @@ def _v48137_storage_snapshot_note(snapshot, stats):
         '<div class="storage-snapshot-note"><div><b>RETAINED SNAPSHOT</b> · nearest real Agent push at or before the selected point, not current data.</div>'
         f'<div>Requested <b>{fmt_full(target)}</b> · actual node samples <b>{fmt_full(stats.get("min_seen"))}</b> to <b>{fmt_full(stats.get("max_seen"))}</b> · {stats.get("nodes",0)} nodes</div></div>'
     )
-
 
 def storage_io_page_v48137():
     values = _storage_io_params()
@@ -641,12 +614,9 @@ def storage_io_page_v48137():
     )
     return page("Storage I/O", content)
 
-
 app.view_functions["storage_io_page"] = storage_io_page_v48137
 
-
 _purge_vm_data_v48137_base = purge_vm_data
-
 
 def _v48137_scrub_uuid_from_storage_snapshots(conn, vm_uuid, nodes):
     ensure_storage_snapshot_schema(conn)
@@ -676,7 +646,6 @@ def _v48137_scrub_uuid_from_storage_snapshots(conn, vm_uuid, nodes):
         changed += 1
     return changed
 
-
 def purge_vm_data(conn, node, vm_uuid, refresh_snapshots=True):
     vm_uuid = str(vm_uuid or "").strip()
     nodes = {str(node or "").strip()} if str(node or "").strip() else set()
@@ -698,9 +667,6 @@ def purge_vm_data(conn, node, vm_uuid, refresh_snapshots=True):
     deleted["storage_snapshot_payloads"] = _v48137_scrub_uuid_from_storage_snapshots(conn, vm_uuid, nodes)
     return deleted
 
-# ---------------------------------------------------------------------------
-# v48.13.8 Storage I/O identity-first layout and Top VM-style controls
-# ---------------------------------------------------------------------------
 V48138_VERSION = "48.13.8"
 V48138_BUILD = "r1"
 
@@ -717,7 +683,6 @@ html[data-theme=dark] .storage-vm-identity .identity-kicker,html[data-theme=dark
 @media(max-width:980px){.storage-top-card .top-grid{grid-template-columns:1fr}.storage-top-card .search{grid-template-columns:1fr 1fr}.storage-top-card .search input{grid-column:1/-1}.storage-vm-card .storage-card-summary{grid-template-columns:1fr 1fr}.storage-vm-card .storage-card-summary .disk-capacity{grid-column:1/-1}}
 </style>
 '''
-
 
 def _v48138_storage_disk_group_cards(conn, values, start_ts):
     groups, details, total = _v48133_storage_disk_groups(conn, values, start_ts)
@@ -770,10 +735,8 @@ def _v48138_storage_disk_group_cards(conn, values, start_ts):
       <div class="storage-card-list">{"".join(cards)}</div>{_storage_pager(values,total)}
     </div>'''
 
-
 # The existing dispatch function resolves this name at request time.
 _v48137_storage_disk_group_cards = _v48138_storage_disk_group_cards
-
 
 def _v48138_storage_status_summary(snapshot, stats):
     if snapshot and snapshot.get("mode") == "history":
@@ -781,7 +744,6 @@ def _v48138_storage_status_summary(snapshot, stats):
         return "HISTORICAL", "history", actual
     latest = (snapshot or {}).get("latest") or 0
     return "LIVE", "live", latest
-
 
 def storage_io_page_v48138():
     values = _storage_io_params()
@@ -861,12 +823,8 @@ def storage_io_page_v48138():
     )
     return page("Storage I/O", content)
 
-
 app.view_functions["storage_io_page"] = storage_io_page_v48138
 
-# ---------------------------------------------------------------------------
-# v48.13.9 - compact Abuse disk capacity + clearer Storage cards
-# ---------------------------------------------------------------------------
 V48139_VERSION = "48.13.9"
 V48139_BUILD = "r2"
 
@@ -946,7 +904,6 @@ html[data-theme=dark] .storage-entity-id-v48139 .entity-kicker,html[data-theme=d
 </style>
 '''
 
-
 def _v48139_cap_level(pct):
     pct = max(0.0, safe_float(pct, 0.0))
     if pct >= 90:
@@ -956,7 +913,6 @@ def _v48139_cap_level(pct):
     if pct >= 50:
         return "storage-cap-warm-v48139"
     return ""
-
 
 def _v48139_capacity_bar(used, size, suffix="allocated / assigned"):
     used = max(0, safe_int(used, 0))
@@ -970,7 +926,6 @@ def _v48139_capacity_bar(used, size, suffix="allocated / assigned"):
         f'<div class="storage-cap-track-v48139 disk-cap-meter {level}"><i style="width:{min(100.0,pct):.1f}%"></i></div>'
         f'</div>'
     )
-
 
 def _v48139_abuse_disk_capacity(allocated, assigned, slots, selected=""):
     allocated = max(0, safe_int(allocated, 0))
@@ -992,90 +947,8 @@ def _v48139_abuse_disk_capacity(allocated, assigned, slots, selected=""):
       <small class="resource-foot">{slots} disk slot{'s' if slots != 1 else ''}</small>
     </div>'''
 
-
 # Preserve the v48.12.9 operations query contract, only adding one aggregated
 # disk-capacity join and four opt-in sort keys.
-def _v48139_current_rows(values):
-    cfg = get_abuse_settings()
-    where = [
-        "a.is_abuse=1", "a.last_seen>=?", "a.policy_revision=?", "a.engine_version=?",
-        _v48126_visible_sql("ni", "vi"), _v48126_type_condition("a", values["type"]), "a.severity>=?",
-    ]
-    params = [now_ts() - FAST_CURRENT_STALE_SECONDS, cfg["revision"], ABUSE_ENGINE_VERSION, values["min_severity"]]
-    if values["node"]:
-        where.append("a.node=?")
-        params.append(values["node"])
-    if values["q"]:
-        pattern = like_pattern(values["q"])
-        where.append("(a.node LIKE ? OR a.vm_uuid LIKE ? OR a.abuse_flags LIKE ?)")
-        params.extend([pattern, pattern, pattern])
-
-    sort = values.get("sort") or "severity"
-    order = values.get("order") or "desc"
-    sort_map = {
-        "node": "a.node COLLATE NOCASE", "uuid": "a.vm_uuid COLLATE NOCASE", "type": "a.abuse_flags COLLATE NOCASE",
-        "severity": "a.severity", "rx_mbps": "COALESCE(a.rx_mbps,0)", "tx_mbps": "COALESCE(a.tx_mbps,0)",
-        "rx_peak": "COALESCE(a.rx_peak_pps,0)", "tx_peak": "COALESCE(a.tx_peak_pps,0)",
-        "cpu": "COALESCE(a.cpu_full_percent,0)", "cpucore": "COALESCE(a.cpu_core_percent,0)",
-        "ram": "COALESCE(a.ram_guest_used_percent,-1)",
-        "ramused": "CASE WHEN COALESCE(a.ram_guest_used_percent,-1)>=0 THEN MAX(0,COALESCE(a.ram_available_kib,0)-COALESCE(a.ram_usable_kib,0)) ELSE -1 END",
-        "ramrss": "COALESCE(a.ram_rss_kib,0)", "ramassigned": "COALESCE(a.ram_current_kib,0)",
-        "diskallocated": "COALESCE(ds.disk_allocated,0)", "diskassigned": "COALESCE(ds.disk_assigned,0)",
-        "diskallocpct": "CASE WHEN COALESCE(ds.disk_assigned,0)>0 THEN COALESCE(ds.disk_allocated,0)*1.0/ds.disk_assigned ELSE -1 END",
-        "diskslots": "COALESCE(ds.disk_slots,0)",
-        "diskr": "COALESCE(a.disk_read_bps,0)", "diskw": "COALESCE(a.disk_write_bps,0)",
-        "readiops": "COALESCE(a.disk_read_iops,0)", "writeiops": "COALESCE(a.disk_write_iops,0)",
-        "last_seen": "a.last_seen",
-    }
-    if sort == "duration":
-        order_sql = f"a.abuse_since {'ASC' if order == 'desc' else 'DESC'}"
-    else:
-        expression = sort_map.get(sort, sort_map["severity"])
-        order_sql = f"{expression} {'ASC' if order == 'asc' else 'DESC'}"
-    where_sql = " AND ".join(where)
-    offset = (values["page"] - 1) * values["limit"]
-    conn = db()
-    try:
-        ensure_disk_io_schema(conn)
-        total = safe_int(conn.execute(f"""SELECT COUNT(*) FROM vm_abuse_state a
-            LEFT JOIN node_inventory ni ON ni.node=a.node
-            LEFT JOIN vm_inventory vi ON vi.node=a.node AND vi.vm_uuid=a.vm_uuid
-            WHERE {where_sql}""", params).fetchone()[0], 0)
-        rows = conn.execute(f"""
-            SELECT a.node,a.vm_uuid,a.abuse_since,a.last_seen,a.abuse_flags,a.severity,
-                   a.rx_mbps,a.tx_mbps,a.rx_pps,a.tx_pps,a.rx_peak_pps,a.tx_peak_pps,
-                   a.seconds_over_rx_pps,a.seconds_over_tx_pps,
-                   COALESCE(a.network_rx_mbps_streak_seconds,0),COALESCE(a.network_tx_mbps_streak_seconds,0),
-                   a.cpu_full_percent,a.cpu_core_percent,a.vcpu_current,a.cpu_streak_seconds,
-                   a.ram_rss_percent,a.ram_guest_used_percent,a.ram_usable_percent,a.ram_streak_seconds,
-                   a.ram_current_kib,a.ram_rss_kib,a.ram_available_kib,a.ram_usable_kib,
-                   a.disk_read_bps,a.disk_write_bps,a.disk_read_iops,a.disk_write_iops,a.disk_streak_seconds,
-                   COALESCE(b.primary_ipv4,''),COALESCE(ds.disk_allocated,0),COALESCE(ds.disk_assigned,0),COALESCE(ds.disk_slots,0)
-            FROM vm_abuse_state a
-            LEFT JOIN node_inventory ni ON ni.node=a.node
-            LEFT JOIN vm_inventory vi ON vi.node=a.node AND vi.vm_uuid=a.vm_uuid
-            LEFT JOIN node_bridge_addresses_latest b ON b.node=a.node AND b.bridge=?
-            LEFT JOIN (
-              SELECT node,vm_uuid,COALESCE(SUM(allocation_bytes),0) AS disk_allocated,
-                     COALESCE(SUM(capacity_bytes),0) AS disk_assigned,COUNT(*) AS disk_slots
-              FROM vm_disk_current WHERE role='customer' GROUP BY node,vm_uuid
-            ) ds ON ds.node=a.node AND ds.vm_uuid=a.vm_uuid
-            WHERE {where_sql}
-            ORDER BY {order_sql},a.node COLLATE NOCASE,a.vm_uuid COLLATE NOCASE
-            LIMIT ? OFFSET ?
-        """, [PUBLIC_BRIDGE] + params + [values["limit"], offset]).fetchall()
-        counts = {}
-        for key in ("network", "cpu", "ram", "disk"):
-            counts[key] = safe_int(conn.execute(f"""SELECT COUNT(*) FROM vm_abuse_state a
-              LEFT JOIN node_inventory ni ON ni.node=a.node
-              LEFT JOIN vm_inventory vi ON vi.node=a.node AND vi.vm_uuid=a.vm_uuid
-              WHERE a.is_abuse=1 AND a.last_seen>=? AND a.policy_revision=? AND a.engine_version=?
-                AND {_v48126_visible_sql('ni','vi')} AND {_v48126_type_condition('a', key)}""",
-              (now_ts()-FAST_CURRENT_STALE_SECONDS, cfg["revision"], ABUSE_ENGINE_VERSION)).fetchone()[0], 0)
-        return rows, total, counts
-    finally:
-        conn.close()
-
 
 def _v48139_current_page(values):
     cfg = get_abuse_settings()
@@ -1153,7 +1026,6 @@ def _v48139_current_page(values):
     <div class="table-hint"><b>DISK CAPACITY:</b> Host Allocated / Assigned across customer disks. SLOTS is the number of attached customer disks. Existing Abuse policy and I/O logic are unchanged.</div>
     {_v48126_pagination('current', values, total)}</div>"""
 
-
 def vm_abuse_page_v48139():
     tab = (request.args.get("tab") or "current").strip().lower()
     if tab in {"history", "incidents", "summary", "events", "raw", "raw-events"}:
@@ -1182,12 +1054,10 @@ def vm_abuse_page_v48139():
     content += _v48139_current_page(values) if tab == "current" else _v48129_events_page(values)
     return page("VM Abuse", content)
 
-
 # Keep the historical function name for old regression contracts while using
 # the v48.13.9 implementation.
 vm_abuse_page_v48139.__name__ = "vm_abuse_page_v48129"
 app.view_functions["vm_abuse_page"] = vm_abuse_page_v48139
-
 
 def _v48139_vm_disk_row(node, vm_uuid, row, values):
     target, source, mount, device, block, fstype, assigned, allocated, rb, wb, ri, wi, seen = row
@@ -1210,7 +1080,6 @@ def _v48139_vm_disk_row(node, vm_uuid, row, values):
         <div><span>IOPS</span><b>{iops_text}</b></div>
       </div>
     </div>'''
-
 
 def _v48139_storage_disk_group_cards(conn, values, start_ts):
     groups, details, total = _v48133_storage_disk_groups(conn, values, start_ts)
@@ -1261,7 +1130,6 @@ def _v48139_storage_disk_group_cards(conn, values, start_ts):
       <div class="storage-card-list-v48139">{"".join(cards)}</div>{_storage_pager(values,total)}
     </div>'''
 
-
 def _v48139_node_mount_row(values, row):
     node, _public_ip, mount, device, block, raid, fs, size, used, avail, usep, rb, wb, ri, wi, util, seen, disk_count, vm_count = row
     dev = _v48135_base_device(device) or (("/dev/" + block) if block else "-")
@@ -1279,7 +1147,6 @@ def _v48139_node_mount_row(values, row):
         <div><span>IOPS / UTIL</span><b>R {_disk_io_iops(ri)} / W {_disk_io_iops(wi)} · {safe_float(util,0):.1f}%</b></div>
       </div>
     </div>'''
-
 
 def _v48139_storage_node_group_cards(conn, values, start_ts):
     rows = _v48136_real_storage_rows(conn, values, start_ts)
@@ -1361,11 +1228,8 @@ def _v48139_storage_node_group_cards(conn, values, start_ts):
       <div class="storage-card-list-v48139">{"".join(cards)}</div>{_storage_pager(values,total)}
     </div>'''
 
-
 # Existing dispatchers resolve these names at request time. Filtered mount
 # views remain the original one-disk-per-row / one-mount-per-row tables.
 _v48137_storage_disk_group_cards = _v48139_storage_disk_group_cards
 _v48137_storage_node_group_cards = _v48139_storage_node_group_cards
 
-
-# ---------------------------------------------------------------------------

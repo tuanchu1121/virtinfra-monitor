@@ -48,7 +48,6 @@ def rebuild_cache_if_empty():
     finally:
         conn.close()
 
-
 def rebuild_inventory_from_usage():
     """Backfill inventory from existing raw/cache data without changing usage."""
     conn = db()
@@ -101,7 +100,6 @@ def rebuild_inventory_from_usage():
     finally:
         conn.close()
 
-
 def auto_cleanup_inventory():
     """Compatibility no-op for request/read paths.
 
@@ -112,7 +110,6 @@ def auto_cleanup_inventory():
     """
     return {"deferred": True}
 
-
 def vm_live_status(last_seen):
     if not last_seen:
         return "stale"
@@ -120,7 +117,6 @@ def vm_live_status(last_seen):
     if age > VM_STALE_SECONDS:
         return "stale"
     return "active"
-
 
 def admin_allowed():
     if not session.get("admin_authenticated"):
@@ -134,7 +130,6 @@ def admin_allowed():
     _user_id, _username, _password_hash, role, is_active, _created_at, _updated_at, _last_login = user
     return bool(is_active) and clean_role(role) == "admin"
 
-
 def get_admin_setting(key, default=""):
     conn = db()
     try:
@@ -142,7 +137,6 @@ def get_admin_setting(key, default=""):
         return row[0] if row else default
     finally:
         conn.close()
-
 
 def set_admin_setting(key, value):
     conn = db()
@@ -157,19 +151,15 @@ def set_admin_setting(key, value):
     finally:
         conn.close()
 
-
 def get_admin_username():
     return get_admin_setting("admin_username", ADMIN_USERNAME or "admin")
-
 
 def get_admin_password_hash():
     # DB value wins. BW_ADMIN_PASSWORD_HASH remains a bootstrap/fallback option.
     return get_admin_setting("admin_password_hash", ADMIN_PASSWORD_HASH or "")
 
-
 def admin_is_configured():
     return bool(get_admin_password_hash())
-
 
 def set_admin_credentials(username, password):
     username = (username or "admin").strip() or "admin"
@@ -178,26 +168,21 @@ def set_admin_credentials(username, password):
     # Keep the initial admin usable for dashboard login too.
     upsert_dashboard_user(username, password, role="admin", is_active=1)
 
-
 def clean_username(value):
     return (value or "").strip()
-
 
 def clean_role(value):
     value = (value or "viewer").strip().lower()
     return value if value in ("viewer", "admin") else "viewer"
-
 
 def client_ip():
     # Good enough for audit display. If behind a trusted reverse proxy, X-Forwarded-For/X-Real-IP helps.
     xff = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
     return xff or request.headers.get("X-Real-IP") or request.remote_addr or "-"
 
-
 def user_agent_short():
     ua = request.headers.get("User-Agent") or "-"
     return ua[:255]
-
 
 def log_account_event(event, username="", realm="dashboard", role="", detail=""):
     conn = db()
@@ -216,12 +201,10 @@ def log_account_event(event, username="", realm="dashboard", role="", detail="")
             request.path[:255],
             (detail or "")[:500],
         ))
-        # v48.12.5 hard cap: account/audit history is bounded to 7 days.
         conn.execute("DELETE FROM account_logs WHERE time < ?", (now_ts() - EVENT_RETENTION_DAYS * 86400,))
         conn.commit()
     finally:
         conn.close()
-
 
 def log_node_event(event, node="", status_code=200, vm_count=0, iface_count=0, detail=""):
     conn = db()
@@ -240,24 +223,19 @@ def log_node_event(event, node="", status_code=200, vm_count=0, iface_count=0, d
             int(iface_count or 0),
             (detail or "")[:500],
         ))
-        # v48.12.5 hard cap: node/agent logs are bounded to 7 days.
         conn.execute("DELETE FROM node_logs WHERE time < ?", (now_ts() - EVENT_RETENTION_DAYS * 86400,))
         conn.commit()
     finally:
         conn.close()
 
-
 def dashboard_allowed():
     return bool(session.get("dashboard_authenticated") or session.get("admin_authenticated"))
-
 
 def dashboard_username():
     return session.get("dashboard_username") or session.get("admin_username") or ""
 
-
 def dashboard_role():
     return session.get("dashboard_role") or ("admin" if session.get("admin_authenticated") else "")
-
 
 def require_dashboard():
     if dashboard_allowed():
@@ -268,7 +246,6 @@ def require_dashboard():
         return Response("Login required\n", status=401, mimetype="text/plain")
     next_url = request.full_path if request.query_string else request.path
     return redirect(url_for("dashboard_login", next=next_url))
-
 
 def get_dashboard_user(username):
     username = clean_username(username)
@@ -284,14 +261,12 @@ def get_dashboard_user(username):
     finally:
         conn.close()
 
-
 def dashboard_user_count():
     conn = db()
     try:
         return conn.execute("SELECT COUNT(*) FROM dashboard_users").fetchone()[0]
     finally:
         conn.close()
-
 
 def active_admin_count(exclude_user_id=None):
     conn = db()
@@ -310,11 +285,9 @@ def active_admin_count(exclude_user_id=None):
     finally:
         conn.close()
 
-
 def emergency_admin_needed():
     # If no enabled admin user exists, /admin/setup becomes available again.
     return active_admin_count() == 0
-
 
 def get_dashboard_user_by_id(user_id):
     conn = db()
@@ -327,7 +300,6 @@ def get_dashboard_user_by_id(user_id):
     finally:
         conn.close()
 
-
 def current_dashboard_user():
     user_id = session.get("dashboard_user_id")
     if user_id:
@@ -337,11 +309,9 @@ def current_dashboard_user():
     username = dashboard_username()
     return get_dashboard_user(username) if username else None
 
-
 def current_dashboard_user_id():
     row = current_dashboard_user()
     return int(row[0]) if row else 0
-
 
 def is_last_enabled_admin(user_id):
     row = get_dashboard_user_by_id(user_id)
@@ -349,7 +319,6 @@ def is_last_enabled_admin(user_id):
         return False
     _id, _username, _password_hash, role, is_active, _created_at, _updated_at, _last_login = row
     return clean_role(role) == "admin" and bool(is_active) and active_admin_count(exclude_user_id=user_id) == 0
-
 
 def bootstrap_dashboard_admin_from_settings():
     # Upgrade path from older builds: reuse the existing admin password hash as a dashboard admin user.
@@ -369,7 +338,6 @@ def bootstrap_dashboard_admin_from_settings():
         conn.commit()
     finally:
         conn.close()
-
 
 def upsert_dashboard_user(username, password, role="viewer", is_active=1):
     username = clean_username(username)
@@ -394,7 +362,6 @@ def upsert_dashboard_user(username, password, role="viewer", is_active=1):
     finally:
         conn.close()
 
-
 def update_dashboard_user_login(user_id):
     conn = db()
     try:
@@ -402,7 +369,6 @@ def update_dashboard_user_login(user_id):
         conn.commit()
     finally:
         conn.close()
-
 
 def get_dashboard_users():
     conn = db()
@@ -415,7 +381,6 @@ def get_dashboard_users():
     finally:
         conn.close()
 
-
 def set_dashboard_user_status(user_id, is_active):
     conn = db()
     try:
@@ -424,7 +389,6 @@ def set_dashboard_user_status(user_id, is_active):
     finally:
         conn.close()
 
-
 def delete_dashboard_user(user_id):
     conn = db()
     try:
@@ -432,7 +396,6 @@ def delete_dashboard_user(user_id):
         conn.commit()
     finally:
         conn.close()
-
 
 def reset_dashboard_user_password(user_id, password, role=None):
     password_hash = generate_password_hash(password)
@@ -446,20 +409,16 @@ def reset_dashboard_user_password(user_id, password, role=None):
     finally:
         conn.close()
 
-
 def clean_log_type(log_type):
     log_type = (log_type or "account").strip().lower()
     return log_type if log_type in ("account", "node") else "account"
-
 
 def clean_log_limit(value):
     # Keep each page light. Larger history should be browsed with pagination, not one giant table.
     return max(20, min(500, safe_int(value, 100)))
 
-
 def clean_page(value):
     return max(1, safe_int(value, 1))
-
 
 def account_log_where(q=""):
     params = []
@@ -470,7 +429,6 @@ def account_log_where(q=""):
         params.extend([p, p, p, p, p, p])
     return where, params
 
-
 def node_log_where(q=""):
     params = []
     where = ""
@@ -479,7 +437,6 @@ def node_log_where(q=""):
         where = "WHERE node LIKE ? OR event LIKE ? OR source_ip LIKE ? OR detail LIKE ?"
         params.extend([p, p, p, p])
     return where, params
-
 
 def account_log_rows(q="", limit=100, page_no=1):
     limit = clean_log_limit(limit)
@@ -500,7 +457,6 @@ def account_log_rows(q="", limit=100, page_no=1):
     finally:
         conn.close()
 
-
 def node_log_rows(q="", limit=100, page_no=1):
     limit = clean_log_limit(limit)
     page_no = clean_page(page_no)
@@ -519,7 +475,6 @@ def node_log_rows(q="", limit=100, page_no=1):
         return rows, int(total or 0), limit, page_no
     finally:
         conn.close()
-
 
 def delete_logs(log_type, mode="selected", ids=None, q=""):
     log_type = clean_log_type(log_type)
@@ -553,7 +508,6 @@ def delete_logs(log_type, mode="selected", ids=None, q=""):
         return int(changed or 0)
     finally:
         conn.close()
-
 
 def pagination_links(endpoint, page_no, total, limit, **params):
     page_no = clean_page(page_no)
@@ -590,13 +544,11 @@ def pagination_links(endpoint, page_no, total, limit, **params):
     </div>
     """
 
-
 def safe_next_url(value):
     value = (value or "").strip()
     if value.startswith("/") and not value.startswith("//"):
         return value
     return url_for("admin_page")
-
 
 def csrf_token():
     token = session.get("csrf_token")
@@ -604,7 +556,6 @@ def csrf_token():
         token = secrets.token_urlsafe(32)
         session["csrf_token"] = token
     return token
-
 
 def require_admin():
     bootstrap_dashboard_admin_from_settings()
@@ -621,7 +572,6 @@ def require_admin():
         return Response("CSRF check failed\n", status=403, mimetype="text/plain")
     return None
 
-
 def admin_form(action, label, fields, danger=True, confirm="Are you sure?"):
     hidden = f'<input type="hidden" name="csrf_token" value="{escape(csrf_token(), quote=True)}">'
     for k, v in fields.items():
@@ -634,8 +584,6 @@ def admin_form(action, label, fields, danger=True, confirm="Are you sure?"):
     </form>
     """
 
-
 def now_ts():
     return int(time.time())
-
 

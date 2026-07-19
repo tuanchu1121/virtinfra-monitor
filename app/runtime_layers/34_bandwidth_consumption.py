@@ -1,5 +1,3 @@
-# VirtInfra Monitor v50.3.0 Bandwidth Consumption
-# ---------------------------------------------------------------------------
 # This module is intentionally additive. It does not change the operational
 # 5-minute metrics, Abuse engine, Storage I/O, Dashboard or existing /push
 # protocol. Agents submit one compact node aggregate for each completed local
@@ -34,7 +32,6 @@ V5030_BW_COUNTER_COLUMNS = (
     "vm_private_tx_bytes",
 )
 
-
 def _v5030_local_bucket_start(ts):
     ts = safe_int(ts, now_ts())
     return (
@@ -43,11 +40,9 @@ def _v5030_local_bucket_start(ts):
         - V5030_BW_TZ_OFFSET_SECONDS
     )
 
-
 def _v5030_period(value):
     value = str(value or "1d").strip().lower()
     return value if value in V5030_BW_PERIODS else "1d"
-
 
 def _v5030_section(value):
     value = str(value or "all").strip().lower()
@@ -62,16 +57,13 @@ def _v5030_section(value):
     }
     return value if value in allowed else "all"
 
-
 def _v5030_node_status_filter(value):
     value = str(value or "all").strip().lower()
     return value if value in {"all", "online", "missed", "down"} else "all"
 
-
 def _v5030_coverage_filter(value):
     value = str(value or "all").strip().lower()
     return value if value in {"all", "complete", "incomplete", "no_data"} else "all"
-
 
 def _v5030_sort(value):
     value = str(value or "node").strip().lower()
@@ -85,7 +77,6 @@ def _v5030_sort(value):
         "private_difference_rx", "private_difference_tx", "private_difference_total",
     }
     return value if value in allowed else "node"
-
 
 def _v5030_ensure_bandwidth_consumption_schema():
     conn = db()
@@ -127,9 +118,7 @@ def _v5030_ensure_bandwidth_consumption_schema():
     finally:
         conn.close()
 
-
 _v5030_ensure_bandwidth_consumption_schema()
-
 
 def _v5030_cleanup_bandwidth_consumption(cutoff=None):
     cutoff = safe_int(cutoff, now_ts() - V5030_BW_RETENTION_SECONDS)
@@ -145,16 +134,13 @@ def _v5030_cleanup_bandwidth_consumption(cutoff=None):
     finally:
         conn.close()
 
-
 def _v5030_bandwidth_accept_after():
     return max(0, safe_int(get_admin_setting(V5030_BW_ACCEPT_AFTER_KEY, "0"), 0))
-
 
 def _v5030_set_bandwidth_accept_after(ts=None):
     ts = max(0, safe_int(ts, now_ts()))
     set_admin_setting(V5030_BW_ACCEPT_AFTER_KEY, str(ts))
     return ts
-
 
 @app.route("/push/bandwidth-consumption", methods=["POST"])
 def push_bandwidth_consumption():
@@ -244,7 +230,6 @@ def push_bandwidth_consumption():
         "retention_days": 7,
     })
 
-
 def _v5030_status_name(last_push):
     state, _age, _misses = node_status_state(last_push)
     if state == "green":
@@ -252,7 +237,6 @@ def _v5030_status_name(last_push):
     if state == "yellow":
         return "missed"
     return "down"
-
 
 def _v5030_row_values(row, expected_buckets):
     item = dict(row)
@@ -297,7 +281,6 @@ def _v5030_row_values(row, expected_buckets):
     item["private_difference_tx"] = item["physical_private_tx"] - item["vm_private_tx"]
     item["private_difference_total"] = item["physical_private_total"] - item["vm_private_total"]
     return item
-
 
 def _v5030_bandwidth_rows(start, end, expected_buckets, q=""):
     q = str(q or "").strip()
@@ -377,7 +360,6 @@ def _v5030_bandwidth_rows(start, end, expected_buckets, q=""):
     finally:
         conn.close()
 
-
 def _v5030_sort_rows(rows, sort_by, order):
     reverse = clean_sort_order(order) == "desc"
     if sort_by == "node":
@@ -390,7 +372,6 @@ def _v5030_sort_rows(rows, sort_by, order):
         key=lambda x: (safe_float(x.get(sort_by), 0.0), str(x.get("node") or "").lower()),
         reverse=reverse,
     )
-
 
 def _v5030_fmt_signed(value):
     value = safe_int(value, 0)
@@ -406,7 +387,6 @@ def _v5030_fmt_signed(value):
         scaled, unit = absolute / (1024.0 ** 2), "MB"
     return f"{sign}{scaled:.2f} {unit}"
 
-
 def _v5030_sort_link(label, key, current, order, **kwargs):
     next_order = reverse_order(order) if key == current else "desc"
     arrow = ""
@@ -421,7 +401,6 @@ def _v5030_sort_link(label, key, current, order, **kwargs):
         arrow,
     )
 
-
 def _v5030_group_tone(prefix, diff=False):
     if diff or prefix.startswith("public_difference") or prefix.startswith("private_difference"):
         return "difference"
@@ -432,7 +411,6 @@ def _v5030_group_tone(prefix, diff=False):
         "vm_private": "vm-private",
     }
     return tones.get(prefix, "neutral")
-
 
 def _v5030_metric_group(title, prefix, item, diff=False):
     rx = item.get(prefix + "_rx", 0)
@@ -451,7 +429,6 @@ def _v5030_metric_group(title, prefix, item, diff=False):
       </div>
     """ % (tone, escape(title), formatter(rx), formatter(tx), formatter(total))
 
-
 def _v5030_summary_card(title, prefix, totals, tone):
     return """
       <div class="card bwcons-summary %s">
@@ -467,7 +444,6 @@ def _v5030_summary_card(title, prefix, totals, tone):
         human(totals.get(prefix + "_tx", 0)),
         human(totals.get(prefix + "_total", 0)),
     )
-
 
 @app.route("/bandwidth-consumption")
 def bandwidth_consumption_page():
@@ -637,7 +613,6 @@ def bandwidth_consumption_page():
     )
     return page("Consumption", content)
 
-
 def _v5030_bandwidth_admin_stats():
     conn = db()
     try:
@@ -676,15 +651,11 @@ def _v5030_bandwidth_admin_stats():
     finally:
         conn.close()
 
-
 _v5030_admin_overview_base = _v490_admin_overview
-
 
 def _v490_admin_overview(stats):
     # r6: accounting/RETENTION7 controls live only under Maintenance.
     return _v5030_admin_overview_base(stats)
-
-
 
 @app.route("/admin/bandwidth-consumption", methods=["POST"])
 def admin_bandwidth_consumption_action():
@@ -713,10 +684,8 @@ def admin_bandwidth_consumption_action():
         return redirect(url_for("admin_page", section="system", message="Bandwidth history cleared."))
     return Response("Unsupported action\n", status=400, mimetype="text/plain")
 
-
 # Existing retention and manual history cleanup now include the dedicated table.
 _v5030_run_retention_base = run_retention
-
 
 def run_retention(dry_run=False):
     result = dict(_v5030_run_retention_base(dry_run=dry_run) or {})
@@ -734,9 +703,7 @@ def run_retention(dry_run=False):
     result["bandwidth_consumption_retention_days"] = 7
     return result
 
-
 _v5030_delete_history_base = delete_history_older_than
-
 
 def delete_history_older_than(days):
     result = dict(_v5030_delete_history_base(days) or {})
@@ -746,25 +713,20 @@ def delete_history_older_than(days):
     result["node_bandwidth_consumption_2h"] = _v5030_cleanup_bandwidth_consumption(cutoff=cutoff)
     return result
 
-
 # Purging a node permanently removes its accounting history. Hide/restore does
 # not delete anything because page queries use node_inventory visibility.
 _v5030_purge_node_data_base = purge_node_data
-
 
 def purge_node_data(conn, node):
     result = dict(_v5030_purge_node_data_base(conn, node) or {})
     result[V5030_BW_TABLE] = _delete_count(conn, "DELETE FROM node_bandwidth_consumption_2h WHERE node=?", (node,))
     return result
 
-
 # Complete monitoring clear/reset paths must include the new table.
 MONITORING_DATA_TABLES = tuple(dict.fromkeys(tuple(MONITORING_DATA_TABLES) + (V5030_BW_TABLE,)))
 V48102_RESET_APP_TABLES = tuple(dict.fromkeys(tuple(V48102_RESET_APP_TABLES) + (V5030_BW_TABLE,)))
 
-
 _v5030_clear_all_monitoring_data_base = clear_all_monitoring_data
-
 
 def clear_all_monitoring_data():
     result = _v5030_clear_all_monitoring_data_base()
@@ -772,9 +734,7 @@ def clear_all_monitoring_data():
     result["bandwidth_consumption_accept_after"] = epoch
     return result
 
-
 _v5030_reset_all_app_data_base = reset_all_app_data
-
 
 def reset_all_app_data():
     result = _v5030_reset_all_app_data_base()
@@ -783,11 +743,8 @@ def reset_all_app_data():
         result["bandwidth_consumption_accept_after"] = epoch
     return result
 
-
 # Keep the page cheap and consistent with the existing cross-worker cache.
 _v48140_cached_endpoint("bandwidth_consumption_page", V48140_PAGE_CACHE_TTL)
-
-
 
 def _v5030_bandwidth_node_buckets(node, start, end):
     conn = db()
@@ -830,7 +787,6 @@ def _v5030_bandwidth_node_buckets(node, start, end):
         return {"node": str(visible[0]), "last_push": safe_int(visible[1], 0)}, mapped_rows
     finally:
         conn.close()
-
 
 @app.route("/bandwidth-consumption/node/<path:node>")
 def bandwidth_consumption_node_page(node):
@@ -900,13 +856,8 @@ def bandwidth_consumption_node_page(node):
     )
     return page("Consumption · %s" % node, content)
 
-
 _v48140_cached_endpoint("bandwidth_consumption_node_page", V48140_PAGE_CACHE_TTL)
 
-
-# ---------------------------------------------------------------------------
-# v50.4.2 Consumption authentication hotfix + storage V2: exact 5-minute charts with short raw detail
-# ---------------------------------------------------------------------------
 # UI routes, HTML/CSS, chart JavaScript, API responses, current-state writers,
 # Abuse and Consumption stay unchanged. Only the backend history source used by
 # existing chart helper functions is switched when VIRTINFRA_READ_CHART_V2=1.
@@ -918,7 +869,6 @@ _v5040_query_node_network_health_chart_legacy = query_node_network_health_chart
 _v5040_query_node_perf_chart_legacy = query_node_perf_chart
 _v5040_query_node_host_chart_legacy = query_node_host_chart
 
-
 def _v5040_chart_step(rows, period):
     gaps = [
         safe_int(rows[i].get("bucket"), 0) - safe_int(rows[i - 1].get("bucket"), 0)
@@ -929,7 +879,6 @@ def _v5040_chart_step(rows, period):
     # keep the existing chart contract on the native 5-minute resolution.
     return min(gaps) if gaps else CACHE_BUCKET_SECONDS
 
-
 def _v5040_iface_values(raw_value, bridge="", iface=""):
     items = []
     for item in storage_v2.parse_interfaces_json(raw_value):
@@ -939,7 +888,6 @@ def _v5040_iface_values(raw_value, bridge="", iface=""):
             continue
         items.append(item)
     return items
-
 
 def _v5040_network_row(bucket, interval, last_push, values, sample_defaults=None):
     interval = max(1, safe_int(interval, CACHE_BUCKET_SECONDS))
@@ -988,7 +936,6 @@ def _v5040_network_row(bucket, interval, last_push, values, sample_defaults=None
         "last_push": safe_int(last_push, 0), "interval_seconds": interval,
     }
 
-
 def query_vm_chart(node, vm_uuid, period, bridge="", iface=""):
     if not storage_v2.CHART_V2_READ_ENABLED:
         return _v5040_query_vm_chart_legacy(node, vm_uuid, period, bridge=bridge, iface=iface)
@@ -1022,7 +969,6 @@ def query_vm_chart(node, vm_uuid, period, bridge="", iface=""):
             },
         ))
     return rows, start, end, _v5040_chart_step(rows, period)
-
 
 def query_vm_perf_chart(node, vm_uuid, period):
     if not storage_v2.CHART_V2_READ_ENABLED:
@@ -1069,13 +1015,11 @@ def query_vm_perf_chart(node, vm_uuid, period):
         })
     return rows, start, end, _v5040_chart_step(rows, period)
 
-
 def _v5040_node_chart_where(q):
     if not q:
         return "", []
     pattern = like_pattern(q)
     return " AND (c.vm_uuid LIKE ? OR c.node LIKE ? OR c.interfaces_json LIKE ?)", [pattern, pattern, pattern]
-
 
 def query_node_chart(node, period, q="", vm_status="active"):
     if not storage_v2.CHART_V2_READ_ENABLED:
@@ -1103,7 +1047,6 @@ def query_node_chart(node, period, q="", vm_status="active"):
         "last_push": safe_int(r[6], 0),
     } for r in raw]
     return rows, start, end, _v5040_chart_step(rows, period)
-
 
 def query_node_network_health_chart(node, period, q=""):
     if not storage_v2.CHART_V2_READ_ENABLED:
@@ -1133,7 +1076,6 @@ def query_node_network_health_chart(node, period, q=""):
             "drops": safe_int(r[3], 0), "errors": safe_int(r[4], 0), "last_push": safe_int(r[5], 0),
         })
     return rows, start, end, _v5040_chart_step(rows, period)
-
 
 def query_node_perf_chart(node, period, q=""):
     if not storage_v2.CHART_V2_READ_ENABLED:
@@ -1176,7 +1118,6 @@ def query_node_perf_chart(node, period, q=""):
     } for r in raw]
     return rows, start, end, _v5040_chart_step(rows, period)
 
-
 def query_node_host_chart(node, period):
     if not storage_v2.CHART_V2_READ_ENABLED:
         return _v5040_query_node_host_chart_legacy(node, period)
@@ -1207,10 +1148,8 @@ def query_node_host_chart(node, period):
         })
     return rows, start, end, _v5040_chart_step(rows, period)
 
-
 # Purge/reset paths include V2 history without changing any route or UI action.
 _v5040_purge_vm_data_base = purge_vm_data
-
 
 def purge_vm_data(conn, node, vm_uuid, refresh_snapshots=True):
     result = _v5040_purge_vm_data_base(conn, node, vm_uuid, refresh_snapshots=refresh_snapshots)
@@ -1221,9 +1160,7 @@ def purge_vm_data(conn, node, vm_uuid, refresh_snapshots=True):
         result["vm_raw_detail_5m"] = deleted_raw
     return result
 
-
 _v5040_purge_node_data_base = purge_node_data
-
 
 def purge_node_data(conn, node):
     result = dict(_v5040_purge_node_data_base(conn, node) or {})
@@ -1232,14 +1169,12 @@ def purge_node_data(conn, node):
     result["node_chart_5m"] = _delete_count(conn, "DELETE FROM node_chart_5m WHERE node=?", (node,))
     return result
 
-
 MONITORING_DATA_TABLES = tuple(dict.fromkeys(tuple(MONITORING_DATA_TABLES) + (
     "vm_chart_5m", "vm_raw_detail_5m", "node_chart_5m",
 )))
 V48102_RESET_APP_TABLES = tuple(dict.fromkeys(tuple(V48102_RESET_APP_TABLES) + (
     "vm_chart_5m", "vm_raw_detail_5m", "node_chart_5m",
 )))
-
 
 def _v5040_healthz():
     try:
@@ -1261,8 +1196,5 @@ def _v5040_healthz():
         app.logger.exception("healthz_storage_v2_failed")
         return jsonify({"status": "error", "service": PRODUCT_NAME, "error": str(exc)[:300]}), 503
 
-
 app.view_functions["virtinfra_healthz"] = _v5040_healthz
 
-
-# ---------------------------------------------------------------------------

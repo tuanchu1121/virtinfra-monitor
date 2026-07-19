@@ -3,12 +3,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 from runtime_source import read_app_source
 APP = read_app_source()
-CURRENT_VERSION = "50.5.9-prod-r8-safe-dead-code-prune"
+CURRENT_VERSION = "50.5.9-prod-r9-safe-runtime-history-prune"
 R3_RELEASE = "50.5.9-prod-r4-dead-code-cleanup"
 
 
 def effective_block():
-    return APP[APP.index("# v50.5.9 r3 UI alignment and overflow hotfix"):]
+    return (ROOT / "app/runtime_layers/42_ui_alignment_r3.py").read_text(encoding="utf-8")
 
 
 def test_release_identity_and_scope_marker():

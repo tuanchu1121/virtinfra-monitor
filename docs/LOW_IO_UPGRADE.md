@@ -1,8 +1,8 @@
-# VirtInfra Monitor 50.5.8 Low-I/O Upgrade
+# VirtInfra Monitor Low-I/O Upgrade
 
 ## Upgrade type
 
-`50.5.9-prod-r3-ui-alignment-overflow-hotfix` is an **in-place upgrade** from the existing PostgreSQL-native VirtInfra Monitor release. It is not a clean-install-only branch.
+`50.5.9-prod-r9-safe-runtime-history-prune` is an **in-place upgrade** from the existing PostgreSQL-native VirtInfra Monitor release. It is not a clean-install-only branch.
 
 The package can also perform a fresh installation, but the intended production path is:
 

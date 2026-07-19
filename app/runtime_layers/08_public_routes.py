@@ -61,7 +61,6 @@ def dashboard_login():
     """
     return page("Dashboard Login", content)
 
-
 @app.route("/logout")
 def dashboard_logout():
     username = dashboard_username()
@@ -70,149 +69,6 @@ def dashboard_logout():
         log_account_event("logout", username=username, realm="dashboard", role=role)
     session.clear()
     return redirect(url_for("dashboard_login"))
-
-
-
-def resolve_direct_vm_search(q):
-    """Resolve a UUID/VM-interface search directly to one current VM.
-
-    Priority:
-      1. Exact UUID match.
-      2. Partial UUID or exact interface only when it resolves to one VM.
-
-    Node names and node IPs are intentionally not handled here; those continue
-    through the normal dashboard node search.
-    """
-    q = (q or "").strip()
-    if not q:
-        return None
-
-    like = like_pattern(q)
-    conn = db()
-    try:
-        rows = conn.execute("""
-            SELECT node, vm_uuid, iface, bridge, last_seen, priority, exact_uuid
-            FROM (
-                SELECT
-                    node,
-                    vm_uuid,
-                    COALESCE(last_iface, '') AS iface,
-                    COALESCE(last_bridge, '') AS bridge,
-                    COALESCE(last_seen, 0) AS last_seen,
-                    0 AS priority,
-                    CASE WHEN vm_uuid = ? COLLATE NOCASE THEN 1 ELSE 0 END AS exact_uuid
-                FROM vm_location_latest
-                WHERE vm_uuid LIKE ?
-                   OR COALESCE(last_iface, '') = ? COLLATE NOCASE
-
-                UNION ALL
-
-                SELECT
-                    node,
-                    vm_uuid,
-                    COALESCE(iface, '') AS iface,
-                    COALESCE(bridge, '') AS bridge,
-                    COALESCE(last_seen, 0) AS last_seen,
-                    1 AS priority,
-                    CASE WHEN vm_uuid = ? COLLATE NOCASE THEN 1 ELSE 0 END AS exact_uuid
-                FROM vm_latest_metrics
-                WHERE vm_uuid LIKE ?
-                   OR COALESCE(iface, '') = ? COLLATE NOCASE
-
-                UNION ALL
-
-                SELECT
-                    node,
-                    vm_uuid,
-                    COALESCE(last_iface, '') AS iface,
-                    COALESCE(last_bridge, '') AS bridge,
-                    COALESCE(last_seen, 0) AS last_seen,
-                    2 AS priority,
-                    CASE WHEN vm_uuid = ? COLLATE NOCASE THEN 1 ELSE 0 END AS exact_uuid
-                FROM vm_node_presence
-                WHERE status NOT IN ('purged', 'migrated')
-                  AND (
-                        vm_uuid LIKE ?
-                        OR COALESCE(last_iface, '') = ? COLLATE NOCASE
-                      )
-
-                UNION ALL
-
-                SELECT
-                    node,
-                    vm_uuid,
-                    COALESCE(last_iface, '') AS iface,
-                    COALESCE(last_bridge, '') AS bridge,
-                    COALESCE(last_seen, 0) AS last_seen,
-                    3 AS priority,
-                    CASE WHEN vm_uuid = ? COLLATE NOCASE THEN 1 ELSE 0 END AS exact_uuid
-                FROM vm_inventory
-                WHERE deleted_at IS NULL
-                  AND COALESCE(status, 'active') != 'hidden'
-                  AND (
-                        vm_uuid LIKE ?
-                        OR COALESCE(last_iface, '') = ? COLLATE NOCASE
-                      )
-            )
-            ORDER BY exact_uuid DESC, priority ASC, last_seen DESC
-            LIMIT 200
-        """, (
-            q, like, q,
-            q, like, q,
-            q, like, q,
-            q, like, q,
-        )).fetchall()
-    finally:
-        conn.close()
-
-    if not rows:
-        return None
-
-    # De-duplicate the same VM returned by several latest/inventory tables.
-    candidates = {}
-    for node, vm_uuid, iface, bridge, last_seen, priority, exact_uuid in rows:
-        key = (str(node or ""), str(vm_uuid or ""))
-        if not key[0] or not key[1]:
-            continue
-        current = candidates.get(key)
-        candidate = {
-            "node": key[0],
-            "vm_uuid": key[1],
-            "iface": str(iface or ""),
-            "bridge": str(bridge or ""),
-            "last_seen": int(last_seen or 0),
-            "priority": int(priority or 0),
-            "exact_uuid": bool(exact_uuid),
-        }
-        if current is None:
-            candidates[key] = candidate
-            continue
-        current_rank = (
-            0 if current["exact_uuid"] else 1,
-            current["priority"],
-            -current["last_seen"],
-        )
-        candidate_rank = (
-            0 if candidate["exact_uuid"] else 1,
-            candidate["priority"],
-            -candidate["last_seen"],
-        )
-        if candidate_rank < current_rank:
-            candidates[key] = candidate
-
-    values = list(candidates.values())
-    exact = [item for item in values if item["exact_uuid"]]
-    if exact:
-        exact.sort(key=lambda item: (item["priority"], -item["last_seen"]))
-        return exact[0]
-
-    # A partial UUID or interface search is safe to open directly only when
-    # exactly one VM remains after de-duplication.
-    if len(values) == 1:
-        return values[0]
-
-    return None
-
 
 @app.route("/")
 def index():
@@ -241,8 +97,6 @@ def index():
     {node_table(rows, sort_by=sort_by, order=sort_order)}
     """
     return page("VirtInfra Monitor", content)
-
-
 
 @app.route("/health/nodes")
 def node_health_page():
@@ -280,7 +134,6 @@ def node_health_page():
     {node_health_table(rows, q=q, sort_by=sort_by, order=sort_order)}
     """
     return page("Node Health", content)
-
 
 @app.route("/health/nodes/<path:node>/misses")
 def node_missed_detail_page(node):
@@ -374,8 +227,6 @@ def node_missed_detail_page(node):
     """
     return page(f"Missed Cycles - {node}", content)
 
-
-
 @app.route("/top/nodes")
 def top_node_page():
     period = clean_period(request.args.get("period", "5m"))
@@ -417,18 +268,14 @@ def top_node_page():
     """
     return page("Top Node", content)
 
-
-
 def _abuse_rss_percent(rss_kib, assigned_kib):
     assigned = float(assigned_kib or 0)
     if assigned <= 0:
         return 0.0
     return max(0.0, float(rss_kib or 0) * 100.0 / assigned)
 
-
 def _abuse_reason(label, value, level="crit"):
     return metric_pill(f"{escape(label)} {escape(value)}", level)
-
 
 def _abuse_sort_value(row, sort_by):
     if sort_by == "node":
@@ -442,7 +289,6 @@ def _abuse_sort_value(row, sort_by):
         "last_push": "last_push", "drops": "drops", "errors": "errors",
     }
     return float(row.get(key_map.get(sort_by, "severity")) or 0)
-
 
 def get_vm_abuse_rows(q="", sort_by="severity", order="desc", limit=200):
     """Return current abuse candidates from the latest real bucket of every node.
@@ -614,7 +460,6 @@ def get_vm_abuse_rows(q="", sort_by="severity", order="desc", limit=200):
     )
     return result[:limit], len(result), limit
 
-
 def abuse_sort_header(label, key, q, current_sort, current_order, limit):
     current_sort = clean_abuse_sort(current_sort)
     current_order = clean_sort_order(current_order)
@@ -625,7 +470,6 @@ def abuse_sort_header(label, key, q, current_sort, current_order, limit):
         arrow = " ↓" if current_order == "desc" else " ↑"
     href = url_for("vm_abuse_page", q=q, sort=key, order=next_order, limit=limit)
     return f'<a class="sort-link" href="{escape(href, quote=True)}">{escape(label)}{arrow}</a>'
-
 
 def vm_abuse_table(rows, total_matches, q, sort_by, order, limit):
     h = lambda label, key: abuse_sort_header(label, key, q, sort_by, order, limit)
@@ -690,7 +534,6 @@ def vm_abuse_table(rows, total_matches, q, sort_by, order, limit):
         <div class="table-hint">CPU Full% is utilization across all assigned vCPUs and triggers at {ABUSE_CPU_FULL_PERCENT:.1f}%. RAM uses RSS / assigned memory and triggers at {ABUSE_RAM_RSS_PERCENT:.1f}%. Network thresholds: AVG {ABUSE_AVG_MBPS:.0f} Mbps / {fmt_pps_value(ABUSE_AVG_PPS)}, PEAK {ABUSE_PEAK_MBPS:.0f} Mbps / {fmt_pps_value(ABUSE_PEAK_PPS)}.</div>
     </div>"""
 
-
 @app.route("/abuse/vms")
 def vm_abuse_page():
     q = (request.args.get("q") or "").strip()
@@ -729,7 +572,6 @@ def vm_abuse_page():
         <div class="card"><h3>VM Abuse</h3><div class="error-box"><b>VM Abuse query failed:</b> {escape(type(exc).__name__)}: {escape(str(exc))}</div><div class="table-hint">Check journalctl -u bw-monitor -n 100 --no-pager for the full traceback.</div></div>
         """
         return page("VM Abuse", content), 500
-
 
 @app.route("/top")
 def top_page():
@@ -776,9 +618,6 @@ def top_page():
     """
     return page("Top VM", content)
 
-
-
-
 def query_node_network_health_chart(node, period, q=""):
     start, end = range_for_period(period)
     conn = db()
@@ -814,151 +653,6 @@ def query_node_network_health_chart(node, period, q=""):
         rows.append({"bucket":int(r[0]),"label":fmt_chart_label(r[0],interval),"rx_pps":rxp/interval,"tx_pps":txp/interval,"pps":(rxp+txp)/interval,"drops":int(r[3] or 0),"errors":int(r[4] or 0),"last_push":int(r[5] or 0)})
     gaps=[rows[i]["bucket"]-rows[i-1]["bucket"] for i in range(1,len(rows))]
     return rows,start,end,min((g for g in gaps if g>0),default=chart_step_seconds(period))
-
-
-def query_node_perf_chart(node, period, q=""):
-    """Exact aggregate on sampled real push buckets, never an average."""
-    start, end = range_for_period(period)
-    conn = db()
-    try:
-        bucket_ids = _sample_real_buckets(_node_retained_buckets(conn, node, period))
-        if not bucket_ids:
-            return [], start, end, chart_step_seconds(period)
-        placeholders = _sql_in_placeholders(bucket_ids)
-        params=[CACHE_BUCKET_SECONDS,CACHE_BUCKET_SECONDS,node]+bucket_ids
-        search_sql=""
-        if q:
-            search_sql=" AND (vps.vm_uuid LIKE ? OR vps.node LIKE ?)"; p=like_pattern(q); params.extend([p,p])
-        raw=conn.execute(f"""
-            SELECT vps.bucket,
-                   SUM(CASE WHEN COALESCE(vps.cpu_percent,0)<=100 THEN COALESCE(vps.cpu_percent,0)*MAX(COALESCE(vps.vcpu_current,1),1) ELSE COALESCE(vps.cpu_percent,0) END),
-                   MAX(CASE WHEN COALESCE(vps.cpu_percent,0)<=100 THEN COALESCE(vps.cpu_percent,0)*MAX(COALESCE(vps.vcpu_current,1),1) ELSE COALESCE(vps.cpu_percent,0) END),
-                   SUM(COALESCE(vps.ram_rss_kib,0)), SUM(COALESCE(vps.ram_current_kib,0)), SUM(COALESCE(vps.ram_available_kib,0)),
-                   SUM(COALESCE(vps.disk_read_delta,0)*1.0/MAX(COALESCE(vps.interval_seconds,?),1)),
-                   SUM(COALESCE(vps.disk_write_delta,0)*1.0/MAX(COALESCE(vps.interval_seconds,?),1)),
-                   MAX(vps.time)
-            FROM vm_perf_stats vps
-            LEFT JOIN vm_inventory vi ON vi.node=vps.node AND vi.vm_uuid=vps.vm_uuid
-            WHERE vps.node=? AND vps.bucket IN ({placeholders})
-              AND COALESCE(vi.status,'active')!='hidden' {search_sql}
-            GROUP BY vps.bucket ORDER BY vps.bucket
-        """,params).fetchall()
-    finally:
-        conn.close()
-    rows=[{"bucket":int(r[0]),"label":fmt_chart_label(r[0],CACHE_BUCKET_SECONDS),"total_cpu_percent":float(r[1] or 0),"max_cpu_percent":float(r[2] or 0),"ram_rss_bytes":float(r[3] or 0)*1024,"ram_current_bytes":float(r[4] or 0)*1024,"ram_available_bytes":float(r[5] or 0)*1024,"disk_read_bps":float(r[6] or 0),"disk_write_bps":float(r[7] or 0),"last_push":int(r[8] or 0)} for r in raw]
-    gaps=[rows[i]["bucket"]-rows[i-1]["bucket"] for i in range(1,len(rows))]
-    return rows,start,end,min((g for g in gaps if g>0),default=chart_step_seconds(period))
-
-
-def get_node_metric_overview(node, period, q="", vm_status="active"):
-    """Aggregate VM metrics from one exact selected agent snapshot."""
-    status_sql = "AND COALESCE(vi.status, 'active') != 'hidden'"
-    conn = db()
-    try:
-        selected_bucket, _latest_bucket = resolve_snapshot_bucket(conn, period, node=node)
-        net_bucket = resolve_table_snapshot_bucket(conn, "node_stats", node, selected_bucket)
-        perf_bucket = resolve_table_snapshot_bucket(conn, "vm_perf_stats", node, selected_bucket)
-        if not selected_bucket:
-            return None
-
-        net_params = [node, net_bucket]
-        net_search = ""
-        if q:
-            p = like_pattern(q)
-            net_search = " AND (ns.vm_uuid LIKE ? OR ns.iface LIKE ? OR ns.node LIKE ?)"
-            net_params.extend([p, p, p])
-
-        net = conn.execute(f"""
-            SELECT
-                COUNT(DISTINCT ns.vm_uuid),
-                SUM(COALESCE(ns.rx_packets_delta, 0) + COALESCE(ns.tx_packets_delta, 0)),
-                SUM(COALESCE(ns.rx_drop_delta, 0) + COALESCE(ns.tx_drop_delta, 0)),
-                SUM(COALESCE(ns.rx_error_delta, 0) + COALESCE(ns.tx_error_delta, 0)),
-                MAX(COALESCE(ns.interval_seconds, ?)),
-                MAX(ns.last_push)
-            FROM node_stats ns
-            LEFT JOIN vm_inventory vi ON vi.node=ns.node AND vi.vm_uuid=ns.vm_uuid
-            WHERE ns.node=? AND ns.bucket=?
-              {status_sql}
-              {net_search}
-        """, [CACHE_BUCKET_SECONDS] + net_params).fetchone() if net_bucket else (0, 0, 0, 0, CACHE_BUCKET_SECONDS, selected_bucket)
-
-        perf_params = [node, perf_bucket]
-        perf_search = ""
-        if q:
-            p = like_pattern(q)
-            perf_search = " AND (vp.vm_uuid LIKE ? OR vp.node LIKE ?)"
-            perf_params.extend([p, p])
-
-        perf = conn.execute(f"""
-            SELECT
-                COUNT(DISTINCT vp.vm_uuid),
-                SUM(CASE WHEN COALESCE(vp.cpu_percent, 0) <= 100
-                         THEN COALESCE(vp.cpu_percent, 0) * CASE WHEN COALESCE(vp.vcpu_current, 0)>0 THEN vp.vcpu_current ELSE 1 END
-                         ELSE COALESCE(vp.cpu_percent, 0) END),
-                MAX(CASE WHEN COALESCE(vp.cpu_percent, 0) <= 100
-                         THEN COALESCE(vp.cpu_percent, 0) * CASE WHEN COALESCE(vp.vcpu_current, 0)>0 THEN vp.vcpu_current ELSE 1 END
-                         ELSE COALESCE(vp.cpu_percent, 0) END),
-                SUM(COALESCE(vp.ram_rss_kib, 0)),
-                SUM(COALESCE(vp.ram_current_kib, 0)),
-                SUM(COALESCE(vp.ram_available_kib, 0)),
-                SUM(COALESCE(vp.disk_read_delta, 0) * 1.0 / MAX(COALESCE(vp.interval_seconds, ?), 1)),
-                SUM(COALESCE(vp.disk_write_delta, 0) * 1.0 / MAX(COALESCE(vp.interval_seconds, ?), 1)),
-                MAX(vp.time)
-            FROM vm_perf_stats vp
-            LEFT JOIN vm_inventory vi ON vi.node=vp.node AND vi.vm_uuid=vp.vm_uuid
-            WHERE vp.node=? AND vp.bucket=?
-              {status_sql}
-              {perf_search}
-        """, [CACHE_BUCKET_SECONDS, CACHE_BUCKET_SECONDS] + perf_params).fetchone() if perf_bucket else (0, 0, 0, 0, 0, 0, 0, 0, selected_bucket)
-
-        net_vm, packets, drops, errors, interval_seconds, net_last = net
-        perf_vm, total_cpu, max_cpu, ram_rss, ram_current, ram_available, disk_read, disk_write, perf_last = perf
-        interval = max(1, int(interval_seconds or CACHE_BUCKET_SECONDS))
-        return (
-            max(int(net_vm or 0), int(perf_vm or 0)),
-            float(packets or 0) / interval,
-            int(drops or 0),
-            int(errors or 0),
-            float(total_cpu or 0),
-            float(max_cpu or 0),
-            int(ram_rss or 0),
-            int(ram_current or 0),
-            int(ram_available or 0),
-            float(disk_read or 0),
-            float(disk_write or 0),
-            max(int(net_last or 0), int(perf_last or 0), int(selected_bucket or 0)),
-        )
-    finally:
-        conn.close()
-
-def node_metric_cards(row):
-    if not row:
-        row = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-    (vm_count, total_pps, drops, errors, total_cpu, max_cpu, ram_rss_kib, ram_current_kib,
-     ram_available_kib, disk_read_bps, disk_write_bps, last_seen) = row
-    return f"""
-    <div class="card overview-card">
-        <div class="overview-head">
-            <h3>Node VM Metrics</h3>
-            <div class="overview-meta">
-                <span>Source <b>exact VM snapshot</b></span>
-                <span>Last Metric <b>{fmt_push(last_seen)}</b></span>
-                <span>VM <b>{int(vm_count or 0)}</b></span>
-            </div>
-        </div>
-        <div class="grid">
-            <div class="stat">PPS<b>{fmt_pps_value(total_pps)}</b></div>
-            <div class="stat">CPU TOTAL / MAX VM<b>{fmt_percent(total_cpu)} / {fmt_percent(max_cpu)}</b><small>100% = 1 full core</small></div>
-            <div class="stat">RAM RSS / Assigned<b>{fmt_ram_pair(ram_rss_kib, ram_current_kib)}</b><small>Available {fmt_kib(ram_available_kib)}</small></div>
-            <div class="stat">Disk Read<b>{human_rate(disk_read_bps)}</b></div>
-            <div class="stat">Disk Write<b>{human_rate(disk_write_bps)}</b></div>
-            <div class="stat">Drops / ERR<b>{int(drops or 0)} / {int(errors or 0)}</b></div>
-        </div>
-        <div class="table-hint">All VM values in this card come from the same selected push snapshot. It is separate from physical host CPU/RAM.</div>
-    </div>
-    """
-
 
 def get_node_host_period(node, period):
     """Return one exact host metric push for the selected lookback point."""
@@ -1071,7 +765,6 @@ def query_node_host_chart(node, period):
     gaps=[rows[i]["bucket"]-rows[i-1]["bucket"] for i in range(1,len(rows))]
     return rows,start,end,min((g for g in gaps if g>0),default=chart_step_seconds(period))
 
-
 def fmt_uptime(seconds):
     seconds = int(seconds or 0)
     if seconds <= 0:
@@ -1085,14 +778,12 @@ def fmt_uptime(seconds):
         return f"{hours}h {minutes}m"
     return f"{minutes}m"
 
-
 def percent_of(used, total):
     used = float(used or 0)
     total = float(total or 0)
     if total <= 0:
         return "-"
     return fmt_percent((used / total) * 100.0)
-
 
 def metric_level(value, warn, crit):
     try:
@@ -1105,12 +796,10 @@ def metric_level(value, warn, crit):
         return "warn"
     return "ok"
 
-
 def metric_pill(value_html, level="ok", title=""):
     level = level if level in ("ok", "warn", "crit") else "ok"
     title_attr = f' title="{escape(str(title), quote=True)}"' if title else ""
     return f'<span class="metric-pill metric-{level}"{title_attr}>{value_html}</span>'
-
 
 def ram_used_percent_value(mem_used, mem_total):
     mem_total = float(mem_total or 0)
@@ -1118,13 +807,11 @@ def ram_used_percent_value(mem_used, mem_total):
         return 0.0
     return max(0.0, min(100.0, float(mem_used or 0) * 100.0 / mem_total))
 
-
 def load_percent_value(load1, cpu_count):
     cpu_count = safe_int(cpu_count, 0)
     if cpu_count <= 0:
         return 0.0
     return max(0.0, float(load1 or 0) * 100.0 / float(cpu_count))
-
 
 def node_host_cards(row, period):
     if not row:
@@ -1186,75 +873,6 @@ def node_host_cards(row, period):
             <div class="stat">Swap<b>{metric_pill(f"{human(swap_used)} / {human(swap_total)}", swap_level, "warn >=50%, critical >=80%")}</b><small>Used {percent_of(swap_used, swap_total)}</small></div>
             <div class="stat">Disk Read<b>{human_rate(disk_read_bps)}</b></div>
             <div class="stat">Disk Write<b>{human_rate(disk_write_bps)}</b></div>
-        </div>
-    </div>
-    """
-
-
-def node_filesystem_table(rows):
-    body = ""
-    for (
-        mount, device, fstype, size, used, avail, use_percent, fs_last_seen,
-        read_bps, write_bps, read_iops, write_iops, util_percent, io_last_seen,
-    ) in rows:
-        pct = float(use_percent or 0)
-        cls = "warn" if pct >= 85 else ""
-        io_seen = int(io_last_seen or 0)
-        io_missing = io_seen <= 0
-        read_html = "-" if io_missing else human_rate(read_bps)
-        write_html = "-" if io_missing else human_rate(write_bps)
-        read_iops_html = "-" if io_missing else f"{float(read_iops or 0):,.1f}"
-        write_iops_html = "-" if io_missing else f"{float(write_iops or 0):,.1f}"
-        util_html = "-" if io_missing else f"{float(util_percent or 0):.1f}%"
-        last_seen = max(int(fs_last_seen or 0), io_seen)
-        body += f"""
-        <tr class="{cls}">
-            <td class="mono">{escape(mount or '-')}</td>
-            <td class="mono">{escape(device or '-')}</td>
-            <td>{escape(fstype or '-')}</td>
-            <td>{human(size)}</td>
-            <td><b>{human(used)}</b></td>
-            <td>{human(avail)}</td>
-            <td><b>{pct:.1f}%</b></td>
-            <td class="num">{read_html}</td>
-            <td class="num"><b>{write_html}</b></td>
-            <td class="num">{read_iops_html}</td>
-            <td class="num"><b>{write_iops_html}</b></td>
-            <td class="num"><b>{util_html}</b></td>
-            <td>{fmt_push(last_seen)}</td>
-        </tr>
-        """
-    if not body:
-        body = '<tr><td colspan="13" class="empty">No filesystem data yet</td></tr>'
-    return f"""
-    <div class="card">
-        <div class="table-title-row">
-            <div>
-                <h3>Node Filesystems</h3>
-                <div class="table-hint">Capacity follows the selected node snapshot. Read/Write, IOPS and Util are the latest physical block-device sample for each mount.</div>
-            </div>
-        </div>
-        <div class="table-wrap">
-        <table class="node-filesystem-io-table">
-            <thead>
-                <tr>
-                    <th>Mount</th>
-                    <th>Device</th>
-                    <th>FS</th>
-                    <th>Size</th>
-                    <th>Used</th>
-                    <th>Avail</th>
-                    <th>Use%</th>
-                    <th>Read</th>
-                    <th>Write</th>
-                    <th>R IOPS</th>
-                    <th>W IOPS</th>
-                    <th>Util</th>
-                    <th>Last</th>
-                </tr>
-            </thead>
-            <tbody>{body}</tbody>
-        </table>
         </div>
     </div>
     """
@@ -1363,7 +981,6 @@ def node_page(node):
     """
     return page(f"Node {node}", content)
 
-
 def get_vm_latest_metric(node, vm_uuid):
     conn = db()
     try:
@@ -1383,7 +1000,6 @@ def get_vm_latest_metric(node, vm_uuid):
         """, (node, vm_uuid)).fetchone()
     finally:
         conn.close()
-
 
 @app.route("/vm")
 def vm_page():
@@ -1539,8 +1155,6 @@ def api_vm():
         "points": rows,
     })
 
-
-
 def admin_node_rows(q=""):
     """Return admin node rows, including current public/private IPv4 addresses.
 
@@ -1614,8 +1228,6 @@ def admin_node_rows(q=""):
     finally:
         conn.close()
 
-
-
 def admin_vm_rows(q=""):
     """Return VM inventory with its parent node's current IPv4 addresses."""
     auto_cleanup_inventory()
@@ -1675,5 +1287,4 @@ def admin_vm_rows(q=""):
         """, params).fetchall()
     finally:
         conn.close()
-
 

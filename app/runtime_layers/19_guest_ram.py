@@ -1,4 +1,3 @@
-# v48.10.3 guest-aware VM RAM layer
 import re
 #
 # - Guest Used is estimated from libvirt balloon stats: available - usable.
@@ -7,16 +6,13 @@ import re
 # - Missing balloon stats are shown as N/A; RSS is never relabelled as guest use.
 # - Every VM table that displays RAM can sort Guest %, Guest GiB, Host RSS,
 #   and Assigned RAM independently without adding another wide table column.
-# ---------------------------------------------------------------------------
 V48103_VERSION = "48.10.3"
 V48103_RAM_SORT_KEYS = {"ram", "ramguest", "ramused", "ramrss", "ramassigned"}
-
 
 # Add the two balloon fields that the Agent already sends but the bounded current
 # cache did not retain in v48.10.2. The wrapper runs once per worker process.
 _db_v48103_base = db
 _v48103_schema_ready = False
-
 
 def db():
     global _v48103_schema_ready
@@ -35,11 +31,7 @@ def db():
         _v48103_schema_ready = True
     return conn
 
-
 _refresh_fast_current_state_v48103_base = refresh_fast_current_state
-
-
-
 
 def vm_guest_ram_metrics(current_kib=0, rss_kib=0, available_kib=0, unused_kib=0, usable_kib=0):
     """Return conservative guest/host/allocation RAM metrics.
@@ -74,7 +66,6 @@ def vm_guest_ram_metrics(current_kib=0, rss_kib=0, available_kib=0, unused_kib=0
         "usable_kib": usable,
     }
 
-
 def _v48103_ram_level(pct, has_guest=True):
     if not has_guest:
         return "na"
@@ -85,7 +76,6 @@ def _v48103_ram_level(pct, has_guest=True):
     if pct >= 70:
         return "warm"
     return "normal"
-
 
 def fmt_vm_ram_block(current_kib=0, rss_kib=0, available_kib=0, unused_kib=0, usable_kib=0, compact=False):
     """Render VM RAM without turning every list row into a telemetry wall.
@@ -144,7 +134,6 @@ def fmt_vm_ram_block(current_kib=0, rss_kib=0, available_kib=0, unused_kib=0, us
         f'<small class="ram-host-line">HOST RSS <b>{rss}</b> · ASSIGNED <b>{assigned}</b></small>{status}</div>'
     )
 
-
 def _v48103_ram_sort_value(current_kib, rss_kib, available_kib, unused_kib, usable_kib, key):
     m = vm_guest_ram_metrics(current_kib, rss_kib, available_kib, unused_kib, usable_kib)
     if key in {"ram", "ramguest"}:
@@ -156,7 +145,6 @@ def _v48103_ram_sort_value(current_kib, rss_kib, available_kib, unused_kib, usab
     if key == "ramassigned":
         return m["assigned_kib"] > 0, m["assigned_kib"]
     return True, 0.0
-
 
 def _v48103_sort_ram_rows(rows, sort_by, order, extractor, tie_extractor=None):
     valid, missing = [], []
@@ -170,7 +158,6 @@ def _v48103_sort_ram_rows(rows, sort_by, order, extractor, tie_extractor=None):
         tie_extractor = lambda _row: 0
     valid.sort(key=lambda item: (item[0], tie_extractor(item[1])), reverse=reverse)
     return [row for _value, row in valid] + [row for _value, row in missing]
-
 
 def _v48103_fetch_ram_map(keys, live=True, bucket=0):
     """Fetch only the VM keys already present in the rendered table, in chunks."""
@@ -212,7 +199,6 @@ def _v48103_fetch_ram_map(keys, live=True, bucket=0):
         conn.close()
     return result
 
-
 def _v48103_augment_rows_with_ram(rows, period, selected_bucket, key_indexes):
     live = _request_target_ts() is None and clean_period(period) == "5m"
     keys = [(row[key_indexes[0]], row[key_indexes[1]]) for row in rows]
@@ -233,7 +219,6 @@ def _v48103_augment_rows_with_ram(rows, period, selected_bucket, key_indexes):
         augmented.append(tuple(row) + (available, unused, usable))
     return augmented
 
-
 V48104_VERSION = "48.10.4"
 V48104_RAM_SORT_LABELS = {
     "ram": "Guest %",
@@ -242,7 +227,6 @@ V48104_RAM_SORT_LABELS = {
     "ramrss": "Host RSS",
     "ramassigned": "Assigned",
 }
-
 
 def _v48104_ram_sort_header(main_link, option_links, current_sort, current_order):
     """Compact RAM header: one primary label plus a collapsed sort menu."""
@@ -260,10 +244,8 @@ def _v48104_ram_sort_header(main_link, option_links, current_sort, current_order
         '</details></div>'
     )
 
-
 # ---- Top VM RAM sorting and display ---------------------------------------
 _get_top_vm_rows_v48103_base = get_top_vm_rows
-
 
 def clean_top_sort(sort_by):
     allowed = {
@@ -273,7 +255,6 @@ def clean_top_sort(sort_by):
         "diskr", "diskw", "last_push", "node", "vm",
     }
     return sort_by if sort_by in allowed else "total"
-
 
 def get_top_vm_rows(period, q="", sort_by="total", order="desc", scope="all", limit=100):
     requested_sort = clean_top_sort(sort_by)
@@ -295,16 +276,11 @@ def get_top_vm_rows(period, q="", sort_by="total", order="desc", scope="all", li
         )
     return rows[:requested_limit], selected_bucket, latest_bucket, requested_limit
 
-
 def _v48103_top_ram_link(label, key, period, q, current_sort, current_order, scope, limit):
     return _v48102_top_sort_link(label, key, period, q, current_sort, current_order, scope, limit)
 
-
-
-
 # ---- Per-node VM/interface table RAM sorting and display ------------------
 _query_node_bridge_v48103_base = query_node_bridge
-
 
 def clean_interface_sort(sort_by):
     allowed = {
@@ -313,7 +289,6 @@ def clean_interface_sort(sort_by):
         "ramrss", "ramassigned", "diskr", "diskw",
     }
     return sort_by if sort_by in allowed else "total"
-
 
 def query_node_bridge(node, period, bridge, q="", limit=1000, sort_by="total", order="desc", vm_status="active"):
     requested_sort = clean_interface_sort(sort_by)
@@ -346,9 +321,6 @@ def query_node_bridge(node, period, bridge, q="", limit=1000, sort_by="total", o
             tie_extractor=lambda r: safe_float(r[4], 0),
         )
     return rows[:requested_limit], selected_bucket, latest_bucket
-
-
-
 
 # ---- VM charts and VM detail RAM card ------------------------------------
 def query_vm_perf_chart(node, vm_uuid, period):
@@ -395,30 +367,7 @@ def query_vm_perf_chart(node, vm_uuid, period):
     gaps = [rows[i]["bucket"]-rows[i-1]["bucket"] for i in range(1,len(rows)) if rows[i]["bucket"]>rows[i-1]["bucket"]]
     return rows, start, end, (min(gaps) if gaps else chart_step_seconds(period))
 
-
-def _v48103_latest_ram(node, vm_uuid):
-    target = _request_target_ts()
-    conn = db()
-    try:
-        if target is None:
-            row = conn.execute("""
-                SELECT ram_current_kib,ram_rss_kib,ram_available_kib,ram_unused_kib,ram_usable_kib,last_seen
-                FROM vm_current_fast WHERE node=? AND vm_uuid=?
-            """, (node,vm_uuid)).fetchone()
-            if row:
-                return row
-        max_time = int(target) if target is not None else now_ts()
-        return conn.execute("""
-            SELECT ram_current_kib,ram_rss_kib,ram_available_kib,ram_unused_kib,ram_usable_kib,time
-            FROM vm_perf_stats WHERE node=? AND vm_uuid=? AND time<=?
-            ORDER BY time DESC LIMIT 1
-        """, (node,vm_uuid,max_time)).fetchone()
-    finally:
-        conn.close()
-
-
 _vm_page_v48103_base = app.view_functions.get("vm_page", vm_page)
-
 
 def vm_page_v48103():
     response = _vm_page_v48103_base()
@@ -442,9 +391,7 @@ def vm_page_v48103():
         response.set_data(html)
     return response
 
-
 app.view_functions["vm_page"] = vm_page_v48103
-
 
 # ---- Node aggregate VM RAM card and charts -------------------------------
 def query_node_perf_chart(node, period, q=""):
@@ -489,7 +436,6 @@ def query_node_perf_chart(node, period, q=""):
     gaps=[rows[i]["bucket"]-rows[i-1]["bucket"] for i in range(1,len(rows))]
     return rows,start,end,min((g for g in gaps if g>0),default=chart_step_seconds(period))
 
-
 def get_node_metric_overview(node, period, q="", vm_status="active"):
     status_sql = "AND COALESCE(vi.status, 'active') != 'hidden'"
     conn = db()
@@ -532,7 +478,6 @@ def get_node_metric_overview(node, period, q="", vm_status="active"):
     finally:
         conn.close()
 
-
 def node_metric_cards(row):
     if not row:
         row=(0,0,0,0,0,0,0,0,0,0,0,0,0,0)
@@ -545,7 +490,6 @@ def node_metric_cards(row):
       <div class="stat">VM GUEST USED<b>{guest_text}</b><small>Balloon coverage {int(guest_count or 0)}/{int(vm_count or 0)} VM</small></div><div class="stat">VM HOST RSS / ASSIGNED<b>{fmt_ram_pair(ram_rss,ram_current)}</b><small>Host-side RSS is not guest application usage</small></div>
       <div class="stat">Disk Read<b>{human_rate(disk_read)}</b></div><div class="stat">Disk Write<b>{human_rate(disk_write)}</b></div><div class="stat">Drops / ERR<b>{int(drops or 0)} / {int(errors or 0)}</b></div>
     </div><div class="table-hint">Guest Used sums only VMs with valid balloon available/usable data. RSS and Assigned remain separate capacity metrics.</div></div>"""
-
 
 # ---- Current Abuse table: RAM is informational and sortable only ----------
 def _v48103_current_abuse_query(q, sort_by, order, limit):
@@ -588,47 +532,13 @@ def _v48103_current_abuse_query(q, sort_by, order, limit):
     finally:
         conn.close()
 
-
-def _v48103_current_abuse_page(q,sort_by,order,limit):
-    rows,total,counts,sort_by,order,cfg=_v48103_current_abuse_query(q,sort_by,order,limit)
-    def h(label,key):
-        next_order=reverse_order(order) if sort_by==key else "desc"; arrow=" ↓" if sort_by==key and order=="desc" else (" ↑" if sort_by==key else "")
-        href=url_for("vm_abuse_page",tab="current",q=q or None,sort=key,order=next_order,limit=limit)
-        return f'<a class="sort-link" href="{escape(href,quote=True)}">{escape(label)}{arrow}</a>'
-    body=""
-    for rank,r in enumerate(rows,1):
-        labels=_abuse_flag_labels(r[4],cfg); reasons="".join(metric_pill(escape(x),"crit") for x in labels); href=url_for("vm_page",node=r[0],vm_uuid=r[1],period="1h"); ip=compact_ipv4(r[21])
-        network=_v4810_metric_pair("RX AVG",f"{safe_float(r[22],0):.2f} Mbps","TX AVG",f"{safe_float(r[23],0):.2f} Mbps",_v48102_minutes_progress(r[28],cfg["network_mbps_required_cycles"]),_v48102_minutes_progress(r[29],cfg["network_mbps_required_cycles"]))
-        pps_sync="synced" if safe_int(r[30],0) else "waiting"; peak=_v4810_metric_pair("RX PEAK",f"{fmt_pps_value(r[8])} PPS","TX PEAK",f"{fmt_pps_value(r[9])} PPS",f"{safe_int(r[10],0)}s high · {pps_sync}",f"{safe_int(r[11],0)}s high · {pps_sync}")
-        cpu=f'<div class="metric-stack abuse-cpu-stack"><b>{safe_float(r[12],0):.1f}%</b><span>{safe_int(r[14],0)} vCPU</span><small>{_v48102_minutes_progress(r[26],cfg["cpu_required_cycles"])} sustained</small></div>'
-        ram=fmt_vm_ram_block(r[33],r[34],r[35],r[36],r[37],compact=True)
-        disk_iops=safe_float(r[18],0)+safe_float(r[19],0); disk=_v4810_metric_pair("READ",human_rate(r[16]),"WRITE",human_rate(r[17]),f"{disk_iops:,.1f} IOPS",_v48102_minutes_progress(r[27],cfg["disk_required_cycles"]))
-        timeline=f'<div class="timeline-cell"><b>{fmt_full(r[3]) if r[3] else "-"}</b><small>Started</small><span>{fmt_push(r[2])}</span><small>Last push · policy v{safe_int(r[32],0)}</small></div>'
-        body+=f"""<tr><td class="rank-cell">{rank}</td><td class="identity-cell"><div class="node-line"><a href="{escape(href,quote=True)}"><b>{escape(r[0])}</b></a>{f'<span>{escape(ip)}</span>' if ip else ''}</div><div class="uuid-line"><a class="mono" href="{escape(href,quote=True)}">{escape(r[1])}</a><button type="button" class="copy-btn" data-copy="{escape(r[1],quote=True)}">⧉</button></div></td><td class="reason-cell"><div class="severity-line"><b>{safe_float(r[5],0):.2f}x</b><span>severity</span></div><div class="abuse-reasons">{reasons}</div></td><td>{network}</td><td>{peak}</td><td>{cpu}</td><td class="ram-cell">{ram}</td><td>{disk}</td><td>{timeline}</td></tr>"""
-    if not body: body='<tr><td colspan="9" class="empty">No VM currently satisfies the active policy revision</td></tr>'
-    current_href=url_for("vm_abuse_page",tab="current",q=q or None,sort=sort_by,order=order,limit=limit); history_href=url_for("vm_abuse_page",tab="history",q=q or None,limit=limit)
-    search=f"""<form class="search compact-search" method="get" action="{url_for('vm_abuse_page')}"><input type="hidden" name="tab" value="current"><input type="hidden" name="sort" value="{escape(sort_by,quote=True)}"><input type="hidden" name="order" value="{escape(order,quote=True)}"><input name="q" value="{escape(q,quote=True)}" placeholder="Search node, IPv4 or VM UUID"><select name="limit"><option value="100" {'selected' if limit==100 else ''}>100 rows</option><option value="200" {'selected' if limit==200 else ''}>200 rows</option><option value="500" {'selected' if limit==500 else ''}>500 rows</option><option value="1000" {'selected' if limit==1000 else ''}>1000 rows</option></select><button type="submit">Search</button>{f'<a class="clear" href="{url_for("vm_abuse_page",tab="current",limit=limit)}">Reset</a>' if q else ''}</form>"""
-    tabs=f'<div class="abuse-tabs"><a class="active" href="{escape(current_href,quote=True)}">Current Abuse</a><a href="{escape(history_href,quote=True)}">History / Logs</a></div>'
-    disk_header=f'<div>DISK</div><small>{h("READ","diskr")}<span> · </span>{h("WRITE","diskw")}</small>'
-    ram_header = _v48104_ram_sort_header(
-        h("RAM", "ram"),
-        [h("Guest %", "ram"), h("Used GiB", "ramused"), h("Host RSS", "ramrss"), h("Assigned", "ramassigned")],
-        sort_by,
-        order,
-    )
-    table=f"""<div class="card abuse-current-card abuse-v48102-card abuse-v48103-card"><div class="section-head"><div><h3>Current VM Abuse</h3><p>Policy v{cfg['revision']} · exact five-minute windows · RAM is visibility only.</p></div><div class="count-badges"><span>All <b>{total}</b></span><span>PPS <b>{counts[0]}</b></span><span>AVG Mbps <b>{counts[1]}</b></span><span>CPU <b>{counts[2]}</b></span><span>Disk <b>{counts[3]}</b></span></div></div><div class="table-wrap"><table class="abuse-v490-table abuse-v48102-table abuse-v48103-table"><colgroup><col class="c-rank"><col class="c-id"><col class="c-reason"><col class="c-network"><col class="c-peak"><col class="c-cpu"><col class="c-ram"><col class="c-disk"><col class="c-time"></colgroup><thead><tr><th>#</th><th>{h('NODE / VM','node')}</th><th>{h('REASON / SEVERITY','severity')}</th><th><div>NETWORK AVG</div><small>{h('RX Mbps','rx_mbps')} · {h('TX Mbps','tx_mbps')}</small></th><th><div>PPS PEAK / WINDOW</div><small>{h('RX PPS','rx_peak')} · {h('TX PPS','tx_peak')}</small></th><th>{h('CPU','cpu')}</th><th class="ram-compact-sort-head">{ram_header}</th><th>{disk_header}</th><th>{h('TIMELINE','last_seen')}</th></tr></thead><tbody>{body}</tbody></table></div><div class="table-hint">RAM is <b>visibility only</b>: it never creates an abuse flag or automatic suspend condition. Guest Used and host RSS remain separate.</div></div>"""
-    return f"""<div class="card page-hero" data-engine="{escape(ABUSE_ENGINE_VERSION,quote=True)}"><div><span class="eyebrow">ABUSE MONITORING</span><h2>VM Abuse</h2><p>Directional network, CPU and disk signals from the current bounded state table.</p></div><div class="hero-meta"><span>Policy <b>v{cfg['revision']}</b></span><span>Refresh <b>5s partial</b></span><span>RAM <b>visibility only</b></span></div></div><div class="card abuse-toolbar">{tabs}{search}</div><details class="card policy-fold"><summary>Current policy</summary>{_public_abuse_policy(cfg)}</details>{table}"""
-
-
 def vm_abuse_page_v48103():
     tab=(request.args.get("tab") or "current").strip().lower()
     if tab=="history": return vm_abuse_page_v483()
     q=(request.args.get("q") or "").strip(); sort_by=(request.args.get("sort") or "severity").strip().lower(); order=clean_sort_order(request.args.get("order","desc")); limit=max(10,min(1000,safe_int(request.args.get("limit"),200)))
     return page("VM Abuse",_v48103_current_abuse_page(q,sort_by,order,limit))
 
-
 app.view_functions["vm_abuse_page"] = vm_abuse_page_v48103
-
 
 V48103_UI_CSS = r"""
 <style id="v48103-guest-ram-ui">
@@ -637,7 +547,6 @@ html[data-theme=dark] .ram-guest-value{color:#f8fafc}html[data-theme=dark] .ram-
 </style>
 """
 _page_v48103_base = page
-
 
 def page(title, content):
     response = _page_v48103_base(title, content)
@@ -649,5 +558,3 @@ def page(title, content):
         app.logger.exception("Could not apply v48.10.3 guest RAM UI layer")
     return response
 
-
-# ---------------------------------------------------------------------------

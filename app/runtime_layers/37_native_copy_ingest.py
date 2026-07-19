@@ -1,10 +1,7 @@
-# v50.5.2 native PostgreSQL COPY ingest
-# ---------------------------------------------------------------------------
 V5052_VERSION = "50.5.2"
 V5052_IFACE_STAGE = "pg_temp.vi5052_iface_stage"
 V5052_VM_STAGE = "pg_temp.vi5052_vm_stage"
 V5052_SYNC_STAGE = "pg_temp.vi5052_sync_stage"
-
 
 def _v5052_create_iface_stage(conn):
     conn.execute("""
@@ -52,7 +49,6 @@ def _v5052_create_iface_stage(conn):
       ) ON COMMIT DELETE ROWS
     """)
 
-
 def _v5052_create_vm_stage(conn):
     conn.execute("""
       CREATE TEMP TABLE IF NOT EXISTS vi5052_vm_stage (
@@ -88,7 +84,6 @@ def _v5052_create_vm_stage(conn):
         last_push BIGINT NOT NULL
       ) ON COMMIT DELETE ROWS
     """)
-
 
 def _v5052_iface_rows(node, data_time, bucket, interval_seconds, interfaces):
     columns = (
@@ -172,7 +167,6 @@ def _v5052_iface_rows(node, data_time, bucket, interval_seconds, interfaces):
             "warn" if flags else "ok", ",".join(flags),
         ))
     return columns, rows
-
 
 def _v5052_write_interface_copy_batch(conn, node, data_time, bucket, interval_seconds, interfaces):
     _v5052_create_iface_stage(conn)
@@ -340,7 +334,6 @@ def _v5052_write_interface_copy_batch(conn, node, data_time, bucket, interval_se
         "merge_ms": (time.perf_counter() - merge_started) * 1000.0,
     }
 
-
 def _v5052_vm_rows(node, data_time, bucket, interval_seconds, vms):
     columns = (
         "ord", "time", "bucket", "node", "vm_uuid", "interval_seconds", "current_interval_seconds",
@@ -391,7 +384,6 @@ def _v5052_vm_rows(node, data_time, bucket, interval_seconds, vms):
         ))
     return columns, rows
 
-
 def _v5052_write_vm_copy_batch(conn, node, data_time, bucket, interval_seconds, vms):
     _v5052_create_vm_stage(conn)
     columns, rows = _v5052_vm_rows(node, data_time, bucket, interval_seconds, vms)
@@ -418,7 +410,6 @@ def _v5052_write_vm_copy_batch(conn, node, data_time, bucket, interval_seconds, 
         "copy_ms": copy_ms,
         "merge_ms": (time.perf_counter() - merge_started) * 1000.0,
     }
-
 
 def _v5052_merge_latest_metrics(conn, node, data_time):
     """Merge network and VM performance exactly once per VM.
@@ -537,7 +528,6 @@ def _v5052_merge_latest_metrics(conn, node, data_time):
       )
     """, (data_time, node, node))
 
-
 def _v5052_copy_upsert_rows(conn, table, key_columns, rows):
     rows = [dict(row) for row in (rows or []) if row]
     if not rows:
@@ -570,7 +560,6 @@ def _v5052_copy_upsert_rows(conn, table, key_columns, rows):
         f"SELECT {column_sql} FROM pg_temp.{stage} {conflict_sql}"
     )
     return max(0, safe_int(cur.rowcount, 0))
-
 
 def _v5052_current_writer(conn, node, data_time, interval_seconds, interfaces, vms, node_host, inventory_complete=False):
     """Build bounded current tables from the two already-COPYed request stages."""
@@ -819,7 +808,6 @@ def _v5052_current_writer(conn, node, data_time, interval_seconds, interfaces, v
         conn.execute("DELETE FROM vm_current_fast WHERE node=? AND last_seen<?", (node, data_time))
         conn.execute("DELETE FROM vm_abuse_state WHERE node=? AND last_seen<?", (node, data_time))
 
-
 def _v5052_ingest_disk_io_current(conn, node, data_time, interval_seconds, vms, node_host):
     ensure_disk_io_schema(conn)
     disk_rows = []
@@ -896,9 +884,7 @@ def _v5052_ingest_disk_io_current(conn, node, data_time, interval_seconds, vms, 
         app.logger.exception("Could not retain Storage I/O snapshot for %s", node)
     _v48140_refresh_node_summaries(conn, node)
 
-
 V5052_PRESENCE_STAGE = "pg_temp.vi5052_presence_stage"
-
 
 def _v5052_process_node_vm_presence(conn, node, seen_vm_locations, seen_ts, inventory_complete=False):
     """Apply VM presence/inventory/location updates from one native COPY stage."""
@@ -1025,7 +1011,6 @@ def _v5052_process_node_vm_presence(conn, node, seen_vm_locations, seen_ts, inve
         "merge_ms": (time.perf_counter() - merge_started) * 1000.0,
     }
 
-
 # Late binding is intentional: all existing callers now use native COPY while
 # the public API, Agent payload, schemas, dashboard and abuse semantics stay intact.
 process_node_vm_presence = _v5052_process_node_vm_presence
@@ -1033,4 +1018,3 @@ _v5050_bulk_upsert_rows = _v5052_copy_upsert_rows
 _v4810_current_writer = _v5052_current_writer
 ingest_disk_io_current = _v5052_ingest_disk_io_current
 
-# ---------------------------------------------------------------------------

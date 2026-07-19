@@ -1,49 +1,8 @@
-# v48.13.3 storage integration and exact UUID purge
-# ---------------------------------------------------------------------------
 
 V48133_VERSION = "48.13.3"
 V48133_DISK_SORT_KEYS = {"diskallocated", "diskassigned", "diskallocpct", "diskcount"}
 
-
-def _v48133_disk_totals_for_pairs(pairs):
-    clean = []
-    seen = set()
-    for node, vm_uuid in pairs or []:
-        key = (str(node or ""), str(vm_uuid or ""))
-        if key[0] and key[1] and key not in seen:
-            seen.add(key)
-            clean.append(key)
-    if not clean:
-        return {}
-    conn = db()
-    try:
-        ensure_disk_io_schema(conn)
-        keys = [node + "\x1f" + vm_uuid for node, vm_uuid in clean]
-        placeholders = ",".join("?" for _ in keys)
-        rows = conn.execute(f"""
-            SELECT node,vm_uuid,
-                   COALESCE(SUM(allocation_bytes),0),
-                   COALESCE(SUM(capacity_bytes),0),
-                   COUNT(*)
-            FROM vm_disk_current
-            WHERE role='customer'
-              AND (node || char(31) || vm_uuid) IN ({placeholders})
-            GROUP BY node,vm_uuid
-        """, keys).fetchall()
-        return {
-            (str(r[0]), str(r[1])): (
-                max(0, safe_int(r[2], 0)),
-                max(0, safe_int(r[3], 0)),
-                max(0, safe_int(r[4], 0)),
-            )
-            for r in rows
-        }
-    finally:
-        conn.close()
-
-
 _get_top_vm_rows_v48133_base = get_top_vm_rows
-
 
 def get_top_vm_rows(period, q="", sort_by="total", order="desc", scope="all", limit=100):
     requested_sort = str(sort_by or "total").strip().lower()
@@ -82,7 +41,6 @@ def get_top_vm_rows(period, q="", sort_by="total", order="desc", scope="all", li
         augmented.sort(key=sort_key)
     return augmented[:requested_limit], selected_bucket, latest_bucket, requested_limit
 
-
 def _v48133_disk_sort_link(label, key, period, q, current_sort, current_order, scope, limit):
     active = current_sort == key
     next_order = "asc" if active and clean_sort_order(current_order) == "desc" else "desc"
@@ -99,7 +57,6 @@ def _v48133_disk_sort_link(label, key, period, q, current_sort, current_order, s
     if at:
         params["at"] = at
     return f'<a class="sort-link disk-cap-sort-link" href="{escape(url_for("top_page", **params), quote=True)}">{escape(label)}{arrow}</a>'
-
 
 def _v48133_top_disk_capacity(allocated, assigned, count):
     allocated = max(0, safe_int(allocated, 0))
@@ -122,7 +79,6 @@ def _v48133_top_disk_capacity(allocated, assigned, count):
         f'<small>{pct:.1f}% · {count} slot{"s" if count != 1 else ""}</small>'
         f'</div>'
     )
-
 
 V48133_TOP_CSS = r'''
 <style id="v48134-top-disk-capacity">
@@ -154,7 +110,6 @@ body.app-v490.endpoint-top-page .table-top-vm .uuid-cell>a{display:block;white-s
 html[data-theme=dark] .top-disk-capacity>b span,html[data-theme=dark] .top-disk-capacity small{color:#9fb0c4}
 </style>
 '''
-
 
 def top_vm_table(rows, period, q, sort_by, order, scope, limit):
     body = ""
@@ -224,7 +179,6 @@ def top_vm_table(rows, period, q, sort_by, order, scope, limit):
       <div class="table-hint">RAM shows <b>Guest Used / Assigned</b>. Disk capacity shows total <b>Host Allocated / Assigned</b> across customer disks. Click the UUID to open per-disk capacity and I/O details.</div>
     </div>"""
 
-
 def _v48133_vm_disks(node, vm_uuid):
     """Return per-disk capacity and I/O for the selected VM snapshot."""
     period = clean_period(request.args.get("period", "5m"))
@@ -278,8 +232,6 @@ def _v48133_vm_disks(node, vm_uuid):
     finally:
         conn.close()
 
-
-
 def _v48133_disk_level(pct):
     if pct >= 90:
         return "critical"
@@ -288,7 +240,6 @@ def _v48133_disk_level(pct):
     if pct >= 50:
         return "warm"
     return "ok"
-
 
 def _v48133_vm_disk_overview_cards(rows):
     """One compact Overview card per customer disk, matching CPU/RAM language."""
@@ -311,55 +262,6 @@ def _v48133_vm_disk_overview_cards(rows):
         )
     return "".join(cards)
 
-
-def _v48133_vm_disk_io_card(rows):
-    """Render one clean panel per customer disk with no repeated total strip."""
-    if not rows:
-        return ""
-    panels = []
-    latest = 0
-    for target,source,mount,device,block,fstype,assigned,allocated,physical,rb,wb,ri,wi,seen in rows:
-        assigned = max(0, safe_int(assigned, 0))
-        allocated = max(0, safe_int(allocated, 0))
-        physical = max(0, safe_int(physical, 0))
-        pct = allocated * 100.0 / assigned if assigned > 0 else 0.0
-        level = _v48133_disk_level(pct)
-        latest = max(latest, safe_int(seen, 0))
-        dev = device or (("/dev/" + block) if block else "-")
-        panels.append(f'''
-        <article class="vm-disk-panel disk-level-{level}">
-          <div class="vm-disk-panel-head">
-            <div><span>VIRTUAL DISK</span><h4>{escape(target or "-")}</h4></div>
-            <div class="vm-disk-storage-badge"><b>{escape(mount or "-")}</b><small>{escape(dev)}</small></div>
-          </div>
-          <div class="vm-disk-panel-capacity">
-            <div><span>ALLOCATED / ASSIGNED</span><b>{_disk_io_bytes(allocated)} / {_disk_io_bytes(assigned)}</b><small>{pct:.1f}% allocated</small></div>
-            <span class="vm-disk-overview-meter"><i style="width:{min(100.0,max(0.0,pct)):.1f}%"></i></span>
-          </div>
-          <div class="vm-disk-panel-metrics">
-            <div><span>READ</span><b>{_disk_io_rate(rb)}</b></div>
-            <div><span>WRITE</span><b>{_disk_io_rate(wb)}</b></div>
-            <div><span>READ IOPS</span><b>{_disk_io_iops(ri)}</b></div>
-            <div><span>WRITE IOPS</span><b>{_disk_io_iops(wi)}</b></div>
-          </div>
-          <div class="vm-disk-panel-meta">
-            <div><span>SOURCE</span><code title="{escape(source or '-', quote=True)}">{escape(source or '-')}</code></div>
-            <div><span>FILESYSTEM</span><b>{escape(fstype or '-')}</b></div>
-            <div><span>PHYSICAL</span><b>{_disk_io_bytes(physical)}</b></div>
-            <div><span>LAST SAMPLE</span><b>{fmt_push(seen)}</b></div>
-          </div>
-        </article>''')
-    return f'''
-    <div class="card vm-disk-detail-card vm-disk-panels-only" id="virtual-disk-io">
-      <div class="table-title-row">
-        <div><h3>Virtual Disk I/O</h3><div class="table-hint">Each customer disk is shown separately with capacity, Read/Write and IOPS from the selected retained Agent snapshot.</div></div>
-        <div class="count-badges"><span>Disks <b>{len(rows)}</b></span><span>Seen <b>{fmt_push(latest)}</b></span></div>
-      </div>
-      <div class="vm-disk-detail-grid">{''.join(panels)}</div>
-    </div>
-    '''
-
-
 V48133_VM_CSS = r'''
 <style id="v48134-vm-disk-detail">
 .vm-overview-disk-stat{min-width:225px}.vm-disk-stat-label{font-size:10px;font-weight:950;color:#667085;letter-spacing:.055em}.vm-overview-disk-stat>b{display:block;margin-top:5px!important;font-size:15px!important;white-space:nowrap}.vm-overview-disk-stat>small{display:block;margin-top:4px!important}.vm-disk-overview-meter{display:block;height:6px;margin-top:8px;border-radius:999px;background:#e4e7ec;overflow:hidden}.vm-disk-overview-meter i{display:block;height:100%;border-radius:inherit;background:#12b76a}.disk-level-warm .vm-disk-overview-meter i{background:#fdb022}.disk-level-hot .vm-disk-overview-meter i{background:#f79009}.disk-level-critical .vm-disk-overview-meter i{background:#f04438}.vm-disk-storage-line{color:#667085!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.vm-disk-live-line{color:#475467!important;font-size:9px!important;line-height:1.35!important}
@@ -369,9 +271,7 @@ html[data-theme=dark] .vm-disk-stat-label,html[data-theme=dark] .vm-disk-storage
 </style>
 '''
 
-
 _vm_page_v48133_base = app.view_functions.get("vm_page")
-
 
 def vm_page_v48133():
     response = _vm_page_v48133_base()
@@ -403,13 +303,10 @@ def vm_page_v48133():
         app.logger.exception("Could not apply v48.13.4 VM disk details")
     return response
 
-
 if _vm_page_v48133_base is not None:
     app.view_functions["vm_page"] = vm_page_v48133
 
-
 _get_node_filesystems_snapshot_v48133_base = get_node_filesystems_snapshot
-
 
 def get_node_filesystems_snapshot(node, period):
     """Return capacity and I/O from the same selected retained Agent push."""
@@ -479,11 +376,8 @@ def get_node_filesystems_snapshot(node, period):
     finally:
         conn.close()
 
-
-
 def _v48133_public_ip_sql(alias="d"):
     return f"COALESCE((SELECT primary_ipv4 FROM node_bridge_addresses_latest b WHERE b.node={alias}.node AND LOWER(b.role)='public' ORDER BY b.last_seen DESC LIMIT 1),'')"
-
 
 def _v48133_storage_filter_options(conn, values):
     nodes = [r[0] for r in conn.execute("""
@@ -513,227 +407,6 @@ def _v48133_storage_filter_options(conn, values):
         mount_options.append(f'<option value="{escape(item,quote=True)}"{selected}>{escape(item)}</option>')
     return "".join(node_options), "".join(mount_options)
 
-
-def _v48133_storage_disk_groups(conn, values, start_ts):
-    sort_map = {
-        "node": "g.node", "uuid": "g.vm_uuid", "diskcount": "g.disk_count",
-        "assigned": "g.assigned", "allocated": "g.allocated",
-        "allocpct": "CASE WHEN g.assigned>0 THEN g.allocated*1.0/g.assigned ELSE 0 END",
-        "read": "g.read_bps", "write": "g.write_bps", "readiops": "g.read_iops",
-        "writeiops": "g.write_iops", "seen": "g.last_seen",
-    }
-    if values["sort"] not in sort_map:
-        values["sort"] = "writeiops"
-    where = ["d.role='customer'", "d.last_seen>=?", "COALESCE(vi.status,'active')!='hidden'"]
-    params = [start_ts]
-    if values.get("node"):
-        where.append("d.node=?")
-        params.append(values["node"])
-    if values.get("mount"):
-        where.append("d.mount=?")
-        params.append(values["mount"])
-    if values.get("q"):
-        p = like_pattern(values["q"])
-        where.append(f"(d.node LIKE ? OR d.vm_uuid LIKE ? OR d.target LIKE ? OR d.source LIKE ? OR d.mount LIKE ? OR d.storage_device LIKE ? OR d.storage_block LIKE ? OR {_v48133_public_ip_sql('d')} LIKE ?)")
-        params.extend([p] * 8)
-    where_sql = " AND ".join(where)
-    cte = f"""
-      WITH g AS (
-        SELECT d.node,d.vm_uuid,
-               {_v48133_public_ip_sql('d')} AS public_ipv4,
-               COUNT(*) AS disk_count,
-               COALESCE(SUM(d.capacity_bytes),0) AS assigned,
-               COALESCE(SUM(d.allocation_bytes),0) AS allocated,
-               COALESCE(SUM(d.read_bps),0) AS read_bps,
-               COALESCE(SUM(d.write_bps),0) AS write_bps,
-               COALESCE(SUM(d.read_iops),0) AS read_iops,
-               COALESCE(SUM(d.write_iops),0) AS write_iops,
-               MAX(d.last_seen) AS last_seen
-        FROM vm_disk_current d
-        LEFT JOIN vm_inventory vi ON vi.node=d.node AND vi.vm_uuid=d.vm_uuid
-        WHERE {where_sql}
-        GROUP BY d.node,d.vm_uuid
-      )
-    """
-    total = safe_int(conn.execute(cte + "SELECT COUNT(*) FROM g", params).fetchone()[0],0)
-    pages = max(1, int(math.ceil(total / float(values["limit"]))))
-    values["page"] = min(values["page"], pages)
-    offset = (values["page"] - 1) * values["limit"]
-    direction = "ASC" if values["order"] == "asc" else "DESC"
-    groups = conn.execute(cte + f"""
-      SELECT g.node,g.vm_uuid,g.public_ipv4,g.disk_count,g.assigned,g.allocated,
-             g.read_bps,g.write_bps,g.read_iops,g.write_iops,g.last_seen
-      FROM g
-      ORDER BY {sort_map[values['sort']]} {direction},g.node,g.vm_uuid
-      LIMIT ? OFFSET ?
-    """, params + [values["limit"],offset]).fetchall()
-    details = {}
-    keys = [str(r[0]) + "\x1f" + str(r[1]) for r in groups]
-    if keys:
-        ph = ",".join("?" for _ in keys)
-        drows = conn.execute(f"""
-          SELECT node,vm_uuid,target,source,mount,storage_device,storage_block,storage_fstype,
-                 capacity_bytes,allocation_bytes,read_bps,write_bps,read_iops,write_iops,last_seen
-          FROM vm_disk_current
-          WHERE role='customer' AND (node || char(31) || vm_uuid) IN ({ph})
-          ORDER BY node,vm_uuid,CASE target WHEN 'vda' THEN 0 WHEN 'vdb' THEN 1 ELSE 2 END,target,source
-        """, keys).fetchall()
-        for r in drows:
-            details.setdefault((str(r[0]),str(r[1])),[]).append(r[2:])
-    return groups, details, total
-
-
-def _v48133_storage_disk_table(conn, values, start_ts):
-    """Render one real customer disk per row, never hide vda/vdb inside totals."""
-    sort_map = {
-        "node": "d.node", "uuid": "d.vm_uuid", "disk": "d.target", "mount": "d.mount",
-        "diskcount": "vm_disk_count", "assigned": "d.capacity_bytes", "allocated": "d.allocation_bytes",
-        "allocpct": "CASE WHEN d.capacity_bytes>0 THEN d.allocation_bytes*1.0/d.capacity_bytes ELSE 0 END",
-        "read": "d.read_bps", "write": "d.write_bps", "readiops": "d.read_iops",
-        "writeiops": "d.write_iops", "seen": "d.last_seen",
-    }
-    if values["sort"] not in sort_map:
-        values["sort"] = "writeiops"
-    where = ["d.role='customer'", "d.last_seen>=?", "COALESCE(vi.status,'active')!='hidden'"]
-    params = [start_ts]
-    if values.get("node"):
-        where.append("d.node=?")
-        params.append(values["node"])
-    if values.get("mount"):
-        where.append("d.mount=?")
-        params.append(values["mount"])
-    if values.get("q"):
-        p = like_pattern(values["q"])
-        where.append(f"(d.node LIKE ? OR d.vm_uuid LIKE ? OR d.target LIKE ? OR d.source LIKE ? OR d.mount LIKE ? OR d.storage_device LIKE ? OR d.storage_block LIKE ? OR {_v48133_public_ip_sql('d')} LIKE ?)")
-        params.extend([p] * 8)
-    where_sql = " AND ".join(where)
-    total = safe_int(conn.execute(f"""
-        SELECT COUNT(*)
-        FROM vm_disk_current d
-        LEFT JOIN vm_inventory vi ON vi.node=d.node AND vi.vm_uuid=d.vm_uuid
-        WHERE {where_sql}
-    """, params).fetchone()[0], 0)
-    pages = max(1, int(math.ceil(total / float(values["limit"]))))
-    values["page"] = min(values["page"], pages)
-    offset = (values["page"] - 1) * values["limit"]
-    direction = "ASC" if values["order"] == "asc" else "DESC"
-    rows = conn.execute(f"""
-        SELECT d.node,d.vm_uuid,{_v48133_public_ip_sql('d')} AS public_ipv4,
-               d.target,d.source,d.mount,d.storage_device,d.storage_block,d.storage_fstype,
-               d.capacity_bytes,d.allocation_bytes,d.physical_bytes,
-               d.read_bps,d.write_bps,d.read_iops,d.write_iops,d.last_seen,
-               (SELECT COUNT(*) FROM vm_disk_current x
-                WHERE x.node=d.node AND x.vm_uuid=d.vm_uuid AND x.role='customer') AS vm_disk_count
-        FROM vm_disk_current d
-        LEFT JOIN vm_inventory vi ON vi.node=d.node AND vi.vm_uuid=d.vm_uuid
-        WHERE {where_sql}
-        ORDER BY {sort_map[values['sort']]} {direction}, d.node COLLATE NOCASE, d.vm_uuid,
-                 CASE d.target WHEN 'vda' THEN 0 WHEN 'vdb' THEN 1 ELSE 2 END,
-                 d.target COLLATE NOCASE,d.source COLLATE NOCASE
-        LIMIT ? OFFSET ?
-    """, params + [values["limit"], offset]).fetchall()
-
-    body = []
-    previous_vm = None
-    for row in rows:
-        node,vm_uuid,public_ip,target,source,mount,device,block,fstype,assigned,allocated,physical,rb,wb,ri,wi,seen,vm_disk_count = row
-        vm_href = url_for("vm_page", node=node, vm_uuid=vm_uuid, period=values["period"])
-        node_href = url_for("node_page", node=node, period=values["period"], q=vm_uuid)
-        ip = compact_ipv4(public_ip)
-        dev = device or (("/dev/" + block) if block else "-")
-        group_key = (str(node), str(vm_uuid))
-        row_class = "storage-vm-start" if group_key != previous_vm else "storage-vm-cont"
-        previous_vm = group_key
-        ip_line = f'<span class="storage-node-ip">{escape(ip)}<button type="button" class="copy-btn" data-copy="{escape(ip)}" title="Copy IP">⧉</button></span>' if ip else ''
-        uuid_html = (
-            f'<span class="uuid-cell"><a href="{escape(vm_href,quote=True)}" title="{escape(vm_uuid,quote=True)}">{escape(vm_uuid)}</a>'
-            f'<button type="button" class="copy-btn" data-copy="{escape(vm_uuid)}" title="Copy UUID">⧉</button></span>'
-            f'<small>{safe_int(vm_disk_count,0)} customer disk{"s" if safe_int(vm_disk_count,0) != 1 else ""}</small>'
-        )
-        body.append(
-            f'<tr class="{row_class}">'
-            f'<td class="storage-node-cell"><a href="{escape(node_href,quote=True)}"><b>{escape(node)}</b></a>{ip_line}</td>'
-            f'<td class="storage-uuid-cell">{uuid_html}</td>'
-            f'<td class="storage-one-disk"><div class="storage-disk-title"><b>{escape(target or "-")}</b><span>{escape(mount or "-")} · {escape(dev)}</span></div><code title="{escape(source or "-",quote=True)}">{escape(source or "-")}</code><small>{escape(fstype or "-")} · Physical {_disk_io_bytes(physical)}</small></td>'
-            f'<td>{_disk_io_capacity(allocated,assigned)}</td>'
-            f'<td class="num">{_disk_io_rate(rb)}</td><td class="num"><b>{_disk_io_rate(wb)}</b></td>'
-            f'<td class="num">{_disk_io_iops(ri)}</td><td class="num"><b>{_disk_io_iops(wi)}</b></td><td class="num"><small>{fmt_push(seen)}</small></td>'
-            '</tr>'
-        )
-    if not body:
-        body = ['<tr><td colspan="9" class="empty">No customer disk sample in this lookback</td></tr>']
-    h = lambda label,key: _storage_sort_header(values,label,key)
-    return (
-        '<div class="card storage-table-card">'
-        '<div class="table-title-row"><div><h3>VM Disks</h3><div class="table-hint">One row per customer disk. UUID and node stay visible on every row, so vda/vdb are separate and sortable.</div></div></div>'
-        '<div class="table-wrap"><table class="storage-disk-detail-table"><thead><tr>'
-        f'<th>{h("NODE","node")}</th><th>{h("VM UUID","uuid")}</th><th><div>DISK / STORAGE</div><small>{h("DISK","disk")} · {h("STORAGE","mount")} · {h("COUNT","diskcount")}</small></th>'
-        f'<th><div>ALLOCATED / ASSIGNED</div><small>{h("ALLOC","allocated")} · {h("ASSIGNED","assigned")} · {h("%","allocpct")}</small></th>'
-        f'<th>{h("READ","read")}</th><th>{h("WRITE","write")}</th><th>{h("R IOPS","readiops")}</th><th>{h("W IOPS","writeiops")}</th><th>{h("SEEN","seen")}</th>'
-        '</tr></thead><tbody>' + ''.join(body) + '</tbody></table></div>' + _storage_pager(values,total) + '</div>'
-    )
-
-
-def _v48133_storage_node_table(conn, values, start_ts):
-    sort_map={
-        "node":"s.node","mount":"s.mount","size":"s.size","used":"s.used","usepct":"s.use_percent",
-        "read":"s.read_bps","write":"s.write_bps","readiops":"s.read_iops","writeiops":"s.write_iops","util":"s.util_percent","seen":"s.last_seen",
-    }
-    if values["sort"] not in sort_map:
-        values["sort"]="writeiops"
-    where=["s.last_seen>=?"]
-    params=[start_ts]
-    if values.get("node"):
-        where.append("s.node=?");params.append(values["node"])
-    if values.get("mount"):
-        where.append("s.mount=?");params.append(values["mount"])
-    if values.get("q"):
-        p=like_pattern(values["q"])
-        where.append(f"(s.node LIKE ? OR s.mount LIKE ? OR s.device LIKE ? OR s.block LIKE ? OR s.raid_level LIKE ? OR s.fstype LIKE ? OR {_v48133_public_ip_sql('s')} LIKE ?)")
-        params.extend([p]*7)
-    where_sql=' AND '.join(where)
-    total=safe_int(conn.execute(f"SELECT COUNT(*) FROM node_storage_current s WHERE {where_sql}",params).fetchone()[0],0)
-    pages=max(1,int(math.ceil(total/float(values["limit"]))))
-    values["page"]=min(values["page"],pages)
-    offset=(values["page"]-1)*values["limit"]
-    direction="ASC" if values["order"]=="asc" else "DESC"
-    rows=conn.execute(f"""
-      SELECT s.node,{_v48133_public_ip_sql('s')} AS public_ipv4,s.mount,s.device,s.block,s.raid_level,s.fstype,
-             s.size,s.used,s.avail,s.use_percent,s.read_bps,s.write_bps,s.read_iops,s.write_iops,s.util_percent,s.last_seen,
-             (SELECT COUNT(*) FROM vm_disk_current d WHERE d.node=s.node AND d.mount=s.mount AND d.role='customer') AS disk_count,
-             (SELECT COUNT(DISTINCT d.vm_uuid) FROM vm_disk_current d WHERE d.node=s.node AND d.mount=s.mount AND d.role='customer') AS vm_count
-      FROM node_storage_current s WHERE {where_sql}
-      ORDER BY {sort_map[values['sort']]} {direction},s.node,s.mount
-      LIMIT ? OFFSET ?
-    """,params+[values["limit"],offset]).fetchall()
-    body=[]
-    for node,public_ip,mount,device,block,raid,fs,size,used,avail,usep,rb,wb,ri,wi,util,seen,disk_count,vm_count in rows:
-        filter_href=_storage_io_url(values,view="disks",node=node,mount=mount,sort="writeiops",order="desc",page=1)
-        node_href=url_for("node_page",node=node,period=values["period"])
-        ip=compact_ipv4(public_ip)
-        ip_line=f'<span class="storage-node-ip">{escape(ip)}<button type="button" class="copy-btn" data-copy="{escape(ip)}" title="Copy IP">⧉</button></span>' if ip else ''
-        body.append(
-            '<tr>'
-            f'<td class="storage-node-cell"><a href="{escape(node_href,quote=True)}"><b>{escape(node)}</b></a>{ip_line}</td>'
-            f'<td class="storage-backend"><a href="{escape(filter_href,quote=True)}"><b>{escape(mount or "-")}</b></a><span>{escape(device or "-")} · {escape(raid or "hardware/unknown RAID")} · {escape(fs or "-")}</span></td>'
-            f'<td>{_disk_io_capacity(used,size,"used / size")}</td>'
-            f'<td class="num">{_disk_io_rate(rb)}</td><td class="num"><b>{_disk_io_rate(wb)}</b></td><td class="num">{_disk_io_iops(ri)}</td><td class="num"><b>{_disk_io_iops(wi)}</b></td><td class="num"><b>{safe_float(util,0):.1f}%</b></td>'
-            f'<td class="num"><b>{vm_count}</b><small class="storage-count-sub">{disk_count} disks</small></td><td class="num"><small>{fmt_push(seen)}</small></td>'
-            '</tr>'
-        )
-    if not body:
-        body=['<tr><td colspan="10" class="empty">No node storage sample in this lookback</td></tr>']
-    h=lambda label,key:_storage_sort_header(values,label,key)
-    return (
-        '<div class="card storage-table-card">'
-        '<div class="table-title-row"><div><h3>Storage Node</h3><div class="table-hint">Every real node mount reported by the Agent. Click a mount to see the VMs and disks mapped to it.</div></div></div>'
-        '<div class="table-wrap"><table class="storage-node-table"><thead><tr>'
-        f'<th>{h("NODE","node")}</th><th>{h("MOUNT / DEVICE","mount")}</th><th><div>USED / SIZE</div><small>{h("USED","used")} · {h("SIZE","size")} · {h("%","usepct")}</small></th>'
-        f'<th>{h("READ","read")}</th><th>{h("WRITE","write")}</th><th>{h("R IOPS","readiops")}</th><th>{h("W IOPS","writeiops")}</th><th>{h("UTIL","util")}</th><th>VM / DISKS</th><th>{h("SEEN","seen")}</th>'
-        '</tr></thead><tbody>'+''.join(body)+'</tbody></table></div>'+_storage_pager(values,total)+'</div>'
-    )
-
-
 V48133_STORAGE_CSS = r'''
 <style id="v48134-storage-integrated">
 .storage-search-bar{display:grid;grid-template-columns:minmax(340px,1.9fr) minmax(150px,.7fr) minmax(150px,.7fr) 78px auto auto;gap:9px;align-items:end}.storage-search-bar label{display:grid;gap:5px;font-size:10px;font-weight:900;color:#667085}.storage-search-bar input,.storage-search-bar select{min-height:41px}.storage-search-bar .storage-search-input{font-size:13px;padding-left:38px}.storage-search-wrap{position:relative}.storage-search-wrap:before{content:'⌕';position:absolute;left:13px;bottom:9px;font-size:20px;color:#667085;z-index:2}.storage-search-wrap input{width:100%}.storage-search-bar button,.storage-search-bar .clear{min-height:41px;display:flex;align-items:center;justify-content:center}
@@ -743,7 +416,6 @@ html[data-theme=dark] .storage-node-ip,html[data-theme=dark] .storage-uuid-cell 
 @media(max-width:1100px){.storage-search-bar{grid-template-columns:1fr 1fr}}
 </style>
 '''
-
 
 def storage_io_page_v48133():
     values=_storage_io_params()
@@ -778,9 +450,7 @@ def storage_io_page_v48133():
     )
     return page("Storage I/O",content)
 
-
 app.view_functions["storage_io_page"] = storage_io_page_v48133
-
 
 def purge_vm_data(conn, node, vm_uuid, refresh_snapshots=True):
     """Purge exactly one UUID from every VM-scoped dataset.
@@ -834,4 +504,3 @@ def purge_vm_data(conn, node, vm_uuid, refresh_snapshots=True):
     deleted["affected_nodes"]=len(affected_nodes)
     return deleted
 
-# ---------------------------------------------------------------------------

@@ -1,5 +1,3 @@
-# v48.10.2 final operational UI and reset layer
-# ---------------------------------------------------------------------------
 V48102_VERSION = "48.10.2"
 
 # Everything operational may be removed by the explicit nuclear reset. Keep
@@ -41,7 +39,6 @@ V48102_RESET_APP_TABLES = (
     "retention_runs",
     "account_logs",
 )
-
 
 def reset_all_app_data():
     """Delete every operational row while preserving login and Admin config.
@@ -99,7 +96,6 @@ def reset_all_app_data():
         conn.close()
     return result
 
-
 def _v48102_top_sort_link(label, key, period, q, current_sort, current_order, scope, limit):
     next_order = reverse_order(current_order) if current_sort == key else "desc"
     arrow = " ↓" if current_sort == key and current_order == "desc" else (" ↑" if current_sort == key else "")
@@ -118,7 +114,6 @@ def _v48102_top_sort_link(label, key, period, q, current_sort, current_order, sc
     active = " active" if current_sort == key else ""
     return f'<a class="cpu-sort-link{active}" href="{escape(href, quote=True)}">{escape(label)}{arrow}</a>'
 
-
 def _v48102_cpu_level(full_percent):
     value = safe_float(full_percent, 0.0)
     if value >= 90:
@@ -129,14 +124,10 @@ def _v48102_cpu_level(full_percent):
         return "busy"
     return "normal"
 
-
-
-
 def _v48102_minutes_progress(current_cycles, required_cycles):
     current_minutes = max(0, safe_int(current_cycles, 0)) * 5
     required_minutes = max(1, safe_int(required_cycles, 1)) * 5
     return f"{current_minutes}/{required_minutes} min"
-
 
 def _v48102_current_abuse_page(q, sort_by, order, limit):
     rows, total, counts, sort_by, order, cfg = _v4810_current_abuse_query(q, sort_by, order, limit)
@@ -208,7 +199,6 @@ def _v48102_current_abuse_page(q, sort_by, order, limit):
     </div>"""
     return f"""<div class="card page-hero" data-engine="{escape(ABUSE_ENGINE_VERSION,quote=True)}"><div><span class="eyebrow">ABUSE MONITORING</span><h2>VM Abuse</h2><p>Directional network, CPU and disk signals from the current bounded state table.</p></div><div class="hero-meta"><span>Policy <b>v{cfg['revision']}</b></span><span>Refresh <b>5s partial</b></span><span>Delete <b>Admin only</b></span></div></div><div class="card abuse-toolbar">{tabs}{search}</div><details class="card policy-fold"><summary>Current policy</summary>{_public_abuse_policy(cfg)}</details>{table}"""
 
-
 def vm_abuse_page_v48102():
     tab = (request.args.get("tab") or "current").strip().lower()
     if tab == "history":
@@ -219,62 +209,7 @@ def vm_abuse_page_v48102():
     limit = max(10, min(1000, safe_int(request.args.get("limit"), 200)))
     return page("VM Abuse", _v48102_current_abuse_page(q, sort_by, order, limit))
 
-
 app.view_functions["vm_abuse_page"] = vm_abuse_page_v48102
-
-
-def _public_abuse_policy(cfg):
-    pps_line = (
-        f"RX or TX ≥ {cfg['network_pps']:,.0f} PPS for {cfg['network_required_seconds']} seconds inside one sampled five-minute window"
-        if cfg["network_enabled"] else "Directional PPS rule disabled"
-    )
-    mbps_minutes = max(1, safe_int(cfg.get("network_mbps_required_cycles"), 1)) * 5
-    cpu_minutes = max(1, safe_int(cfg.get("cpu_required_cycles"), 1)) * 5
-    disk_minutes = max(1, safe_int(cfg.get("disk_required_cycles"), 1)) * 5
-    mbps_line = (
-        f"RX or TX AVG ≥ {cfg['network_avg_mbps']:,.1f} Mbps for {mbps_minutes} consecutive minutes"
-        if cfg["network_mbps_enabled"] and cfg["network_avg_mbps"] > 0 else "Directional AVG Mbps rule disabled"
-    )
-    cpu_line = (
-        f"CPU Full ≥ {cfg['cpu_full_percent']:.1f}% for {cpu_minutes} consecutive minutes"
-        if cfg["cpu_enabled"] else "CPU rule disabled"
-    )
-    disk_line = (
-        f"{_disk_policy_text(cfg)} for {disk_minutes} consecutive minutes"
-        if cfg["disk_effective_enabled"] else "Disk rule disabled or every disk threshold is 0"
-    )
-    return f"""
-      <div class="abuse-policy" style="grid-template-columns:repeat(4,minmax(210px,1fr))">
-        <div><b>Network PPS {'ON' if cfg['network_enabled'] else 'OFF'}</b><small>{escape(pps_line)}.</small></div>
-        <div><b>Network AVG Mbps {'ON' if cfg['network_mbps_enabled'] and cfg['network_avg_mbps'] > 0 else 'OFF'}</b><small>{escape(mbps_line)}.</small></div>
-        <div><b>CPU {'ON' if cfg['cpu_enabled'] else 'OFF'}</b><small>{escape(cpu_line)}.</small></div>
-        <div><b>Disk {'ON' if cfg['disk_effective_enabled'] else 'OFF'}</b><small>{escape(disk_line)}.</small></div>
-      </div>
-    """
-
-
-def _abuse_flag_labels(flags, cfg):
-    """Human-facing abuse reasons expressed in minutes, not engine cycles."""
-    values = set(_v4810_canonical_flags(flags))
-    result = []
-    if "NETWORK_RX_PPS" in values:
-        result.append(f"RX PPS ≥ {cfg['network_pps']:,.0f} for {cfg['network_required_seconds']}s")
-    if "NETWORK_TX_PPS" in values:
-        result.append(f"TX PPS ≥ {cfg['network_pps']:,.0f} for {cfg['network_required_seconds']}s")
-    if "NETWORK_RX_AVG_MBPS" in values:
-        minutes = max(1, safe_int(cfg.get("network_mbps_required_cycles"), 1)) * 5
-        result.append(f"RX AVG ≥ {cfg['network_avg_mbps']:,.0f} Mbps · {minutes} min")
-    if "NETWORK_TX_AVG_MBPS" in values:
-        minutes = max(1, safe_int(cfg.get("network_mbps_required_cycles"), 1)) * 5
-        result.append(f"TX AVG ≥ {cfg['network_avg_mbps']:,.0f} Mbps · {minutes} min")
-    if "CPU_SUSTAINED" in values:
-        minutes = max(1, safe_int(cfg.get("cpu_required_cycles"), 1)) * 5
-        result.append(f"CPU Full ≥ {cfg['cpu_full_percent']:.1f}% · {minutes} min")
-    if "DISK_SUSTAINED" in values:
-        minutes = max(1, safe_int(cfg.get("disk_required_cycles"), 1)) * 5
-        result.append(f"Disk sustained · {minutes} min")
-    return result or ["-"]
-
 
 def _v4810_progress_bar(current, required):
     """Admin progress bar also presents exact five-minute buckets as minutes."""
@@ -285,7 +220,6 @@ def _v4810_progress_bar(current, required):
         f'<div class="rule-progress"><span style="width:{pct:.1f}%"></span></div>'
         f'<small>{current * 5}/{required * 5} min</small>'
     )
-
 
 V48102_UI_CSS = r"""
 <style id="v48102-operational-ui">
@@ -312,7 +246,6 @@ html[data-theme=dark] body.app-v490 .table-wrap tbody tr:nth-child(even){backgro
 
 _page_v48102_base = page
 
-
 def page(title, content):
     # PJAX/fetch requests need only the replaceable content shell. The current
     # document already owns the global CSS and JavaScript, so this avoids
@@ -335,4 +268,3 @@ def page(title, content):
         app.logger.exception("Could not apply v48.10.2 operational UI layer")
     return response
 
-# ---------------------------------------------------------------------------

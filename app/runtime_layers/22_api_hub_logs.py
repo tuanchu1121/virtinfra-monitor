@@ -1,8 +1,5 @@
-# v48.12.0 Abuse-focused API Hub, request logs and full API cleanup
-# ---------------------------------------------------------------------------
 # This layer intentionally keeps the v48.11.0 routes backward compatible while
 # making the Admin experience abuse-first and operationally complete.
-# ---------------------------------------------------------------------------
 
 V48120_VERSION = "48.12.0"
 API_ACCESS_LOG_RETENTION_DAYS = min(7, max(1, int(os.environ.get("BW_API_ACCESS_LOG_RETENTION_DAYS", "7"))))
@@ -13,7 +10,6 @@ API_PRIMARY_SCOPES = {
 }
 _api_access_retention_lock = threading.Lock()
 _api_access_retention_last = 0
-
 
 def _v48120_ensure_schema():
     conn = db()
@@ -49,17 +45,14 @@ def _v48120_ensure_schema():
     finally:
         conn.close()
 
-
 try:
     _v48120_ensure_schema()
 except Exception:
     app.logger.exception("Could not initialize v48.12.0 API access-log schema")
 
-
 # Capture authenticated API calls. Authentication failures for known keys remain
 # visible in Management Events, while normal requests appear in Request Logs.
 _v48120_api_authenticate_base = _api_authenticate
-
 
 def _api_authenticate(required_scopes=()):
     g.api_started_perf = time.perf_counter()
@@ -69,7 +62,6 @@ def _api_authenticate(required_scopes=()):
         g.api_access_log_key_name = str(key.get("name") or "")
         g.api_access_log_source_ip = str(getattr(g, "api_client_ip", "") or api_client_ip())
     return key, error
-
 
 def _v48120_prune_api_access_logs_if_due(conn):
     global _api_access_retention_last
@@ -81,7 +73,6 @@ def _v48120_prune_api_access_logs_if_due(conn):
     cutoff = now - API_ACCESS_LOG_RETENTION_DAYS * 86400
     cur = conn.execute("DELETE FROM api_access_logs WHERE request_time<?", (cutoff,))
     return max(0, safe_int(cur.rowcount, 0))
-
 
 @app.after_request
 def _v48120_store_api_request_log(response):
@@ -127,7 +118,6 @@ def _v48120_store_api_request_log(response):
         app.logger.exception("Could not persist API request log")
     return response
 
-
 def _v48120_reset_sequences(conn, tables):
     has_sequence = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'"
@@ -136,7 +126,6 @@ def _v48120_reset_sequences(conn, tables):
         return
     for table in tables:
         conn.execute("DELETE FROM sqlite_sequence WHERE name=?", (table,))
-
 
 def clear_api_logs(kind="all"):
     """Delete API request logs and/or API management events, preserving keys."""
@@ -170,7 +159,6 @@ def clear_api_logs(kind="all"):
     finally:
         conn.close()
 
-
 def clear_all_api_data():
     """Permanently delete every external API key and all API-owned logs."""
     conn = db()
@@ -200,16 +188,13 @@ def clear_all_api_data():
         _api_rate_windows.clear()
     return result
 
-
 # A true "Reset ALL app data" now includes API keys and API-owned logs.
 _v48120_reset_all_app_data_base = reset_all_app_data
-
 
 def reset_all_app_data():
     result = _v48120_reset_all_app_data_base()
     result["api"] = clear_all_api_data()
     return result
-
 
 # ------------------------- Abuse-focused JSON shapes -----------------------
 
@@ -222,7 +207,6 @@ def _v48120_primary_abuse_type(flags):
     if any("DISK" in x for x in flags):
         return "disk"
     return "other"
-
 
 def _v48120_abuse_summary_text(flags):
     labels = []
@@ -243,7 +227,6 @@ def _v48120_abuse_summary_text(flags):
         else:
             labels.append(name.replace("_", " ").title())
     return ", ".join(labels) if labels else "Active abuse policy match"
-
 
 def _v48120_compact_abuse_item(full):
     flags = list(full.get("flags") or [])
@@ -284,7 +267,6 @@ def _v48120_compact_abuse_item(full):
         }
     return item
 
-
 def _v48120_api_abuse_vms_impl():
     try:
         where, params = _api_abuse_filters()
@@ -322,9 +304,7 @@ def _v48120_api_abuse_vms_impl():
         "sort": sort if sort in sort_map else "severity", "order": order.lower(), "view": view,
     }})
 
-
 app.view_functions["api_v1_abuse_vms"] = require_api_scopes("abuse:read")(_v48120_api_abuse_vms_impl)
-
 
 def _v48120_api_abuse_vm_impl(vm_uuid):
     vm_uuid = str(vm_uuid or "").strip()
@@ -351,9 +331,7 @@ def _v48120_api_abuse_vm_impl(vm_uuid):
     full = _api_vm_abuse_item(rows[0])
     return _api_response({"data": full if view == "full" else _v48120_compact_abuse_item(full)})
 
-
 app.view_functions["api_v1_abuse_vm"] = require_api_scopes("abuse:read")(_v48120_api_abuse_vm_impl)
-
 
 def _v48120_event_compact(item):
     flags = list(item.get("flags") or [])
@@ -370,7 +348,6 @@ def _v48120_event_compact(item):
     if any("DISK" in str(flag).upper() for flag in flags):
         result["disk"] = item.get("disk") or {}
     return result
-
 
 def _v48120_api_abuse_events_impl():
     limit, offset = _api_limit_offset(200)
@@ -430,9 +407,7 @@ def _v48120_api_abuse_events_impl():
         data.append(item if view == "full" else _v48120_event_compact(item))
     return _api_response({"data": data, "meta": {"count": len(data), "total": total, "limit": limit, "offset": offset, "view": view}})
 
-
 app.view_functions["api_v1_abuse_events"] = require_api_scopes("abuse_events:read")(_v48120_api_abuse_events_impl)
-
 
 @app.route("/api/v1/abuse/summary", methods=["GET"])
 @require_api_scopes("abuse:read")
@@ -467,18 +442,7 @@ def api_v1_abuse_summary():
         "max_severity": round(safe_float((oldest or [0,0,0])[2], 0), 4),
     }})
 
-
 # ---------------------- Full Admin API Management UI ----------------------
-
-def _v48120_api_scope_checkboxes():
-    rows = []
-    for scope, label in API_PRIMARY_SCOPES.items():
-        rows.append(
-            f'<label class="api-scope"><input type="checkbox" name="scopes" value="{escape(scope,quote=True)}" checked>'
-            f'<span><b>{escape(scope)}</b><small>{escape(label)}</small></span></label>'
-        )
-    return "".join(rows)
-
 
 def _v48120_api_counts():
     conn = db()
@@ -504,7 +468,6 @@ def _v48120_api_counts():
         "access_total": access_total, "event_total": event_total,
     }
 
-
 def _v48120_api_nav(tab, counts):
     items = [
         ("keys", "Keys", counts["active"]),
@@ -517,55 +480,6 @@ def _v48120_api_nav(tab, counts):
         + (f'<span>{count:,}</span>' if count is not None else '') + '</a>'
         for name,label,count in items
     ) + '</nav>'
-
-
-def _v48120_api_key_table():
-    conn = db()
-    try:
-        rows = conn.execute(
-            """SELECT id,key_id,name,secret_hash,scopes_json,allowed_ips_json,is_active,
-                      created_at,created_by,expires_at,last_used_at,last_used_ip,use_count,
-                      revoked_at,revoked_by,rotated_from_key_id,note
-               FROM api_keys ORDER BY is_active DESC,created_at DESC,id DESC"""
-        ).fetchall()
-    finally:
-        conn.close()
-    keys = [_api_key_row_to_dict(row) for row in rows]
-    body = []
-    for key in keys:
-        status_label, status_class = _api_admin_status(key)
-        scopes = ''.join(f'<span class="api-chip">{escape(scope)}</span>' for scope in key.get('scopes') or []) or '-'
-        allowed = '<br>'.join(escape(x) for x in key.get('allowed_ips') or []) or '<span class="muted">Any source</span>'
-        expiry = fmt_full(key.get('expires_at')) if key.get('expires_at') else 'Never'
-        used = fmt_full(key.get('last_used_at')) if key.get('last_used_at') else 'Never'
-        rotate_revoke = ''
-        if status_label == 'Active':
-            rotate_revoke = f'''
-              <form method="post" action="{url_for('admin_api_key_rotate')}" onsubmit="return confirm('Rotate this key? The current secret will stop working immediately.')">
-                <input type="hidden" name="csrf_token" value="{escape(csrf_token(),quote=True)}"><input type="hidden" name="key_id" value="{escape(key['key_id'],quote=True)}"><button class="btn" type="submit">Rotate</button>
-              </form>
-              <form method="post" action="{url_for('admin_api_key_revoke')}" onsubmit="return confirm('Revoke this key now?')">
-                <input type="hidden" name="csrf_token" value="{escape(csrf_token(),quote=True)}"><input type="hidden" name="key_id" value="{escape(key['key_id'],quote=True)}"><button class="btn-warn" type="submit">Revoke</button>
-              </form>'''
-        delete_phrase = f"DELETE {key['key_id']}"
-        delete_form = f'''
-          <form method="post" action="{url_for('admin_api_key_delete')}" onsubmit="const expected='{escape(delete_phrase,quote=True)}';const v=prompt('Permanently delete this key and ALL of its API logs? Type: '+expected);if(v!==expected)return false;this.querySelector('[name=confirm_text]').value=v;return confirm('This cannot be undone. Continue?')">
-            <input type="hidden" name="csrf_token" value="{escape(csrf_token(),quote=True)}"><input type="hidden" name="key_id" value="{escape(key['key_id'],quote=True)}"><input type="hidden" name="confirm_text" value=""><button class="btn-danger" type="submit">Delete permanently</button>
-          </form>'''
-        body.append(f'''
-        <tr>
-          <td><b>{escape(key['name'])}</b><code class="key-id">{escape(API_KEY_PREFIX)}_{escape(key['key_id'])}_…</code>{f'<small>{escape(key.get("note") or "")}</small>' if key.get('note') else ''}</td>
-          <td><span class="status {status_class}">{escape(status_label)}</span><small>Created {escape(fmt_full(key['created_at']))}<br>by {escape(key.get('created_by') or '-')}</small></td>
-          <td><div class="api-chip-wrap">{scopes}</div></td>
-          <td><small>{allowed}</small></td>
-          <td><b>{escape(used)}</b><small>{escape(key.get('last_used_ip') or '-')} · {safe_int(key.get('use_count'),0):,} flush(es)</small></td>
-          <td>{escape(expiry)}</td>
-          <td><div class="api-actions">{rotate_revoke}{delete_form}</div></td>
-        </tr>''')
-    if not body:
-        body.append('<tr><td colspan="7" class="empty">No API keys. Create the first Abuse integration key above.</td></tr>')
-    return ''.join(body), len(keys)
-
 
 def _v48120_access_log_query():
     q = str(request.args.get('q') or '').strip()
@@ -584,7 +498,6 @@ def _v48120_access_log_query():
     elif status == '5xx': where.append('status_code>=500')
     elif status not in ('', 'all'): status = ''
     return q, status, key_id, where, params
-
 
 def _v48120_request_logs_tab(counts):
     q, status, key_id, where, params = _v48120_access_log_query()
@@ -620,7 +533,6 @@ def _v48120_request_logs_tab(counts):
       <div class="pager"><a class="btn-ghost {'disabled' if page_no<=1 else ''}" href="{escape(prev,quote=True)}">Previous</a><span>Page {page_no:,} / {pages:,} · {total:,} row(s)</span><a class="btn-ghost {'disabled' if page_no>=pages else ''}" href="{escape(nxt,quote=True)}">Next</a></div>
     </div>'''
 
-
 def _v48120_event_log_query():
     q=str(request.args.get('q') or '').strip(); event_type=str(request.args.get('event_type') or '').strip().upper(); where=[]; params=[]
     if q:
@@ -628,7 +540,6 @@ def _v48120_event_log_query():
     if event_type:
         where.append('event_type=?'); params.append(event_type)
     return q,event_type,where,params
-
 
 def _v48120_events_tab(counts):
     q,event_type,where,params=_v48120_event_log_query(); page_no=max(1,safe_int(request.args.get('page'),1)); per_page=100; offset=(page_no-1)*per_page; where_sql=(' WHERE '+' AND '.join(where)) if where else ''
@@ -650,23 +561,6 @@ def _v48120_events_tab(counts):
       <div class="api-log-tools"><form id="api-event-selected" method="post" action="{url_for('admin_api_logs_clear')}" onsubmit="return confirm('Delete selected management events?')"><input type="hidden" name="csrf_token" value="{escape(csrf_token(),quote=True)}"><input type="hidden" name="kind" value="events"><input type="hidden" name="mode" value="selected"><button class="btn-danger" type="submit">Delete selected</button></form><form method="post" action="{url_for('admin_api_logs_clear')}" onsubmit="return confirm('Delete every management event matching the filter?')"><input type="hidden" name="csrf_token" value="{escape(csrf_token(),quote=True)}"><input type="hidden" name="kind" value="events"><input type="hidden" name="mode" value="filtered">{filter_hidden}<input name="confirm_text" placeholder="CLEAR FILTERED" required><button class="btn-danger" type="submit">Clear filtered</button></form><form method="post" action="{url_for('admin_api_logs_clear')}" onsubmit="return confirm('Delete ALL API management events?')"><input type="hidden" name="csrf_token" value="{escape(csrf_token(),quote=True)}"><input type="hidden" name="kind" value="events"><input type="hidden" name="mode" value="all"><input name="confirm_text" placeholder="CLEAR ALL API LOGS" required><button class="btn-danger" type="submit">Clear all events</button></form></div>
       <div class="table-wrap"><table class="api-log-table"><thead><tr><th><input type="checkbox" onclick="document.querySelectorAll('.api-event-check').forEach(x=>x.checked=this.checked)"></th><th>Time</th><th>Event</th><th>Key</th><th>Actor</th><th>Source IP</th><th>Detail</th></tr></thead><tbody>{''.join(body)}</tbody></table></div>
     </div>'''
-
-
-def _v48120_docs_tab():
-    base=request.url_root.rstrip('/')
-    return f'''
-    <div class="docs-grid">
-      <div class="card"><span class="eyebrow">ABUSE API V1</span><h3>Small surface, clear purpose</h3><p class="muted">The primary API is now centered on current Abuse state and Abuse history. Old VM/node/bandwidth endpoints remain available for backward compatibility but are intentionally not promoted here.</p><div class="endpoint-list"><div><code>GET /api/v1/me</code><span>Validate key and show granted scopes</span></div><div><code>GET /api/v1/abuse/summary</code><span>Counts by type, flag and node</span></div><div><code>GET /api/v1/abuse/vms</code><span>Compact current Abuse list by default</span></div><div><code>GET /api/v1/abuse/vms?view=full</code><span>Full CPU/network/disk/sample payload</span></div><div><code>GET /api/v1/abuse/vms/&lt;uuid&gt;?node=&lt;node&gt;</code><span>One active Abuse VM</span></div><div><code>GET /api/v1/abuse/events</code><span>Compact persistent Abuse history</span></div><div><code>GET /api/v1/abuse/events?view=full</code><span>Full event metrics and policy revision</span></div></div></div>
-      <div class="card"><h3>Quick test</h3><pre class="api-code">API_KEY='bwm_live_xxxxxxxxxxxx_SECRET'
-
-curl -sS \\
--H "Authorization: Bearer ${{API_KEY}}" \\
-'{escape(base)}/api/v1/abuse/vms?limit=500' | jq</pre><h3 style="margin-top:18px">Only UUIDs</h3><pre class="api-code">curl -sS \\
--H "Authorization: Bearer ${{API_KEY}}" \\
-'{escape(base)}/api/v1/abuse/vms?limit=500' \\
-| jq -r '.data[].vm_uuid'</pre></div>
-    </div>'''
-
 
 def _v48120_admin_api_keys_page():
     auth=require_admin()
@@ -695,9 +589,7 @@ def _v48120_admin_api_keys_page():
     {_v48120_api_nav(tab,counts)}{f'<div class="success-box">{escape(msg)}</div>' if msg else ''}{f'<div class="error-box">{escape(err)}</div>' if err else ''}{once_html}{content_tab}'''
     return page('API Management',content)
 
-
 app.view_functions['admin_api_keys_page'] = _v48120_admin_api_keys_page
-
 
 @app.route('/admin/api-keys/delete',methods=['POST'])
 def admin_api_key_delete():
@@ -723,7 +615,6 @@ def admin_api_key_delete():
     log_account_event('api_key_deleted_permanently',username=actor,realm='admin',role='admin',detail=f'key_id={key_id};name={key.get("name")};access_logs={access};events={events}'[:500])
     return _api_admin_redirect(msg=f'API key {key.get("name")} and {access+events:,} related log row(s) were permanently deleted.')
 
-
 def _v48120_delete_ids(conn,table,ids):
     clean=[]
     for value in ids or []:
@@ -731,7 +622,6 @@ def _v48120_delete_ids(conn,table,ids):
         if n>0 and n not in clean: clean.append(n)
     if not clean: return 0
     marks=','.join('?' for _ in clean); cur=conn.execute(f'DELETE FROM {table} WHERE id IN ({marks})',clean); return max(0,safe_int(cur.rowcount,0))
-
 
 @app.route('/admin/api-logs/clear',methods=['POST'])
 def admin_api_logs_clear():
@@ -775,41 +665,10 @@ def admin_api_logs_clear():
     log_account_event('api_logs_cleared',username=actor,realm='admin',role='admin',detail=f'kind={kind};mode={mode};deleted={deleted}'[:500])
     return redirect(url_for('admin_api_keys_page',tab='requests' if kind=='access' else 'events',apimsg=f'Deleted {deleted:,} API log row(s).'))
 
-
 # --------------------------- Maintenance integration ----------------------
 _v48120_enqueue_maintenance_base = enqueue_maintenance_job
 
-
-def enqueue_maintenance_job(action, parameters, actor):
-    action=str(action or '').strip().lower()
-    if action not in {'clear_api_logs','clear_api_data'}:
-        return _v48120_enqueue_maintenance_base(action,parameters,actor)
-    runner=os.path.join(os.path.dirname(os.path.abspath(__file__)),'maintenance.py')
-    if not os.path.isfile(runner): raise RuntimeError(f'Maintenance runner is missing: {runner}')
-    systemctl=shutil.which('systemctl')
-    if not systemctl: raise RuntimeError('systemctl is not installed')
-    template_path='/etc/systemd/system/bw-monitor-maintenance@.service'
-    if not os.path.isfile(template_path): raise RuntimeError(f'Maintenance service template is missing: {template_path}')
-    conn=db()
-    try:
-        stale_before=now_ts()-24*3600
-        conn.execute("UPDATE maintenance_jobs SET status='error',finished_at=?,message='Recovered stale queued/running maintenance job' WHERE status IN ('queued','running') AND created_at<?",(now_ts(),stale_before))
-        active=safe_int(conn.execute("SELECT COUNT(*) FROM maintenance_jobs WHERE status IN ('queued','running')").fetchone()[0],0)
-        if active>=MAX_ACTIVE_MAINTENANCE_JOBS: raise RuntimeError(f'Maintenance queue is full ({active} active jobs)')
-        cur=conn.execute("INSERT INTO maintenance_jobs(created_at,action,parameters,status,requested_by,message) VALUES(?,?,?,'queued',?,'Waiting for maintenance worker')",(now_ts(),action,json.dumps(parameters or {},separators=(',',':')),actor or 'admin'))
-        job_id=int(cur.lastrowid); unit_name=f'bw-monitor-maintenance@{job_id}.service'; conn.execute('UPDATE maintenance_jobs SET unit_name=? WHERE id=?',(unit_name,job_id)); conn.commit()
-    finally: conn.close()
-    proc=subprocess.run([systemctl,'--no-block','start',unit_name],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=20,check=False)
-    if proc.returncode!=0:
-        msg=(proc.stdout or 'systemctl start failed').strip()[:1000]; conn=db()
-        try: conn.execute("UPDATE maintenance_jobs SET status='error',finished_at=?,message=? WHERE id=?",(now_ts(),msg,job_id)); conn.commit()
-        finally: conn.close()
-        raise RuntimeError(msg)
-    return job_id,unit_name
-
-
 _v48120_admin_database_maintenance_base = admin_database_maintenance
-
 
 def _v48120_admin_database_maintenance():
     action=(request.form.get('action') or '').strip().lower()
@@ -831,12 +690,9 @@ def _v48120_admin_database_maintenance():
     except Exception as exc:
         err=f'Could not start maintenance: {exc}'; log_account_event('database_maintenance_queue_failed',username=actor,realm='admin',role='admin',detail=err[:500]); return redirect(url_for('admin_page',dberr=err)+'#maintenance-queue')
 
-
 app.view_functions['admin_database_maintenance'] = _v48120_admin_database_maintenance
 
-
 _v48120_maintenance_card_base = database_maintenance_card
-
 
 def database_maintenance_card(message="", error=""):
     """Render the PostgreSQL-native maintenance control surface."""
@@ -1034,7 +890,6 @@ def database_maintenance_card(message="", error=""):
     </div>
     """
 
-
 def _v5056_admin_clear_live_cache_removed():
     """Retire the old live-cache action without deleting any current data."""
     deny = require_admin()
@@ -1049,14 +904,11 @@ def _v5056_admin_clear_live_cache_removed():
         + "#maintenance-queue"
     )
 
-
 app.view_functions["admin_clear_live_cache"] = _v5056_admin_clear_live_cache_removed
-
 
 _v48120_action_label_base = _maintenance_action_label
 _v48120_target_summary_base = _maintenance_target_summary
 _v48120_friendly_message_base = _maintenance_friendly_message
-
 
 def _maintenance_action_label(action):
     labels = {
@@ -1077,7 +929,6 @@ def _maintenance_action_label(action):
     }
     return labels.get(str(action or "").strip().lower(), str(action or "-").replace("_", " ").title())
 
-
 def _v48122_parse_maintenance_parameters(parameters):
     """Normalize maintenance parameters from DB JSON text or an in-memory dict.
 
@@ -1096,7 +947,6 @@ def _v48122_parse_maintenance_parameters(parameters):
         return {}
     return decoded if isinstance(decoded, dict) else {}
 
-
 def _maintenance_target_summary(action,parameters):
     action = str(action or '').strip().lower()
     if action in {'clear_api_logs','clear_api_data'}:
@@ -1112,7 +962,6 @@ def _maintenance_target_summary(action,parameters):
             return target + suffix
         return 'All external API keys + all API logs' + suffix
     return _v48120_target_summary_base(action,parameters)
-
 
 def _maintenance_friendly_message(action, status, message):
     action = str(action or "").strip().lower()
@@ -1148,6 +997,3 @@ def _maintenance_friendly_message(action, status, message):
             return "Completed successfully"
     return str(message or "Job failed")[:240]
 
-
-
-# ---------------------------------------------------------------------------

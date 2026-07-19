@@ -20,7 +20,6 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
 
-# 50.5.8 low-I/O transport guardrails. The Flask body limit applies to the
 # compressed request body; a separate post-decompression limit prevents gzip
 # expansion from consuming unbounded memory. Plain JSON agents remain valid.
 MAX_COMPRESSED_PUSH_BYTES = max(1024 * 1024, int(os.environ.get("BW_MAX_COMPRESSED_PUSH_BYTES", str(16 * 1024 * 1024))))
@@ -47,7 +46,6 @@ DATABASE_URL = os.environ.get("BW_DATABASE_URL") or os.environ.get("BW_POSTGRES_
 # Bootstrap defaults. Real dashboard/admin users are stored in PostgreSQL.
 ADMIN_USERNAME = os.environ.get("BW_ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD_HASH = os.environ.get("BW_ADMIN_PASSWORD_HASH", "")
-
 
 def get_or_create_app_secret():
     """Return one stable Flask secret shared by all Gunicorn workers.
@@ -88,7 +86,6 @@ def get_or_create_app_secret():
         return secret
     finally:
         conn.close()
-
 
 app.secret_key = get_or_create_app_secret()
 app.config.update(
@@ -197,20 +194,17 @@ PERIOD_LABELS = {
     "7d": "7d",
 }
 
-
 def table_columns(conn, table):
     try:
         return {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
     except Exception:
         return set()
 
-
 def ensure_column(conn, table, column, ddl):
     # Compatible additive PostgreSQL migration: ADD COLUMN only when missing.
     # This keeps older PostgreSQL schemas working without DROP/CREATE.
     if column not in table_columns(conn, table):
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
-
 
 def normalize_mac_address(value):
     """Return a canonical lower-case colon MAC or an empty string."""
@@ -219,7 +213,6 @@ def normalize_mac_address(value):
     if len(compact) != 12:
         return ""
     return ":".join(compact[pos:pos + 2] for pos in range(0, 12, 2))
-
 
 def read_agent_json_request():
     """Read a plain or gzip-compressed Agent JSON object with hard limits."""
@@ -246,7 +239,6 @@ def read_agent_json_request():
     if not isinstance(data, dict):
         raise ValueError("payload is not a JSON object")
     return data
-
 
 def db():
     db_dir = os.path.dirname(DB)
@@ -443,7 +435,6 @@ def db():
     )
     """)
 
-
     for column, ddl in network_metric_columns.items():
         ensure_column(conn, "vm_latest_metrics", column, ddl)
 
@@ -529,7 +520,6 @@ def db():
         PRIMARY KEY (node, mount)
     )
     """)
-
 
     # Physical NIC/uplink metrics from agent v4.
     # This is deliberately separate from VM/tap traffic. VM traffic remains in usage/node_stats.
@@ -683,7 +673,6 @@ def db():
         detail TEXT
     )
     """)
-
 
     # Per-node VM presence/state. This table is used to confirm migrations only
     # after the old node has missed the VM for a few pushes, and to keep node
@@ -1068,5 +1057,4 @@ def db():
     """)
     conn.commit()
     return conn
-
 

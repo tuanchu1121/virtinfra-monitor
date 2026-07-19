@@ -1,8 +1,6 @@
 # Đưa VirtInfra Monitor lên GitHub bằng GitHub Desktop
 
-> Release: `50.5.9-prod-r8-safe-dead-code-prune`
-
-> Dùng cho release `50.5.9-prod-r3-ui-alignment-overflow-hotfix`.
+> Release: `50.5.9-prod-r9-safe-runtime-history-prune`
 
 > Source of truth vận hành: [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md).
 >
@@ -78,7 +76,7 @@ update.sh
 Giải nén file ZIP release ra một thư mục riêng, ví dụ:
 
 ```text
-D:\Downloads\virtinfra-monitor-50.5.9-prod-r3-ui-alignment-overflow-hotfix\
+D:\Downloads\virtinfra-monitor-50.5.9-prod-r9-safe-runtime-history-prune\
 ```
 
 Mở thư mục đó. Bên trong phải thấy trực tiếp:
@@ -214,7 +212,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Phải trả về:
 
 ```text
-50.5.9-prod-r3-ui-alignment-overflow-hotfix
+50.5.9-prod-r9-safe-runtime-history-prune
 ```
 
 Kiểm tra file installer:
@@ -250,7 +248,7 @@ virtinfra-monitorctl version
 Phải ra:
 
 ```text
-50.5.9-prod-r3-ui-alignment-overflow-hotfix
+50.5.9-prod-r9-safe-runtime-history-prune
 ```
 
 Kiểm tra:
@@ -292,7 +290,7 @@ Sai:
 
 ```text
 repo-root/
-└── virtinfra-monitor-50.5.9-prod-r3-ui-alignment-overflow-hotfix/
+└── virtinfra-monitor-50.5.9-prod-r9-safe-runtime-history-prune/
     ├── app/
     ├── deploy/
     └── install.sh

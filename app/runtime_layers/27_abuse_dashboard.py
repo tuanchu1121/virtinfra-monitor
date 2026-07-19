@@ -1,7 +1,4 @@
-# VirtInfra Monitor v48.12.8 - simplified Abuse dashboard
-# ========================================================================
 V48127_VERSION = "48.12.7"
-
 
 def _v48127_filter_values():
     values = _v48126_filter_values()
@@ -13,7 +10,6 @@ def _v48127_filter_values():
     if values["status"] not in {"all", "open", "closed"}:
         values["status"] = "all"
     return values
-
 
 def _v48128_url(tab, values, **changes):
     args = dict(values)
@@ -29,7 +25,6 @@ def _v48128_url(tab, values, **changes):
         clean[key] = value
     return url_for("vm_abuse_page", **clean)
 
-
 def _v48127_sort_link(tab, values, key, label, default="desc"):
     active = values.get("sort") == key
     current_order = values.get("order", default)
@@ -42,14 +37,12 @@ def _v48127_sort_link(tab, values, key, label, default="desc"):
     href = _v48128_url(tab, values, sort=key, order=next_order, page=1)
     return f'<a class="sort-link" href="{escape(href, quote=True)}">{escape(label)}{arrow}</a>'
 
-
 def _v48127_tabs(active):
     items = (("current", "Current Abuse"), ("events", "Abuse Events"))
     return '<div class="abuse-tabs abuse-tabs-v48128">' + ''.join(
         f'<a class="{"active" if active == key else ""}" href="{url_for("vm_abuse_page", tab=key)}">{label}</a>'
         for key, label in items
     ) + '</div>'
-
 
 def _v48127_filter_form(tab, values, nodes):
     node_options = '<option value="">All nodes</option>' + ''.join(
@@ -93,7 +86,6 @@ def _v48127_filter_form(tab, values, nodes):
       <button type="submit">Filter</button>
       <a class="clear" href="{url_for('vm_abuse_page', tab=tab)}">Reset</a>
     </form>"""
-
 
 def _v48127_current_rows(values):
     cfg = get_abuse_settings()
@@ -163,7 +155,6 @@ def _v48127_current_rows(values):
     finally:
         conn.close()
 
-
 def _v48127_current_page(values):
     cfg = get_abuse_settings()
     rows, total, counts = _v48127_current_rows(values)
@@ -206,7 +197,6 @@ def _v48127_current_page(values):
     <div class="card"><div class="section-head"><div><h3>Current Abuse</h3><p>Live sustained Abuse only. Click a column heading to sort like the classic table.</p></div><div class="count-badges"><span>Matched <b>{total}</b></span><span>Page <b>{values['page']}/{pages}</b></span><span>Policy <b>v{cfg['revision']}</b></span></div></div>
     <div class="table-wrap"><table class="abuse-current-v48128"><thead><tr>{headers}</tr></thead><tbody>{body}</tbody></table></div>{_v48126_pagination('current', values, total)}</div>"""
 
-
 def _v48127_event_where(values):
     cutoff = now_ts() - _v48126_range_seconds(values["range"])
     where = [
@@ -227,7 +217,6 @@ def _v48127_event_where(values):
         where.append("(i.node LIKE ? OR i.vm_uuid LIKE ? OR i.abuse_flags LIKE ? OR i.primary_type LIKE ?)")
         params.extend([pattern, pattern, pattern, pattern])
     return where, params
-
 
 def _v48127_event_groups(values):
     values["limit"] = min(values["limit"], 200)
@@ -302,7 +291,6 @@ def _v48127_event_groups(values):
     finally:
         conn.close()
 
-
 def _v48127_event_detail_table(items):
     now = now_ts()
     cfg = get_abuse_settings()
@@ -323,7 +311,6 @@ def _v48127_event_detail_table(items):
     if not body:
         body = '<tr><td colspan="8" class="empty">No occurrence details</td></tr>'
     return f"""<div class="event-occurrence-wrap"><table class="event-occurrence-table"><thead><tr><th>#</th><th>STATE</th><th>STARTED</th><th>ENDED</th><th>DURATION</th><th>MAX SEVERITY</th><th>REASON</th><th>RAW EVENTS</th></tr></thead><tbody>{body}</tbody></table></div>"""
-
 
 def _v48127_events_page(values):
     rows, total, details = _v48127_event_groups(values)
@@ -369,7 +356,6 @@ def _v48127_events_page(values):
     <div class="card"><div class="section-head"><div><h3>Abuse Events by VM</h3><p>One row per VM. Abuse Count is the number of separate STARTED → RECOVERED occurrences in the selected window. Click the row or View button for exact start and end times.</p></div><div class="count-badges"><span>VM matched <b>{total}</b></span><span>Window <b>{escape(values['range'])}</b></span><span>Retention <b>7 days</b></span><span>Page <b>{values['page']}/{pages}</b></span></div></div>
     <div class="table-wrap"><table class="abuse-events-v48128"><thead><tr>{headers}</tr></thead><tbody>{body}</tbody></table></div>{_v48126_pagination('events', values, total)}</div>"""
 
-
 def vm_abuse_page_v48127():
     tab = (request.args.get("tab") or "current").strip().lower()
     if tab in {"history", "incidents", "summary", "events", "raw", "raw-events"}:
@@ -394,9 +380,7 @@ def vm_abuse_page_v48127():
         content += _v48127_events_page(values)
     return page("VM Abuse", content)
 
-
 app.view_functions["vm_abuse_page"] = vm_abuse_page_v48127
-
 
 V48127_UI_CSS = r"""
 <style id="v48127-simple-abuse-ui">
@@ -437,7 +421,6 @@ V48127_UI_JS = r"""
 
 _page_v48127_base = page
 
-
 def page(title, content):
     response = _page_v48127_base(title, content)
     try:
@@ -449,19 +432,14 @@ def page(title, content):
         app.logger.exception("Could not apply v48.12.7 simplified Abuse UI")
     return response
 
-# ========================================================================
-# VirtInfra Monitor v48.12.8 - Top-VM-style Abuse table, transparent ratios,
 # exact event minutes, and synchronized Admin cleanup.
-# ========================================================================
 V48128_VERSION = "48.12.8"
-
 
 def _v48128_minutes(seconds):
     seconds = max(0, safe_int(seconds, 0))
     if seconds == 0:
         return 0
     return max(1, int(round(seconds / 60.0)))
-
 
 def _v48128_low_usable_ratio(threshold, actual):
     """Bound inverse RAM severity to an intuitive 1.00x..2.00x range.
@@ -475,7 +453,6 @@ def _v48128_low_usable_ratio(threshold, actual):
     if threshold <= 0 or actual > threshold:
         return 0.0
     return min(2.0, max(1.0, 1.0 + ((threshold - actual) / threshold)))
-
 
 # Authoritative RAM-hit override. refresh_fast_current_state resolves this
 # global at runtime, so future Agent pushes immediately use the bounded ratio.
@@ -493,7 +470,6 @@ def _v48126_ram_hit(cfg, metrics):
     ):
         ratios.append(_v48128_low_usable_ratio(cfg["ram_low_usable_percent"], metrics["usable_percent"]))
     return bool(ratios), ratios
-
 
 def _v48128_severity_components(record, cfg):
     flags = set(_api_parse_flags(record.get("abuse_flags", "")))
@@ -536,7 +512,6 @@ def _v48128_severity_components(record, cfg):
     parts.sort(key=lambda item: item[0], reverse=True)
     return parts
 
-
 def _v48128_ratio_block(record, cfg):
     parts = _v48128_severity_components(record, cfg)
     stored = max(0.0, safe_float(record.get("severity"), 0.0))
@@ -558,7 +533,6 @@ def _v48128_ratio_block(record, cfg):
         f'<small class="ratio-help" title="{escape(formula, quote=True)}">{escape(formula)}</small>'
     )
 
-
 def _v48128_group_sort_header(title, options, current_sort, current_order):
     active_label = next((label for label, key, _link in options if key == current_sort), options[0][0])
     arrow = ""
@@ -574,11 +548,9 @@ def _v48128_group_sort_header(title, options, current_sort, current_order):
         '</details></div>'
     )
 
-
 def _v48128_filter_values():
     values = _v48127_filter_values()
     return values
-
 
 def _v48128_filter_form(tab, values, nodes):
     node_options = '<option value="">All nodes</option>' + ''.join(
@@ -628,7 +600,6 @@ def _v48128_filter_form(tab, values, nodes):
       <button type="submit">Filter</button>
       <a class="clear" href="{url_for('vm_abuse_page', tab=tab)}">Reset</a>
     </form>"""
-
 
 def _v48128_current_rows(values):
     cfg = get_abuse_settings()
@@ -701,7 +672,6 @@ def _v48128_current_rows(values):
     finally:
         conn.close()
 
-
 def _v48128_current_page(values):
     cfg = get_abuse_settings()
     rows, total, counts = _v48128_current_rows(values)
@@ -773,7 +743,6 @@ def _v48128_current_page(values):
     <div class="table-hint"><b>MAX RATIO</b> = the highest current metric ÷ its configured threshold among active rules. Low-usable RAM uses a bounded 1.00x–2.00x inverse scale, so near-zero usable RAM no longer appears as 50x. Use the metric headers to sort directly.</div>
     {_v48126_pagination('current', values, total)}</div>"""
 
-
 def _v48128_event_detail_table(items):
     now = now_ts()
     cfg = get_abuse_settings()
@@ -795,7 +764,6 @@ def _v48128_event_detail_table(items):
     if not body:
         body = '<tr><td colspan="8" class="empty">No occurrence details</td></tr>'
     return f"""<div class="event-occurrence-wrap"><table class="event-occurrence-table"><thead><tr><th>#</th><th>STATE</th><th>STARTED</th><th>ENDED</th><th>DURATION / MINUTES</th><th>MAX RATIO</th><th>REASON</th><th>RAW EVENTS</th></tr></thead><tbody>{body}</tbody></table></div>"""
-
 
 def _v48128_events_page(values):
     rows, total, details = _v48127_event_groups(values)
@@ -840,7 +808,6 @@ def _v48128_events_page(values):
     return f"""
     <div class="card"><div class="section-head"><div><h3>Abuse Events by VM</h3><p>One row per VM. Count, total minutes, longest minutes, max ratio and last abuse are all sortable. Expand a VM for every exact start/end occurrence.</p></div><div class="count-badges"><span>VM matched <b>{total}</b></span><span>Window <b>{escape(values['range'])}</b></span><span>Retention <b>7 days</b></span><span>Page <b>{values['page']}/{pages}</b></span></div></div>
     <div class="table-wrap"><table class="abuse-events-v48128"><thead><tr>{headers}</tr></thead><tbody>{body}</tbody></table></div>{_v48126_pagination('events', values, total)}</div>"""
-
 
 # Keep Admin raw-event cleanup and the derived incident table consistent.
 def clear_abuse_events_v48128():
@@ -893,9 +860,7 @@ def clear_abuse_events_v48128():
     log_account_event("abuse_history_cleared", username=actor, realm="admin", role="admin", detail=f"mode={mode};deleted={deleted};incidents=synchronized;q={q};event_type={event_type}"[:700])
     return redirect(url_for("admin_abuse_page", msg=f"Deleted {deleted} raw event record(s) and synchronized Abuse Events."))
 
-
 app.view_functions["clear_abuse_events"] = clear_abuse_events_v48128
-
 
 @app.route("/admin/abuse-vm-data/clear", methods=["POST"])
 def clear_vm_abuse_data_v48128():
@@ -925,9 +890,7 @@ def clear_vm_abuse_data_v48128():
     log_account_event("vm_abuse_data_cleared", username=actor, realm="admin", role="admin", detail=f"node={node};vm={vm_uuid};raw={raw_deleted};incidents={incident_deleted};reset_current={reset_current}"[:700])
     return redirect(url_for("admin_abuse_page", msg=f"Cleared Abuse data for {vm_uuid}: {raw_deleted} raw event(s), {incident_deleted} occurrence(s)" + ("; current state reset." if reset_current else ".")))
 
-
 _admin_abuse_page_v48128_base = app.view_functions.get("admin_abuse_page")
-
 
 def admin_abuse_page_v48128():
     response = _admin_abuse_page_v48128_base()
@@ -944,9 +907,7 @@ def admin_abuse_page_v48128():
         app.logger.exception("Could not apply v48.12.8 Admin Abuse management layer")
     return response
 
-
 app.view_functions["admin_abuse_page"] = admin_abuse_page_v48128
-
 
 def vm_abuse_page_v48128():
     tab = (request.args.get("tab") or "current").strip().lower()
@@ -971,9 +932,7 @@ def vm_abuse_page_v48128():
     content += _v48128_current_page(values) if tab == "current" else _v48128_events_page(values)
     return page("VM Abuse", content)
 
-
 app.view_functions["vm_abuse_page"] = vm_abuse_page_v48128
-
 
 V48128_UI_CSS = r"""
 <style id="v48128-abuse-table-ui">
@@ -987,7 +946,6 @@ html[data-theme=dark] .resource-primary{color:#f8fafc}html[data-theme=dark] .res
 
 _page_v48128_base = page
 
-
 def page(title, content):
     response = _page_v48128_base(title, content)
     try:
@@ -997,7 +955,6 @@ def page(title, content):
     except Exception:
         app.logger.exception("Could not apply v48.12.8 Abuse table UI")
     return response
-
 
 def _v48128_normalize_existing_ram_ratios():
     """One-time migration for retained v48.12.6/v48.12.7 50x-style RAM ratios."""
@@ -1067,25 +1024,19 @@ def _v48128_normalize_existing_ram_ratios():
     finally:
         conn.close()
 
-
 try:
     _v48128_normalize_existing_ram_ratios()
 except Exception:
     app.logger.exception("Could not run v48.12.8 ratio migration")
 
-# ========================================================================
-# VirtInfra Monitor v48.12.9 - operations-first Abuse table, colored rule chips,
 # exact active duration, explicit per-metric sorting, and complete cleanup.
-# ========================================================================
 V48129_VERSION = "48.12.9"
 V48129_BUILD = "r4"
-
 
 def _v48129_minutes_text(seconds):
     seconds = max(0, safe_int(seconds, 0))
     minutes = max(1, int(round(seconds / 60.0))) if seconds else 0
     return f"{minutes:,} min"
-
 
 def _v48129_level(pct):
     value = max(0.0, safe_float(pct, 0.0))
@@ -1097,7 +1048,6 @@ def _v48129_level(pct):
         return "warm"
     return "normal"
 
-
 def _v48129_rule_chip(kind, label, title=""):
     kind = kind if kind in {"network", "cpu", "ram", "disk", "time", "neutral"} else "neutral"
     title_attr = f' title="{escape(title, quote=True)}"' if title else ""
@@ -1106,10 +1056,8 @@ def _v48129_rule_chip(kind, label, title=""):
         f'{escape(str(label))}</span>'
     )
 
-
 def _v48129_flag_set(flags):
     return set(_v4810_canonical_flags(flags))
-
 
 def _v48129_reason_chips(flags, cfg, record=None):
     """Render stable, color-coded policy chips.
@@ -1187,7 +1135,6 @@ def _v48129_reason_chips(flags, cfg, record=None):
 
     return "".join(chips) or _v48129_rule_chip("neutral", "Policy match")
 
-
 def _v48129_ratio_details(record, cfg):
     parts = _v48128_severity_components(record, cfg)
     stored = max(0.0, safe_float(record.get("severity"), 0.0))
@@ -1206,7 +1153,6 @@ def _v48129_ratio_details(record, cfg):
         detail = f"{label}: {actual:.2f}% / {threshold:.2f}%"
     return ratio, label, detail
 
-
 def _v48129_reason_cell(record, cfg, started):
     ratio, _ratio_label, _detail = _v48129_ratio_details(record, cfg)
     primary = _v48126_primary_type(record.get("abuse_flags", ""))
@@ -1216,7 +1162,6 @@ def _v48129_reason_cell(record, cfg, started):
         f'<div class="abuse-rule-chips">{_v48129_reason_chips(record.get("abuse_flags", ""), cfg, record)}</div>'
         '</div>'
     )
-
 
 def _v48129_metric_abuse_time(started, kind, active, title_prefix="Active since"):
     if not active:
@@ -1229,7 +1174,6 @@ def _v48129_metric_abuse_time(started, kind, active, title_prefix="Active since"
         f'title="{escape(title, quote=True)}">{escape(label)}</small>'
     )
 
-
 def _v48129_abuse_groups(flags):
     values = _v48129_flag_set(flags)
     return {
@@ -1239,7 +1183,6 @@ def _v48129_abuse_groups(flags):
         "ram": "RAM_SUSTAINED" in values,
         "disk": "DISK_SUSTAINED" in values,
     }
-
 
 def _v48129_cpu_block(core_percent, full_percent, vcpu, streak_seconds=0, required_seconds=0, selected="cpu", abuse_time=""):
     core = max(0.0, safe_float(core_percent, 0.0))
@@ -1257,7 +1200,6 @@ def _v48129_cpu_block(core_percent, full_percent, vcpu, streak_seconds=0, requir
       <small class="resource-foot">{max(0,safe_int(vcpu,0))} vCPU</small>
     </div>"""
 
-
 def _v48129_ram_values(current_kib, rss_kib, available_kib, usable_kib, guest_pct):
     assigned = max(0.0, safe_float(current_kib, 0.0))
     rss = max(0.0, safe_float(rss_kib, 0.0))
@@ -1267,7 +1209,6 @@ def _v48129_ram_values(current_kib, rss_kib, available_kib, usable_kib, guest_pc
     used = max(0.0, available - usable) if guest_valid else 0.0
     pct = pct_clamp(safe_float(guest_pct, 0.0)) if guest_valid else -1.0
     return assigned, rss, used, pct, guest_valid
-
 
 def _v48129_ram_block(current_kib, rss_kib, available_kib, usable_kib, guest_pct, selected="ram", abuse_time=""):
     assigned, rss, used, guest, guest_valid = _v48129_ram_values(
@@ -1294,15 +1235,11 @@ def _v48129_ram_block(current_kib, rss_kib, available_kib, usable_kib, guest_pct
       <small class="resource-foot">RSS {rss_label}</small>
     </div>"""
 
-
-
-
 def _v48129_group_header(title, options, values):
     links = []
     for label, key, default in options:
         links.append(_v48127_sort_link("current", values, key, label, default))
     return f'<div class="metric-sort-head"><div>{escape(title)}</div><small>{" · ".join(links)}</small></div>'
-
 
 def _v48129_current_rows(values):
     cfg = get_abuse_settings()
@@ -1376,7 +1313,6 @@ def _v48129_current_rows(values):
     finally:
         conn.close()
 
-
 def _v48129_current_page(values):
     cfg = get_abuse_settings()
     rows, total, counts = _v48129_current_rows(values)
@@ -1444,7 +1380,6 @@ def _v48129_current_page(values):
     <div class="table-hint"><b>REASON / SEVERITY:</b> ratio is the largest active metric ÷ configured threshold. Colored chips identify Network, CPU, RAM, Disk and the exact active duration. The ratio is not a weighted score.</div>
     {_v48126_pagination('current', values, total)}</div>"""
 
-
 def _v48129_event_detail_table(items):
     now = now_ts()
     cfg = get_abuse_settings()
@@ -1465,7 +1400,6 @@ def _v48129_event_detail_table(items):
     if not body:
         body = '<tr><td colspan="8" class="empty">No occurrence details</td></tr>'
     return f"""<div class="event-occurrence-wrap"><table class="event-occurrence-table"><thead><tr><th>#</th><th>STATE</th><th>STARTED</th><th>ENDED</th><th>DURATION / MINUTES</th><th>MAX RATIO</th><th>REASON / DURATION</th><th>RAW EVENTS</th></tr></thead><tbody>{body}</tbody></table></div>"""
-
 
 def _v48129_events_page(values):
     rows, total, details = _v48127_event_groups(values)
@@ -1510,7 +1444,6 @@ def _v48129_events_page(values):
     return f"""
     <div class="card"><div class="section-head"><div><h3>Abuse Events by VM</h3><p>One row per VM. Sort by repeat count, total minutes, longest occurrence, max ratio or last Abuse. Expand a VM for exact start/end times.</p></div><div class="count-badges"><span>VM matched <b>{total}</b></span><span>Window <b>{escape(values['range'])}</b></span><span>Retention <b>7 days</b></span><span>Page <b>{values['page']}/{pages}</b></span></div></div>
     <div class="table-wrap"><table class="abuse-events-v48129"><thead><tr>{headers}</tr></thead><tbody>{body}</tbody></table></div>{_v48126_pagination('events', values, total)}</div>"""
-
 
 # Complete Admin cleanup contract. History cleanup never silently leaves the
 # derived incident table behind; current state has its own explicit reset.
@@ -1564,9 +1497,7 @@ def clear_abuse_events_v48129():
     log_account_event("abuse_history_cleared", username=actor, realm="admin", role="admin", detail=f"v48129;mode={mode};deleted={deleted};incidents=synchronized;q={q};event_type={event_type}"[:700])
     return redirect(url_for("admin_abuse_page", msg=f"Deleted {deleted} raw event record(s) and synchronized Abuse Events by VM."))
 
-
 app.view_functions["clear_abuse_events"] = clear_abuse_events_v48129
-
 
 @app.route("/admin/abuse-data/reset-all-v48129", methods=["POST"])
 def reset_all_abuse_data_v48129():
@@ -1588,7 +1519,6 @@ def reset_all_abuse_data_v48129():
     actor = dashboard_username() or get_admin_username()
     log_account_event("all_abuse_data_reset", username=actor, realm="admin", role="admin", detail=f"raw={raw};incidents={incidents};current={current}"[:700])
     return redirect(url_for("admin_abuse_page", msg=f"Reset all Abuse data: {raw} raw event(s), {incidents} occurrence(s), {current} current state row(s). Active offenders will be evaluated again from new Agent cycles."))
-
 
 @app.route("/admin/abuse-vm-data/manage-v48129", methods=["POST"])
 def manage_vm_abuse_data_v48129():
@@ -1620,9 +1550,7 @@ def manage_vm_abuse_data_v48129():
     log_account_event("vm_abuse_data_managed", username=actor, realm="admin", role="admin", detail=f"node={node};vm={vm_uuid};raw={raw};incidents={incidents};current={current}"[:700])
     return redirect(url_for("admin_abuse_page", msg=f"Cleared {vm_uuid}: raw={raw}, Abuse Events={incidents}, current={current}."))
 
-
 _admin_abuse_page_v48129_base = app.view_functions.get("admin_abuse_page")
-
 
 def admin_abuse_page_v48129():
     response = _admin_abuse_page_v48129_base()
@@ -1674,9 +1602,7 @@ def admin_abuse_page_v48129():
         app.logger.exception("Could not apply v48.12.9 Admin Abuse controls")
     return response
 
-
 app.view_functions["admin_abuse_page"] = admin_abuse_page_v48129
-
 
 def vm_abuse_page_v48129():
     tab = (request.args.get("tab") or "current").strip().lower()
@@ -1701,9 +1627,7 @@ def vm_abuse_page_v48129():
     content += _v48129_current_page(values) if tab == "current" else _v48129_events_page(values)
     return page("VM Abuse", content)
 
-
 app.view_functions["vm_abuse_page"] = vm_abuse_page_v48129
-
 
 V48129_UI_CSS = r"""
 <style id="v48129-operations-abuse-ui">
@@ -1730,7 +1654,6 @@ html[data-theme=dark] .metric-abuse-time-network{background:#0b2545;border-color
 
 _page_v48129_base = page
 
-
 def page(title, content):
     response = _page_v48129_base(title, content)
     try:
@@ -1741,4 +1664,3 @@ def page(title, content):
         app.logger.exception("Could not apply v48.12.9 operations Abuse UI")
     return response
 
-# ---------------------------------------------------------------------------

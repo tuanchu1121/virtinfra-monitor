@@ -1,5 +1,4 @@
 # 50.5.8-r4 fast Consumption + deadlock-safe inventory cleanup
-# ---------------------------------------------------------------------------
 # This layer is intentionally isolated. It does not change Abuse thresholds,
 # CPU/RAM/Disk formulas, Storage I/O, queue behavior, retention tiers, API
 # payloads or the 5-minute Agent push cadence.
@@ -16,7 +15,6 @@ V5058R4_ROLLUP_RETENTION_SECONDS = 8 * 86400
 _v5058r4_schema_ready = False
 _v5058r4_schema_lock = _v5058r4_threading.RLock()
 _v5058r4_db_base = db
-
 
 def _v5058r4_ensure_schema(conn):
     conn.executescript("""
@@ -51,7 +49,6 @@ def _v5058r4_ensure_schema(conn):
     """)
     conn.commit()
 
-
 def db():
     global _v5058r4_schema_ready
     conn = _v5058r4_db_base()
@@ -61,7 +58,6 @@ def db():
                 _v5058r4_ensure_schema(conn)
                 _v5058r4_schema_ready = True
     return conn
-
 
 def _v5058r4_rollup_physical_consumption(conn, node, data_time, interval_seconds, physical_interfaces):
     """Add one accepted 5-minute physical sample to server-side rollups.
@@ -134,7 +130,6 @@ def _v5058r4_rollup_physical_consumption(conn, node, data_time, interval_seconds
         last_push=GREATEST(node_consumption_daily.last_push,excluded.last_push)
     """, (day_start,) + values)
     return True
-
 
 def backfill_node_consumption_rollups(hours=48):
     """Rebuild recent node hourly/daily rollups from retained 5-minute samples."""
@@ -228,10 +223,8 @@ def backfill_node_consumption_rollups(hours=48):
     finally:
         conn.close()
 
-
 def _v5058r4_deadlock(exc):
     return getattr(exc, "sqlstate", "") == "40P01" or "deadlock detected" in str(exc).lower()
-
 
 def _v5058r4_cleanup_batch(sql, params, retries=3):
     for attempt in range(max(1, retries)):
@@ -254,7 +247,6 @@ def _v5058r4_cleanup_batch(sql, params, retries=3):
         finally:
             conn.close()
     return 0
-
 
 def run_inventory_cleanup_batches(batch_size=None, max_batches=None):
     """Expire inventory in short deterministic batches without blocking /push."""
@@ -346,13 +338,11 @@ def run_inventory_cleanup_batches(batch_size=None, max_batches=None):
             pass
         lock_conn.close()
 
-
 # ----- Fast, rolling-window Consumption readers --------------------------------
 
 def _v5058r4_ceil_hour(ts):
     base = local_hour_start(ts)
     return base if safe_int(ts, 0) == base else base + 3600
-
 
 def _v5058r4_vm_raw_branch(start, end, selected_node=""):
     if end <= start:
@@ -373,7 +363,6 @@ def _v5058r4_vm_raw_branch(start, end, selected_node=""):
         params.append(selected_node)
     return sql, params
 
-
 def _v5058r4_vm_hourly_branch(start, end, selected_node=""):
     if end <= start:
         return "", []
@@ -388,7 +377,6 @@ def _v5058r4_vm_hourly_branch(start, end, selected_node=""):
         params.append(selected_node)
     return sql, params
 
-
 def _v5058r4_vm_daily_branch(start, end, selected_node=""):
     if end <= start:
         return "", []
@@ -402,7 +390,6 @@ def _v5058r4_vm_daily_branch(start, end, selected_node=""):
     if selected_node:
         params.append(selected_node)
     return sql, params
-
 
 def _v5058c_vm_source_sql(start, end, selected_node=""):
     """Use daily/full-hour rollups and raw 5-minute rows only at true edges."""
@@ -442,7 +429,6 @@ def _v5058c_vm_source_sql(start, end, selected_node=""):
             branches.append(sql); params.extend(values)
     return " UNION ALL ".join(branches), params
 
-
 def _v5058c_visible_vm_cte(selected_node=""):
     node_filter = " AND l.node=?" if selected_node else ""
     params = [PUBLIC_BRIDGE, PRIVATE_BRIDGE]
@@ -479,7 +465,6 @@ def _v5058c_visible_vm_cte(selected_node=""):
       )
     """ % node_filter
     return sql, params
-
 
 def _v5058c_vm_ctes(start, end, selected_node=""):
     source_sql, source_params = _v5058c_vm_source_sql(start, end, selected_node)
@@ -528,7 +513,6 @@ def _v5058c_vm_ctes(start, end, selected_node=""):
     params.append(expected_samples)
     return sql, params
 
-
 def _v5058c_search_clause(tab, q):
     q = str(q or "").strip()
     if not q:
@@ -553,7 +537,6 @@ def _v5058c_search_clause(tab, q):
       )
     """ % mac_exact_sql, params
 
-
 def _v5058r4_cached_totals(kind, start, end, selected_node, compute):
     seconds = max(1, safe_int(end, 0) - safe_int(start, 0))
     cache_end = (safe_int(end, 0) // 60) * 60
@@ -574,7 +557,6 @@ def _v5058r4_cached_totals(kind, start, end, selected_node, compute):
         pass
     return data
 
-
 def _v5058r4_vm_totals_uncached(start, end, selected_node=""):
     ctes, params = _v5058c_vm_ctes(start, end, selected_node)
     conn = db()
@@ -593,10 +575,8 @@ def _v5058r4_vm_totals_uncached(start, end, selected_node=""):
     finally:
         conn.close()
 
-
 def _v5058c_vm_totals(start, end, selected_node=""):
     return _v5058r4_cached_totals("vm", start, end, selected_node, _v5058r4_vm_totals_uncached)
-
 
 def _v5058c_vm_rows(start, end, selected_node, q, coverage, sort_by, order, page_no, limit):
     ctes, params = _v5058c_vm_ctes(start, end, selected_node)
@@ -632,10 +612,8 @@ def _v5058c_vm_rows(start, end, selected_node, q, coverage, sort_by, order, page
     rows = [tuple(row[:-1]) for row in raw_rows]
     return rows, total, page_no, max_page
 
-
 def _v5058r4_node_raw_branch(start, end, selected_node=""):
     return _v5058c_raw_node_branch(start, end, selected_node)
-
 
 def _v5058r4_node_hourly_branch(start, end, selected_node=""):
     node_clause = " AND h.node=?" if selected_node else ""
@@ -654,7 +632,6 @@ def _v5058r4_node_hourly_branch(start, end, selected_node=""):
     if selected_node:
         params.append(selected_node)
     return sql, params
-
 
 def _v5058r4_node_legacy_fallback(start, end, selected_node=""):
     node_clause = " AND b.node=?" if selected_node else ""
@@ -678,7 +655,6 @@ def _v5058r4_node_legacy_fallback(start, end, selected_node=""):
         params.append(selected_node)
     return sql, params
 
-
 def _v5058c_node_source_sql(start, end, selected_node=""):
     """Use compact server hourly rows, exact raw edges and legacy-only fallback."""
     start = safe_int(start, 0); end = safe_int(end, 0)
@@ -700,7 +676,6 @@ def _v5058c_node_source_sql(start, end, selected_node=""):
         sql, values = _v5058r4_node_raw_branch(full_end, end, selected_node)
         branches.append(sql); params.extend(values)
     return " UNION ALL ".join(branches), params
-
 
 def _v5058c_node_ctes(start, end, selected_node=""):
     source_sql, source_params = _v5058c_node_source_sql(start, end, selected_node)
@@ -753,7 +728,6 @@ def _v5058c_node_ctes(start, end, selected_node=""):
     params.append(expected_seconds)
     return sql, params
 
-
 def _v5058r4_node_totals_uncached(start, end, selected_node=""):
     ctes, params = _v5058c_node_ctes(start, end, selected_node)
     conn = db()
@@ -772,10 +746,8 @@ def _v5058r4_node_totals_uncached(start, end, selected_node=""):
     finally:
         conn.close()
 
-
 def _v5058c_node_totals(start, end, selected_node=""):
     return _v5058r4_cached_totals("node", start, end, selected_node, _v5058r4_node_totals_uncached)
-
 
 def _v5058c_node_rows(start, end, q, coverage, sort_by, order, page_no, limit):
     ctes, params = _v5058c_node_ctes(start, end)
@@ -811,7 +783,6 @@ def _v5058c_node_rows(start, end, q, coverage, sort_by, order, page_no, limit):
     rows = [tuple(row[:-1]) for row in raw_rows]
     return rows, total, page_no, max_page
 
-
 def _v5058c_visible_nodes():
     conn = db()
     try:
@@ -826,7 +797,6 @@ def _v5058c_visible_nodes():
     finally:
         conn.close()
 
-
 # Include additive rollups in existing purge/reset paths without changing any
 # established table or endpoint behavior.
 _v5058r4_purge_node_data_base = purge_node_data
@@ -837,7 +807,6 @@ def purge_node_data(conn, node):
     result["node_consumption_hourly"] = _delete_count(conn, "DELETE FROM node_consumption_hourly WHERE node=?", (node,))
     result["node_consumption_daily"] = _delete_count(conn, "DELETE FROM node_consumption_daily WHERE node=?", (node,))
     return result
-
 
 MONITORING_DATA_TABLES = tuple(dict.fromkeys(tuple(MONITORING_DATA_TABLES) + (
     "node_consumption_hourly", "node_consumption_daily",
@@ -851,7 +820,6 @@ V48102_RESET_APP_TABLES = tuple(dict.fromkeys(tuple(V48102_RESET_APP_TABLES) + (
 # /push implementation can be rerun as one complete transaction. No partial
 # payload is committed because PostgreSQL aborts the failed transaction.
 _v5058r4_push_view_base = app.view_functions.get("push")
-
 
 def push_v5058r4_deadlock_retry():
     if _v5058r4_push_view_base is None:
@@ -872,8 +840,6 @@ def push_v5058r4_deadlock_retry():
             time.sleep(delay)
     return {"error": "push_retry_exhausted"}, 503
 
-
 if _v5058r4_push_view_base is not None:
     app.view_functions["push"] = push_v5058r4_deadlock_retry
 
-# ---------------------------------------------------------------------------

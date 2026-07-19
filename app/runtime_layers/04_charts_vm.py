@@ -3,17 +3,6 @@ def chart_step_seconds(period):
     period = clean_period(period)
     return CACHE_BUCKET_SECONDS if period_seconds(period) <= RAW_RETENTION_DAYS * 86400 else 3600
 
-
-
-def fmt_chart_label(ts, step):
-    dt = datetime.fromtimestamp(int(ts), TZ)
-    if step >= 86400:
-        return dt.strftime("%m-%d")
-    if step >= 3600:
-        return dt.strftime("%m-%d %H:%M")
-    return dt.strftime("%H:%M")
-
-
 def vm_period_links(current, node, vm_uuid, bridge, iface):
     links = []
     for period in PERIODS:
@@ -28,7 +17,6 @@ def vm_period_links(current, node, vm_uuid, bridge, iface):
         cls = "active" if period == current else ""
         links.append(f'<a class="{cls}" href="{escape(href, quote=True)}">{escape(period_label(period))}</a>')
     return "".join(links)
-
 
 def query_vm_chart(node, vm_uuid, period, bridge="", iface=""):
     """Return exact retained VM network buckets with whole-window averages and local peaks."""
@@ -91,10 +79,7 @@ def query_vm_chart(node, vm_uuid, period, bridge="", iface=""):
     step = min(gaps) if gaps else chart_step_seconds(period)
     return rows, start, end, step
 
-
-
 NODE_CHART_MAX_POINTS = max(60, min(480, int(os.environ.get("BW_NODE_CHART_MAX_POINTS", "240"))))
-
 
 def _node_retained_buckets(conn, node, period):
     """Return real retained buckets in the requested range from the compact index.
@@ -124,7 +109,6 @@ def _node_retained_buckets(conn, node, period):
         ).fetchall()
     return [int(row[0]) for row in rows if row and int(row[0] or 0) > 0]
 
-
 def _sample_real_buckets(bucket_ids, max_points=NODE_CHART_MAX_POINTS):
     """Evenly select real push buckets without averaging or inventing zeroes."""
     ids = list(dict.fromkeys(int(v) for v in bucket_ids if int(v or 0) > 0))
@@ -141,10 +125,8 @@ def _sample_real_buckets(bucket_ids, max_points=NODE_CHART_MAX_POINTS):
             chosen.append(value)
     return chosen
 
-
 def _sql_in_placeholders(values):
     return ",".join("?" for _ in values) or "NULL"
-
 
 def query_node_chart(node, period, q="", vm_status="active"):
     """Return at most NODE_CHART_MAX_POINTS real node buckets.
@@ -194,7 +176,6 @@ def query_node_chart(node, period, q="", vm_status="active"):
     step = min((g for g in gaps if g > 0), default=chart_step_seconds(period))
     return rows, start, end, step
 
-
 def sample_chart_rows(rows, max_points=360):
     rows = list(rows or [])
     if len(rows) <= max_points:
@@ -205,99 +186,7 @@ def sample_chart_rows(rows, max_points=360):
         sampled.append(rows[-1])
     return sampled
 
-
-def node_chart_svg(rows, title):
-    rows = sample_chart_rows(rows)
-    # Keep the node chart clean: show Public and Private only.
-    # Total remains available in the overview cards and the raw data table below.
-    if not rows or max((max(r["public"], r["private"]) for r in rows), default=0) <= 0:
-        return f"""
-        <div class="card chart-card node-chart-card">
-            <h3>{escape(title)}</h3>
-            <div class="empty">No chart data in this period</div>
-        </div>
-        """
-
-    w, h = 1100, 280
-    left, right, top, bottom = 74, 18, 18, 42
-    plot_w = w - left - right
-    plot_h = h - top - bottom
-    real_max = max(max(r["public"], r["private"]) for r in rows) or 1
-    max_v = nice_ceiling(real_max)
-
-    grid = []
-    labels = []
-    for i in range(5):
-        ratio = i / 4
-        y = top + plot_h - ratio * plot_h
-        value = max_v * ratio
-        grid.append(f'<line x1="{left}" y1="{y:.1f}" x2="{w-right}" y2="{y:.1f}" class="grid-line"/>')
-        labels.append(f'<text x="8" y="{y+4:.1f}" class="axis-label">{escape(human(value))}</text>')
-
-    x_labels = []
-    n = len(rows)
-    if n <= 7:
-        idxs = list(range(n))
-    else:
-        idxs = sorted(set([0, n//4, n//2, (3*n)//4, n-1]))
-    for idx in idxs:
-        x = left + (idx * plot_w / (n - 1)) if n > 1 else left + plot_w / 2
-        x_labels.append(f'<text x="{x:.1f}" y="{h-15}" class="x-label" text-anchor="middle">{escape(rows[idx]["label"])}</text>')
-
-    public_points = make_points(rows, "public", left, top, plot_w, plot_h, max_v)
-    private_points = make_points(rows, "private", left, top, plot_w, plot_h, max_v)
-
-    hover_items = []
-    dot_items = []
-    band_w = plot_w / max(n - 1, 1)
-    for idx, row in enumerate(rows):
-        x_public, y_public = point_xy(rows, idx, "public", left, top, plot_w, plot_h, max_v)
-        x_private, y_private = point_xy(rows, idx, "private", left, top, plot_w, plot_h, max_v)
-        if row["public"] or row["private"]:
-            dot_items.append(f'<circle cx="{x_public:.1f}" cy="{y_public:.1f}" r="2.5" class="dot public-dot"/>')
-            dot_items.append(f'<circle cx="{x_private:.1f}" cy="{y_private:.1f}" r="2.5" class="dot private-dot"/>')
-        hover_x = x_public - band_w / 2
-        hover_w = band_w if n > 1 else plot_w
-        tooltip = (
-            f"{fmt_full(row['bucket'])}\n"
-            f"Public: {human(row['public'])}\n"
-            f"Private: {human(row['private'])}\n"
-            f"RX: {human(row['rx'])}\n"
-            f"TX: {human(row['tx'])}\n"
-            f"Total: {human(row['total'])}"
-        )
-        hover_items.append(
-            f'<rect x="{hover_x:.1f}" y="{top}" width="{hover_w:.1f}" height="{plot_h}" class="hover-zone">'
-            f'<title>{escape(tooltip)}</title></rect>'
-        )
-
-    return f"""
-    <div class="card chart-card node-chart-card">
-        <h3>{escape(title)}</h3>
-        <div class="legend">
-            <span><i class="public"></i>Public</span>
-            <span><i class="private"></i>Private</span>
-            <span class="chart-note">Total is shown in the raw data table below</span>
-        </div>
-        <div class="svg-wrap node-svg-wrap">
-            <svg viewBox="0 0 {w} {h}" role="img" aria-label="{escape(title)}">
-                {''.join(grid)}
-                {''.join(labels)}
-                <line x1="{left}" y1="{top}" x2="{left}" y2="{h-bottom}" class="axis"/>
-                <line x1="{left}" y1="{h-bottom}" x2="{w-right}" y2="{h-bottom}" class="axis"/>
-                <polyline points="{public_points}" class="line public-line"/>
-                <polyline points="{private_points}" class="line private-line"/>
-                {''.join(dot_items)}
-                {''.join(x_labels)}
-                {''.join(hover_items)}
-            </svg>
-        </div>
-    </div>
-    """
-
-
 NODE_SNAPSHOT_ROWS_PER_PAGE = 50
-
 
 def node_chart_raw_sort_header(label, key, node, period, q, current_sort, current_order, table_sort, table_order):
     current_sort = clean_node_chart_sort(current_sort)
@@ -318,7 +207,6 @@ def node_chart_raw_sort_header(label, key, node, period, q, current_sort, curren
     ) + "#real-snapshot-samples"
     arrow = " ↓" if current_sort == key and current_order == "desc" else (" ↑" if current_sort == key else "")
     return f'<a class="sort-link" href="{escape(href, quote=True)}">{escape(label)}{arrow}</a>'
-
 
 def node_chart_table(rows, node, period, q="", chart_sort="time", chart_order="desc", table_sort="total", table_order="desc"):
     chart_sort = clean_node_chart_sort(chart_sort)
@@ -457,7 +345,6 @@ def node_chart_table(rows, node, period, q="", chart_sort="time", chart_order="d
     </div>
     """
 
-
 def nice_ceiling(value):
     value = float(value or 0)
     if value <= 0:
@@ -473,7 +360,6 @@ def nice_ceiling(value):
     else:
         nice = 10
     return nice * (10 ** exponent)
-
 
 def point_xy(rows, idx, key, x0, y0, plot_w, plot_h, max_v):
     if len(rows) == 1:
@@ -498,122 +384,12 @@ def make_points(rows, key, x0, y0, plot_w, plot_h, max_v):
         points.append(f"{x:.1f},{y:.1f}")
     return " ".join(points)
 
-
-
-def vm_metric_chart_svg(rows, title, series, source_note="", render_zero=False):
-    rows = sample_chart_rows(rows)
-    """Generic small multi-line chart for one VM metric family."""
-    series = list(series or [])
-    if not series:
-        return ""
-
-    real_max = 0.0
-    for row in rows or []:
-        for item in series:
-            real_max = max(real_max, float(row.get(item["key"], 0) or 0))
-
-    if not rows or (real_max <= 0 and not render_zero):
-        return f"""
-        <div class="card chart-card small-chart">
-            <h3>{escape(title)}</h3>
-            <div class="empty">No chart data in this period</div>
-        </div>
-        """
-
-    # Optional zero-value chart keeps the VM chart grid balanced for metrics
-    # where 0 is meaningful, especially healthy Drops / Errors.
-    zero_chart = real_max <= 0
-
-    w, h = 860, 240
-    left, right, top, bottom = 74, 18, 18, 42
-    plot_w = w - left - right
-    plot_h = h - top - bottom
-    max_v = 1 if zero_chart else nice_ceiling(real_max)
-
-    grid = []
-    labels = []
-    first_kind = series[0].get("kind", "raw")
-    for i in range(5):
-        ratio = i / 4
-        y = top + plot_h - ratio * plot_h
-        value = max_v * ratio
-        grid.append(f'<line x1="{left}" y1="{y:.1f}" x2="{w-right}" y2="{y:.1f}" class="grid-line"/>')
-        labels.append(f'<text x="8" y="{y+4:.1f}" class="axis-label">{escape(fmt_metric_value(value, first_kind))}</text>')
-
-    x_labels = []
-    n = len(rows)
-    if n <= 7:
-        idxs = list(range(n))
-    else:
-        idxs = sorted(set([0, n//4, n//2, (3*n)//4, n-1]))
-    for idx in idxs:
-        x = left + (idx * plot_w / (n - 1)) if n > 1 else left + plot_w / 2
-        x_labels.append(f'<text x="{x:.1f}" y="{h-15}" class="x-label" text-anchor="middle">{escape(rows[idx]["label"])}</text>')
-
-    line_items = []
-    dot_items = []
-    legend_items = []
-    hover_items = []
-    band_w = plot_w / max(n - 1, 1)
-
-    for sidx, item in enumerate(series):
-        key = item["key"]
-        cls = item.get("class", f"metric{sidx + 1}")
-        points = make_points(rows, key, left, top, plot_w, plot_h, max_v)
-        line_items.append(f'<polyline points="{points}" class="line {cls}-line"/>')
-        legend_items.append(f'<span><i class="{cls}"></i>{escape(item.get("label", key))}</span>')
-
-        for idx, row in enumerate(rows):
-            if float(row.get(key, 0) or 0) <= 0:
-                continue
-            x, y = point_xy(rows, idx, key, left, top, plot_w, plot_h, max_v)
-            dot_items.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="2.4" class="dot {cls}-dot"/>')
-
-    for idx, row in enumerate(rows):
-        x = left + (idx * plot_w / (n - 1)) if n > 1 else left + plot_w / 2
-        hover_x = x - band_w / 2
-        hover_w = band_w if n > 1 else plot_w
-        parts = [fmt_full(row["bucket"])]
-        for item in series:
-            parts.append(f'{item.get("label", item["key"])}: {fmt_metric_value(row.get(item["key"], 0), item.get("kind", "raw"))}')
-        tooltip = "\n".join(parts)
-        hover_items.append(
-            f'<rect x="{hover_x:.1f}" y="{top}" width="{hover_w:.1f}" height="{plot_h}" class="hover-zone">'
-            f'<title>{escape(tooltip)}</title></rect>'
-        )
-
-    note_html = f'<span class="chart-note">{escape(source_note)}</span>' if source_note else ''
-    return f"""
-    <div class="card chart-card small-chart">
-        <h3>{escape(title)}</h3>
-        <div class="legend">
-            {''.join(legend_items)}
-            {note_html}
-        </div>
-        <div class="svg-wrap">
-            <svg viewBox="0 0 {w} {h}" role="img" aria-label="{escape(title)}">
-                {''.join(grid)}
-                {''.join(labels)}
-                <line x1="{left}" y1="{top}" x2="{left}" y2="{h-bottom}" class="axis"/>
-                <line x1="{left}" y1="{h-bottom}" x2="{w-right}" y2="{h-bottom}" class="axis"/>
-                {''.join(line_items)}
-                {''.join(dot_items)}
-                {''.join(x_labels)}
-                {''.join(hover_items)}
-            </svg>
-        </div>
-    </div>
-    """
-
-
 def vm_raw_sort_header(label, key, node, vm_uuid, bridge, iface, period, current_sort, current_order):
     current_sort=clean_chart_table_sort(current_sort); current_order=clean_sort_order(current_order)
     next_order=reverse_order(current_order) if current_sort==key else "desc"
     href=url_for("vm_page",node=node,vm_uuid=vm_uuid,bridge=bridge,iface=iface,period=period,raw_sort=key,raw_order=next_order,raw_page=1,raw_limit=max(25,min(200,safe_int(request.args.get("raw_limit"),100))))
     arrow=" ↓" if current_sort==key and current_order=="desc" else (" ↑" if current_sort==key else "")
     return f'<a class="sort-link" href="{escape(href,quote=True)}">{escape(label)}{arrow}</a>'
-
-
 
 def vm_chart_table(rows, node, vm_uuid, bridge, iface, period, raw_sort="time", raw_order="desc"):
     raw_sort=clean_chart_table_sort(raw_sort); raw_order=clean_sort_order(raw_order)
@@ -640,31 +416,6 @@ def vm_chart_table(rows, node, vm_uuid, bridge, iface, period, raw_sort="time", 
     pager=f'<div class="pagination"><div class="page-summary">Showing <b>{0 if total==0 else (page_no-1)*limit+1}</b>-<b>{min(total,page_no*limit)}</b> of <b>{total}</b></div><div class="page-links">{link("Prev",max(1,page_no-1),page_no<=1)}<span class="page-link active">{page_no}/{pages}</span>{link("Next",min(pages,page_no+1),page_no>=pages)}</div></div>'
     return f"""<div class="card small-chart vm-raw-table"><h3>Retained Network Snapshots</h3><table><thead><tr>{''.join(f'<th>{h}</th>' for h in headers)}</tr></thead><tbody>{body}</tbody></table>{pager}<div class="table-hint">AVG uses exact whole-window counters. PEAK is the highest local sample. No 15-second rows are stored in the database.</div></div>"""
 
-
-def query_vm_perf_chart(node, vm_uuid, period):
-    """Exact retained VM performance samples without averaging or gap filling."""
-    start,end=range_for_period(period)
-    conn=db()
-    try:
-        raw=conn.execute("""
-            SELECT bucket,cpu_percent,vcpu_current,ram_current_kib,ram_maximum_kib,ram_rss_kib,
-                   ram_available_kib,ram_unused_kib,ram_usable_kib,
-                   disk_read_delta,disk_write_delta,disk_read_reqs_delta,disk_write_reqs_delta,
-                   time,COALESCE(interval_seconds,?)
-            FROM vm_perf_stats
-            WHERE node=? AND vm_uuid=? AND bucket>=? AND bucket<?
-            ORDER BY bucket,time
-        """,(CACHE_BUCKET_SECONDS,node,vm_uuid,start,end)).fetchall()
-    finally: conn.close()
-    by={int(r[0]):r for r in raw}; rows=[]
-    for bucket in sorted(by):
-        r=by[bucket]; interval=max(1,int(r[14] or CACHE_BUCKET_SECONDS)); rd=int(r[9] or 0); wd=int(r[10] or 0)
-        rows.append({"bucket":bucket,"label":fmt_chart_label(bucket,interval),"cpu_percent":float(r[1] or 0),"vcpu_current":int(r[2] or 0),"cpu_core_percent":vm_core_cpu_percent(r[1],r[2]),"ram_current_bytes":float(r[3] or 0)*1024,"ram_maximum_bytes":float(r[4] or 0)*1024,"ram_rss_bytes":float(r[5] or 0)*1024,"ram_available_bytes":float(r[6] or 0)*1024,"ram_unused_bytes":float(r[7] or 0)*1024,"ram_usable_bytes":float(r[8] or 0)*1024,"disk_read_delta":rd,"disk_write_delta":wd,"disk_read_bps":rd/interval,"disk_write_bps":wd/interval,"disk_read_reqs":int(r[11] or 0),"disk_write_reqs":int(r[12] or 0),"last_push":int(r[13] or 0)})
-    gaps=[rows[i]["bucket"]-rows[i-1]["bucket"] for i in range(1,len(rows)) if rows[i]["bucket"]>rows[i-1]["bucket"]]
-    return rows,start,end,(min(gaps) if gaps else chart_step_seconds(period))
-
-
-
 def vm_scope_text(bridge, iface):
     parts = []
     if bridge:
@@ -678,8 +429,6 @@ def vm_scope_text(bridge, iface):
         parts.append(f"Interface {iface}")
     return " / ".join(parts) if parts else "All interfaces"
 
-
-
 def health_state(last_push):
     state, _age, _missed = node_status_state(last_push)
     if state == "green":
@@ -688,7 +437,6 @@ def health_state(last_push):
         return "warning"
     return "down"
 
-
 def health_badge(last_push):
     state = health_state(last_push)
     if state == "healthy":
@@ -696,7 +444,6 @@ def health_badge(last_push):
     if state == "warning":
         return '<span class="health-pill warning">🟡 Missed</span>'
     return '<span class="health-pill down">🔴 Down</span>'
-
 
 def human_age(seconds):
     seconds = max(0, int(seconds or 0))
@@ -711,14 +458,12 @@ def human_age(seconds):
     days = hours // 24
     return f"{days}d {hours % 24}h"
 
-
 def missed_cycles(last_push):
     if not last_push:
         return "-"
     age = now_ts() - int(last_push)
     # Agent cadence is 5 minutes. 0 means no missed cycle yet.
     return max(0, int((age - CACHE_BUCKET_SECONDS) // CACHE_BUCKET_SECONDS))
-
 
 def missed_cycles_for_gap(previous_push, current_push):
     """Count complete scheduled cycles missed between two successful pushes."""
@@ -728,7 +473,6 @@ def missed_cycles_for_gap(previous_push, current_push):
         return 0
     gap = current_push - previous_push
     return max(0, int((gap - STATUS_PUSH_SECONDS) // STATUS_PUSH_SECONDS))
-
 
 def record_recovered_miss_event(conn, node, previous_push, current_push, source="live"):
     """Persist one recovered outage, returning its missed-cycle count."""
@@ -753,7 +497,6 @@ def record_recovered_miss_event(conn, node, previous_push, current_push, source=
         now_ts(),
     ))
     return cycles
-
 
 def ensure_node_missed_history_backfill():
     """One-time backfill from available raw 5-minute snapshots.
@@ -817,7 +560,6 @@ def ensure_node_missed_history_backfill():
     finally:
         conn.close()
 
-
 def get_node_missed_history(node, limit=500):
     """Return persistent completed events plus the current live gap.
 
@@ -880,5 +622,4 @@ def get_node_missed_history(node, limit=500):
         "last_recovered": last_recovered,
         "events": events,
     }
-
 

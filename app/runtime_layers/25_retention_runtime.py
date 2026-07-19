@@ -1,12 +1,9 @@
-# v48.12.5 bounded 7-day retention + hourly automatic cleanup
-# ---------------------------------------------------------------------------
 V48125_VERSION = "48.12.5"
 
 # The earlier retention implementation already preserves one *real* agent push
 # per node/local-hour.  This layer bounds every historical/log table to seven
 # days while preserving current state, inventory, users, settings and API keys.
 _run_retention_v48125_base = run_retention
-
 
 def _v48125_retention_specs(cutoff):
     return (
@@ -20,7 +17,6 @@ def _v48125_retention_specs(cutoff):
         ("maintenance_jobs", "status NOT IN ('queued','running') AND COALESCE(finished_at,created_at)<?", (cutoff,)),
         ("retention_runs", "COALESCE(finished_at,started_at)<?", (cutoff,)),
     )
-
 
 def run_retention(dry_run=False):
     stats = _run_retention_v48125_base(dry_run=dry_run)
@@ -65,7 +61,6 @@ def run_retention(dry_run=False):
     finally:
         conn.close()
 
-
 V48125_UI_CSS = r"""
 <style id="v48125-retention-admin-layout">
 .retention-policy-strip{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:10px;margin:10px 0 14px}
@@ -87,7 +82,6 @@ html[data-theme=dark] .admin-abuse-danger>.bulk-bar{background:#1d1519!important
 
 _page_v48125_base = page
 
-
 def page(title, content):
     policy = f"""
     <div class="retention-policy-strip">
@@ -107,4 +101,3 @@ def page(title, content):
         app.logger.exception("Could not apply v48.12.5 retention layout")
     return response
 
-# ---------------------------------------------------------------------------

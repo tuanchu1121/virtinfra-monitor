@@ -3,7 +3,6 @@ def percent(used, total):
         return 0.0
     return round((float(used) / float(total)) * 100.0, 1)
 
-
 def read_meminfo():
     data = {}
     try:
@@ -19,14 +18,12 @@ def read_meminfo():
     used = max(0, total - available) if total else 0
     return total, used, available
 
-
 def read_uptime_seconds():
     try:
         with open("/proc/uptime", "r", encoding="utf-8") as f:
             return int(float(f.read().split()[0]))
     except Exception:
         return 0
-
 
 def get_monitor_system_health():
     monitor_dir = os.path.dirname(DB) or "."
@@ -84,8 +81,6 @@ def get_monitor_system_health():
         "node_count": node_count, "vm_count": vm_count, "account_log_count": account_log_count, "node_log_count": node_log_count,
     }
 
-
-
 MONITORING_DATA_TABLES = (
     # Fast/current state first, so stale 5m dashboard rows disappear even if a
     # very large historical cleanup is interrupted later.
@@ -125,7 +120,6 @@ MONITORING_DATA_TABLES = (
     "node_logs",
     "retention_runs",
 )
-
 
 def clear_all_monitoring_data():
     """Delete all monitoring, inventory, current-cache and abuse rows.
@@ -183,7 +177,6 @@ def clear_all_monitoring_data():
         conn.close()
     return result
 
-
 def get_database_maintenance_stats():
     """Cheap PostgreSQL size and dead-row stats. Never scan history on page load."""
     try:
@@ -205,7 +198,6 @@ def get_database_maintenance_stats():
         "reusable_bytes": 0,
     }
 
-
 def get_maintenance_jobs(limit=10):
     conn = db()
     try:
@@ -219,7 +211,6 @@ def get_maintenance_jobs(limit=10):
     finally:
         conn.close()
 
-
 def maintenance_status_badge(status):
     status = (status or "queued").strip().lower()
     if status == "ok":
@@ -229,59 +220,6 @@ def maintenance_status_badge(status):
     else:
         cls = "red"
     return f'<span class="vm-state {cls}">{escape(status.upper())}</span>'
-
-
-def database_maintenance_card(message="", error=""):
-    s = get_database_maintenance_stats()
-    jobs = get_maintenance_jobs(10)
-    notice = f'<div class="error-box">{escape(error)}</div>' if error else (f'<div class="success-box">{escape(message)}</div>' if message else "")
-    rows = ""
-    for job_id, created_at, started_at, finished_at, action, parameters, status, requested_by, job_message, unit_name in jobs:
-        rows += f"""<tr><td>{job_id}</td><td>{fmt_full(created_at)}</td><td>{escape(action or '-')}</td><td>{maintenance_status_badge(status)}</td><td>{fmt_full(started_at)}</td><td>{fmt_full(finished_at)}</td><td>{escape((job_message or '-')[:700])}</td><td class="mono">{escape(unit_name or '-')}</td></tr>"""
-    if not rows:
-        rows = '<tr><td colspan="8" class="empty">No maintenance jobs yet</td></tr>'
-    return f"""
-    <div class="card">
-        <div class="table-title-row"><h3>Maintenance & Purge Queue</h3><div class="count-badges"><span>PostgreSQL data <b>{human(s['db_size'])}</b></span><span>WAL reserved/recycled <b>{human(s['wal_size'])}</b></span><span>Dead rows <b>{s['freelist_count']:,}</b></span></div></div>
-        {notice}
-        <div class="admin-note">Jobs run outside Gunicorn through <b>bw-monitor-maintenance@.service</b>. Purge actions are queued in batches of at most <b>3 nodes or VMs</b> and executed one batch at a time, so the Admin request returns immediately instead of holding a web worker.</div>
-        <div class="bulk-bar">
-            <form class="inline-form" method="post" action="{url_for('admin_database_maintenance')}" onsubmit="return confirm('Run bounded retention now? Latest 48 hours stay at 5-minute resolution; days 3-7 keep one real snapshot per hour; older history is deleted.')"><input type="hidden" name="csrf_token" value="{escape(csrf_token(), quote=True)}"><input type="hidden" name="action" value="retention"><button class="btn" type="submit">Run 2d raw / 7d retention</button></form>
-            <form class="inline-form" method="post" action="{url_for('admin_database_maintenance')}" onsubmit="return confirm('Request PostgreSQL checkpoint? Normally this is not required.')"><input type="hidden" name="csrf_token" value="{escape(csrf_token(), quote=True)}"><input type="hidden" name="action" value="checkpoint"><button class="btn" type="submit">Checkpoint</button></form>
-            <form class="inline-form" method="post" action="{url_for('admin_database_maintenance')}" onsubmit="return confirm('Run PostgreSQL VACUUM ANALYZE now? Continue?')"><input type="hidden" name="csrf_token" value="{escape(csrf_token(), quote=True)}"><input type="hidden" name="action" value="vacuum"><label>Type <b>VACUUM</b><input name="confirm_text" autocomplete="off" placeholder="VACUUM" required></label><button class="btn" type="submit">VACUUM ANALYZE</button></form>
-        </div>
-        <div class="card db-danger" style="margin-top:14px;margin-bottom:14px;">
-            <h3>Delete old history and optimize PostgreSQL</h3>
-            <div class="admin-note"><b>Recommended:</b> delete old history first while the dashboard remains available. PostgreSQL reuses dead tuples after VACUUM. Routine VACUUM ANALYZE is online; use VACUUM FULL only during a planned maintenance window outside this tool.</div>
-            <form class="bulk-bar" method="post" action="{url_for('admin_database_maintenance')}" onsubmit="return confirm('Delete old metric history in committed batches? The dashboard stays available, but some pages may be slower during the cleanup.')">
-                <input type="hidden" name="csrf_token" value="{escape(csrf_token(), quote=True)}"><input type="hidden" name="action" value="delete_history">
-                <label>Delete metrics older than <select name="days"><option value="1">1 day</option><option value="3">3 days</option><option value="7" selected>7 days</option></select></label>
-                <label>Type <b>DELETE HISTORY</b><input name="confirm_text" autocomplete="off" placeholder="DELETE HISTORY" required></label>
-                <button class="btn-danger" type="submit">Delete history only</button>
-            </form>
-            <div class="admin-note" style="margin-top:12px"><b>Delete + compact:</b> history deletion runs first in batches while the web remains online. The maintenance worker then runs PostgreSQL <code>VACUUM (ANALYZE)</code>. Normal VACUUM is online and does not rewrite the whole database. The maintenance worker automatically restarts <code>bw-monitor.service</code> even if compact fails.</div>
-            <form class="bulk-bar" method="post" action="{url_for('admin_database_maintenance')}" onsubmit="return confirm('Delete old history and then run PostgreSQL VACUUM ANALYZE?')">
-                <input type="hidden" name="csrf_token" value="{escape(csrf_token(), quote=True)}"><input type="hidden" name="action" value="delete_compact">
-                <label>Delete metrics older than <select name="days"><option value="1">1 day</option><option value="3">3 days</option><option value="7" selected>7 days</option></select></label>
-                <label>Type <b>DELETE AND OPTIMIZE</b><input name="confirm_text" autocomplete="off" placeholder="DELETE AND OPTIMIZE" required></label>
-                <button class="btn-danger" type="submit">Delete + compact (offline during VACUUM)</button>
-            </form>
-        </div>
-        <div class="card db-danger" style="margin-top:14px;margin-bottom:14px;border-color:#ef4444;">
-            <h3>Clear all monitoring data</h3>
-            <div class="admin-note"><b>This is a complete monitoring reset.</b> It deletes raw/history metrics, hourly/daily rollups, node and VM inventory, missed cycles, node logs, abuse current/history, and all fast current-cache tables used by the 5m Dashboard, Top VM and Node pages. It preserves dashboard users, admin settings, account login logs and maintenance-job records. Active agents can send fresh rows again after the service restarts.</div>
-            <form class="bulk-bar" method="post" action="{url_for('admin_database_maintenance')}" onsubmit="return confirm('Permanently clear ALL monitoring data and current dashboard caches? Active agents may repopulate fresh data after the service restarts.')">
-                <input type="hidden" name="csrf_token" value="{escape(csrf_token(), quote=True)}"><input type="hidden" name="action" value="clear_monitoring_data">
-                <label>Type <b>CLEAR ALL MONITORING DATA</b><input name="confirm_text" autocomplete="off" placeholder="CLEAR ALL MONITORING DATA" required></label>
-                <label class="enable-line"><input type="checkbox" name="compact" value="1"> VACUUM after clear (slower, returns disk space)</label>
-                <button class="btn-danger" type="submit">Clear all monitoring data</button>
-            </form>
-        </div>
-        <div class="table-wrap"><table><thead><tr><th>ID</th><th>CREATED</th><th>ACTION</th><th>STATUS</th><th>STARTED</th><th>FINISHED</th><th>MESSAGE</th><th>UNIT</th></tr></thead><tbody>{rows}</tbody></table></div>
-        <div class="table-hint">For routine retention, prefer <b>Delete history only</b>. A successful compact job reports deleted row counts and before/after file sizes. During VACUUM, check the maintenance systemd unit from SSH because the dashboard is intentionally offline.</div>
-    </div>
-    """
-
 
 def enqueue_maintenance_job(action, parameters, actor):
     action = (action or "").strip().lower()
@@ -351,20 +289,6 @@ def enqueue_maintenance_job(action, parameters, actor):
         raise RuntimeError(msg)
     return job_id, unit_name
 
-
-def enqueue_batched_purge_jobs(action, items, actor):
-    """Split destructive work into small FIFO jobs, max 3 items per job by default."""
-    clean_items = list(items or [])
-    if not clean_items:
-        return []
-    job_ids = []
-    for offset in range(0, len(clean_items), MAX_PURGE_ITEMS_PER_JOB):
-        chunk = clean_items[offset:offset + MAX_PURGE_ITEMS_PER_JOB]
-        parameters = {"vms": chunk} if action == "purge_vms" else {"nodes": chunk}
-        job_id, unit_name = enqueue_maintenance_job(action, parameters, actor)
-        job_ids.append((job_id, unit_name, len(chunk)))
-    return job_ids
-
 def monitor_system_health_card():
     h = get_monitor_system_health()
     status_cls = "active" if h["status"] == "OK" else "stale"
@@ -383,5 +307,4 @@ def monitor_system_health_card():
         </div>
     </div>
     """
-
 

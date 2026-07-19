@@ -1,5 +1,3 @@
-# v48.10.4 compact VM RAM presentation layer
-# ---------------------------------------------------------------------------
 V48104_UI_CSS = r"""
 <style id="v48104-compact-ram-ui">
 .ram-compact-sort-head{overflow:visible!important;position:relative;z-index:8}
@@ -20,7 +18,6 @@ html[data-theme=dark] .ram-sort-menu>summary{color:#94a3b8}html[data-theme=dark]
 """
 _page_v48104_base = page
 
-
 def page(title, content):
     response = _page_v48104_base(title, content)
     try:
@@ -31,12 +28,7 @@ def page(title, content):
         app.logger.exception("Could not apply v48.10.4 compact RAM UI layer")
     return response
 
-
-# ---------------------------------------------------------------------------
-# v48.10.6 visual polish, balanced tables, reusable CPU meters, dedicated login
-# ---------------------------------------------------------------------------
 V48105_VERSION = "48.10.5"
-
 
 def _v48105_cpu_usage_block(core_percent, full_percent, vcpu=0, progress_text="", compact=False):
     """Render one consistent VM CPU cell.
@@ -59,7 +51,6 @@ def _v48105_cpu_usage_block(core_percent, full_percent, vcpu=0, progress_text=""
         f'{vcpu_line}'
         f'</div>'
     )
-
 
 # Node detail VM tables now use the same CPU block as /top.
 def interface_table(title, bridge, node, rows, period, q="", sort_by="total", order="desc", vm_status="active"):
@@ -126,7 +117,6 @@ def interface_table(title, bridge, node, rows, period, q="", sort_by="total", or
       <div class="table-hint">CPU bar is normalized by assigned vCPU. RAM shows estimated <b>Guest Used / Assigned</b>; <b>RSS</b> remains host-side.</div>
     </div>"""
 
-
 # Current Abuse receives the same CPU visual without changing abuse evaluation.
 def _v48103_current_abuse_page(q,sort_by,order,limit):
     rows,total,counts,sort_by,order,cfg=_v48103_current_abuse_query(q,sort_by,order,limit)
@@ -153,7 +143,6 @@ def _v48103_current_abuse_page(q,sort_by,order,limit):
     ram_header = _v48104_ram_sort_header(h("RAM", "ram"),[h("Guest %", "ram"), h("Used GiB", "ramused"), h("Host RSS", "ramrss"), h("Assigned", "ramassigned")],sort_by,order)
     table=f"""<div class="card abuse-current-card abuse-v48102-card abuse-v48103-card abuse-v48105-card"><div class="section-head"><div><h3>Current VM Abuse</h3><p>Policy v{cfg['revision']} · exact five-minute windows · RAM is visibility only.</p></div><div class="count-badges"><span>All <b>{total}</b></span><span>PPS <b>{counts[0]}</b></span><span>AVG Mbps <b>{counts[1]}</b></span><span>CPU <b>{counts[2]}</b></span><span>Disk <b>{counts[3]}</b></span></div></div><div class="table-wrap"><table class="abuse-v490-table abuse-v48102-table abuse-v48103-table abuse-v48105-table"><colgroup><col class="c-rank"><col class="c-id"><col class="c-reason"><col class="c-network"><col class="c-peak"><col class="c-cpu"><col class="c-ram"><col class="c-disk"><col class="c-time"></colgroup><thead><tr><th>#</th><th>{h('NODE / VM','node')}</th><th>{h('REASON / SEVERITY','severity')}</th><th><div>NETWORK AVG</div><small>{h('RX Mbps','rx_mbps')} · {h('TX Mbps','tx_mbps')}</small></th><th><div>PPS PEAK / WINDOW</div><small>{h('RX PPS','rx_peak')} · {h('TX PPS','tx_peak')}</small></th><th>{h('CPU','cpu')}</th><th class="ram-compact-sort-head">{ram_header}</th><th>{disk_header}</th><th>{h('TIMELINE','last_seen')}</th></tr></thead><tbody>{body}</tbody></table></div><div class="table-hint">CPU bar is normalized by assigned vCPU. RAM is <b>visibility only</b> and never creates an automatic suspend condition.</div></div>"""
     return f"""<div class="card page-hero" data-engine="{escape(ABUSE_ENGINE_VERSION,quote=True)}"><div><span class="eyebrow">ABUSE MONITORING</span><h2>VM Abuse</h2><p>Directional network, CPU and disk signals from the current bounded state table.</p></div><div class="hero-meta"><span>Policy <b>v{cfg['revision']}</b></span><span>Refresh <b>5s partial</b></span><span>RAM <b>visibility only</b></span></div></div><div class="card abuse-toolbar">{tabs}{search}</div><details class="card policy-fold"><summary>Current policy</summary>{_public_abuse_policy(cfg)}</details>{table}"""
-
 
 V48105_UI_CSS = r"""
 <style id="v48105-ui-polish">
@@ -215,7 +204,6 @@ html[data-theme=dark] body.app-v490 .ram-guest-value{color:#f8fbff!important}htm
 """
 _page_v48105_base = page
 
-
 def page(title, content):
     response = _page_v48105_base(title, content)
     try:
@@ -225,7 +213,6 @@ def page(title, content):
     except Exception:
         app.logger.exception("Could not apply v48.10.6 UI polish layer")
     return response
-
 
 def _v48105_login_document(next_url, username_value, error_html, no_users_note):
     action = url_for("dashboard_login")
@@ -252,7 +239,6 @@ def _v48105_login_document(next_url, username_value, error_html, no_users_note):
 function readMode(){{try{{return localStorage.getItem('bw-theme-mode')||'auto'}}catch(e){{return'auto'}}}}function resolved(m){{if(m==='dark'||m==='light')return m;var h=new Date().getHours();return(h>=18||h<6)?'dark':'light'}}function applyMode(m,p){{if(!['auto','dark','light'].includes(m))m='auto';if(p)try{{localStorage.setItem('bw-theme-mode',m)}}catch(e){{}}document.documentElement.setAttribute('data-theme-mode',m);document.documentElement.setAttribute('data-theme',resolved(m));document.querySelectorAll('[data-theme-mode]').forEach(function(b){{b.classList.toggle('active',b.dataset.themeMode===m)}})}}applyMode(readMode(),false);document.addEventListener('click',function(e){{var t=e.target.closest('[data-theme-mode]');if(t){{applyMode(t.dataset.themeMode,true);return}}var p=e.target.closest('.password-toggle');if(p){{var i=document.getElementById('login-password');var show=i.type==='password';i.type=show?'text':'password';p.textContent=show?'Hide':'Show';p.setAttribute('aria-label',show?'Hide password':'Show password')}}}});
 </script>
 </body></html>"""
-
 
 def dashboard_login_v48105():
     next_url = safe_next_url(request.args.get("next") or request.form.get("next") or url_for("index"))
@@ -295,13 +281,8 @@ def dashboard_login_v48105():
     no_users_note = '<div class="login-alert note">No dashboard users exist yet. Sign in to Admin setup first and create an account.</div>' if dashboard_user_count() == 0 else ""
     return Response(_v48105_login_document(next_url, username_value, error_html, no_users_note), mimetype="text/html")
 
-
 app.view_functions["dashboard_login"] = dashboard_login_v48105
 
-
-# ---------------------------------------------------------------------------
-# v48.10.6 admin login parity + darker chips/inputs + robust password toggles
-# ---------------------------------------------------------------------------
 V48106_VERSION = "48.10.6"
 V48106_UI_CSS = r"""
 <style id="v48106-login-darkfix-ui">
@@ -356,7 +337,6 @@ def page(title, content):
         app.logger.exception("Could not apply v48.10.6 UI darkfix layer")
     return response
 
-
 def _v48106_password_field(field_id, field_name, label, autocomplete, required=True):
     return (
         f'<div class="field"><label for="{escape(field_id, quote=True)}">{escape(label)}</label>'
@@ -366,7 +346,6 @@ def _v48106_password_field(field_id, field_name, label, autocomplete, required=T
         f'<button class="password-toggle" type="button" data-target="{escape(field_id, quote=True)}" '
         f'aria-label="Show password">Show</button></div></div>'
     )
-
 
 def _v48106_login_document(*, action, title, subtitle, username_value, error_html="", note_html="", next_url="", button_label="Sign in", extra_fields=""):
     return f"""<!doctype html>
@@ -396,7 +375,6 @@ function bindPasswordToggles(){{document.querySelectorAll('.password-toggle').fo
 applyMode(readMode(),false);document.addEventListener('click',function(e){{var t=e.target.closest('[data-theme-mode]');if(t){{applyMode(t.dataset.themeMode,true)}}}});document.addEventListener('DOMContentLoaded',bindPasswordToggles);bindPasswordToggles();
 </script>
 </body></html>"""
-
 
 def dashboard_login_v48106():
     next_url = safe_next_url(request.args.get("next") or request.form.get("next") or url_for("index"))
@@ -440,7 +418,6 @@ def dashboard_login_v48106():
     extra = _v48106_password_field("login-password", "password", "Password", "current-password")
     return Response(_v48106_login_document(action=url_for("dashboard_login"), title="Welcome back", subtitle="Sign in to access infrastructure monitoring and operations.", username_value=username_value, error_html=error_html, note_html=note_html, next_url=next_url, button_label="Sign in", extra_fields=extra), mimetype="text/html")
 
-
 def admin_login_v48106():
     next_url = safe_next_url(request.args.get("next") or request.form.get("next") or url_for("admin_page"))
     error = ""
@@ -483,7 +460,6 @@ def admin_login_v48106():
     extra = _v48106_password_field("admin-login-password", "password", "Password", "current-password")
     return Response(_v48106_login_document(action=url_for("admin_login"), title="Administrator access", subtitle="Sign in to manage policy, queue, users and system settings.", username_value=form_username, error_html=error_html, note_html=note_html, next_url=next_url, button_label="Sign in", extra_fields=extra), mimetype="text/html")
 
-
 def admin_setup_v48106():
     bootstrap_dashboard_admin_from_settings()
     emergency_mode = emergency_admin_needed()
@@ -523,5 +499,3 @@ app.view_functions["dashboard_login"] = dashboard_login_v48106
 app.view_functions["admin_login"] = admin_login_v48106
 app.view_functions["admin_setup"] = admin_setup_v48106
 
-
-# ---------------------------------------------------------------------------

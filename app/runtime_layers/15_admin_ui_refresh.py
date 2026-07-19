@@ -1,6 +1,4 @@
-# v48.9.0 UI refresh, compact VM Abuse table, sectioned Admin and admin-only
 # live 5-minute cache clearing.
-# ---------------------------------------------------------------------------
 
 V490_VERSION = "48.9.0"
 V490_LIVE_CACHE_TABLES = (
@@ -15,7 +13,6 @@ V490_LIVE_CACHE_TABLES = (
     "agent_health_latest",
     "vm_latest_metrics",
 )
-
 
 def clear_live_5m_cache():
     """Clear only current/latest metric caches, preserving retained history."""
@@ -39,9 +36,7 @@ def clear_live_5m_cache():
     finally:
         conn.close()
 
-
 _enqueue_maintenance_job_v484 = enqueue_maintenance_job
-
 
 def enqueue_maintenance_job(action, parameters, actor):
     if (action or "").strip().lower() != "clear_live_cache":
@@ -103,16 +98,13 @@ def enqueue_maintenance_job(action, parameters, actor):
         raise RuntimeError(msg)
     return job_id, unit_name
 
-
 _maintenance_action_label_v484 = _maintenance_action_label
 _maintenance_friendly_message_v484 = _maintenance_friendly_message
-
 
 def _maintenance_action_label(action):
     if action == "clear_live_cache":
         return "Clear live 5m cache"
     return _maintenance_action_label_v484(action)
-
 
 def _maintenance_friendly_message(action, status, message):
     if action == "clear_live_cache" and status == "ok":
@@ -123,7 +115,6 @@ def _maintenance_friendly_message(action, status, message):
         except Exception:
             return "Live 5m cache cleared"
     return _maintenance_friendly_message_v484(action, status, message)
-
 
 @app.route("/admin/live-cache/clear", methods=["POST"])
 def admin_clear_live_cache():
@@ -147,7 +138,6 @@ def admin_clear_live_cache():
         app.logger.exception("Could not queue live 5m cache clear")
         return redirect(url_for("admin_page", section="maintenance", dberr=str(exc)[:700]))
 
-
 # ---------- compact, aligned VM Abuse viewer ----------
 
 def _v490_metric_pair(label_a, value_a, label_b, value_b, sub_a="", sub_b=""):
@@ -156,7 +146,6 @@ def _v490_metric_pair(label_a, value_a, label_b, value_b, sub_a="", sub_b=""):
       <div><span>{escape(label_a)}</span><b>{value_a}</b>{f'<small>{escape(sub_a)}</small>' if sub_a else ''}</div>
       <div><span>{escape(label_b)}</span><b>{value_b}</b>{f'<small>{escape(sub_b)}</small>' if sub_b else ''}</div>
     </div>"""
-
 
 def _v490_abuse_current_page(q, sort_by, order, limit, cfg):
     rows, total, counts, sort_by, order = _current_abuse_query_v484(q, sort_by, order, limit)
@@ -232,7 +221,6 @@ def _v490_abuse_current_page(q, sort_by, order, limit, cfg):
     <details class="card policy-fold"><summary>Current policy</summary>{policy}</details>
     {table}"""
 
-
 def vm_abuse_page_v490():
     tab = (request.args.get("tab") or "current").strip().lower()
     if tab == "history":
@@ -245,9 +233,7 @@ def vm_abuse_page_v490():
     content = _v490_abuse_current_page(q, sort_by, order, limit, cfg)
     return page("VM Abuse", content)
 
-
 app.view_functions["vm_abuse_page"] = vm_abuse_page_v490
-
 
 # ---------- sectioned, faster and less cluttered Admin ----------
 
@@ -264,7 +250,6 @@ def _v490_admin_stats():
     finally:
         conn.close()
 
-
 def _v490_admin_nav(active):
     items = [
         ("overview", "Overview"), ("nodes", "Nodes"), ("vms", "VMs"), ("maintenance", "Maintenance"),
@@ -278,7 +263,6 @@ def _v490_admin_nav(active):
     links.append(f'<a href="{url_for("admin_logs_page",type="account")}">Logs</a>')
     return '<nav class="admin-tabs">' + ''.join(links) + '</nav>'
 
-
 def _v490_pager(section, q, page_no, max_page, per_page):
     if max_page <= 1:
         return ""
@@ -287,7 +271,6 @@ def _v490_pager(section, q, page_no, max_page, per_page):
     prev_cls = "disabled" if page_no <= 1 else ""
     next_cls = "disabled" if page_no >= max_page else ""
     return f'<div class="pagination"><a class="btn {prev_cls}" href="{escape(prev_url,quote=True)}">← Previous</a><span>Page <b>{page_no}</b> / <b>{max_page}</b></span><a class="btn {next_cls}" href="{escape(next_url,quote=True)}">Next →</a></div>'
-
 
 def _v490_admin_nodes(q, page_no, per_page):
     where = ""
@@ -318,7 +301,6 @@ def _v490_admin_nodes(q, page_no, per_page):
     finally:
         conn.close()
 
-
 def _v490_admin_vms(q, page_no, per_page):
     where = ""
     params = []
@@ -346,10 +328,8 @@ def _v490_admin_vms(q, page_no, per_page):
     finally:
         conn.close()
 
-
 def _v490_action_menu(forms):
     return f'<details class="action-menu"><summary>Actions</summary><div>{forms}</div></details>'
-
 
 def _v490_admin_overview(stats):
     s = get_database_maintenance_stats()
@@ -376,7 +356,6 @@ def _v490_admin_overview(stats):
     <details class="card admin-fold"><summary>System health details</summary><div class="fold-content">{monitor_system_health_card()}</div></details>
     """
 
-
 def _v490_admin_nodes_section(q, page_no, per_page):
     rows,total,page_no,max_page = _v490_admin_nodes(q,page_no,per_page)
     body=""
@@ -393,7 +372,6 @@ def _v490_admin_nodes_section(q, page_no, per_page):
     <form class="search" method="get"><input type="hidden" name="section" value="nodes"><input name="q" value="{escape(q,quote=True)}" placeholder="Search node, IP, MAC, VM, bridge or interface"><select name="per_page"><option value="100" {'selected' if per_page==100 else ''}>100 rows</option><option value="200" {'selected' if per_page==200 else ''}>200 rows</option></select><button>Search</button>{f'<a class="clear" href="{url_for("admin_page",section="nodes")}">Reset</a>' if q else ''}</form>
     <form id="bulk-nodes-form" method="post" action="{url_for('admin_bulk_nodes')}" onsubmit="return confirm('Apply selected node action?')"><input type="hidden" name="csrf_token" value="{escape(csrf_token(),quote=True)}"><div class="bulk-bar compact-bulk"><label><input type="checkbox" onclick="document.querySelectorAll('.node-select').forEach(cb=>cb.checked=this.checked)"> Select page</label><select name="action"><option value="hide">Hide</option><option value="restore">Restore</option><option value="purge_vms">Purge all VMs</option><option value="purge">Purge node</option></select><button class="btn-danger">Apply</button></div></form>
     <div class="table-wrap"><table class="admin-clean-table"><thead><tr><th></th><th>NODE / STATUS</th><th>PUBLIC IP</th><th>PRIVATE IP</th><th>VM</th><th>LAST PUSH</th><th>ACTION</th></tr></thead><tbody>{body}</tbody></table></div>{_v490_pager('nodes',q,page_no,max_page,per_page)}</div>"""
-
 
 def _v490_admin_vms_section(q,page_no,per_page):
     rows,total,page_no,max_page=_v490_admin_vms(q,page_no,per_page)
@@ -412,7 +390,6 @@ def _v490_admin_vms_section(q,page_no,per_page):
     <form id="bulk-vms-form" method="post" action="{url_for('admin_bulk_vms')}" onsubmit="return confirm('Apply selected VM action?')"><input type="hidden" name="csrf_token" value="{escape(csrf_token(),quote=True)}"><div class="bulk-bar compact-bulk"><label><input type="checkbox" onclick="document.querySelectorAll('.vm-select').forEach(cb=>cb.checked=this.checked)"> Select page</label><select name="action"><option value="hide">Hide</option><option value="restore">Restore</option><option value="purge">Purge</option></select><button class="btn-danger">Apply</button></div></form>
     <div class="table-wrap"><table class="admin-clean-table"><thead><tr><th></th><th>NODE</th><th>VM UUID</th><th>STATUS / LAST SEEN</th><th>BRIDGE / IFACE</th><th>ACTION</th></tr></thead><tbody>{body}</tbody></table></div>{_v490_pager('vms',q,page_no,max_page,per_page)}</div>"""
 
-
 def _v490_live_cache_card():
     """The old CLEAR LIVE 5M rescue control is intentionally hidden.
 
@@ -421,7 +398,6 @@ def _v490_live_cache_card():
     spike. Targeted purge and normal stale-row cleanup are the supported tools.
     """
     return ""
-
 
 def admin_page_v490():
     deny=require_admin()
@@ -445,9 +421,7 @@ def admin_page_v490():
     """
     return page('Admin',content)
 
-
 app.view_functions['admin_page']=admin_page_v490
-
 
 # ---------- global visual refresh ----------
 _page_v484 = page
@@ -461,7 +435,6 @@ html[data-theme=dark]{--bg:#07101d;--panel:#0f1b2c;--panel-soft:#132238;--line:#
 </style>
 """
 
-
 def page(title, content):
     response = _page_v484(title, content)
     try:
@@ -474,5 +447,3 @@ def page(title, content):
         app.logger.exception("Could not apply v48.9.0 visual layer")
     return response
 
-
-# ---------------------------------------------------------------------------

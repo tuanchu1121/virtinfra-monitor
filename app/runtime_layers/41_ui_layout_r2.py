@@ -1,12 +1,8 @@
-# v50.5.9 r2 layout-polish-only release based on r1
-# ---------------------------------------------------------------------------
 V5059R2_RELEASE = "50.5.9-prod-r3-ui-alignment-overflow-hotfix"
-
 
 def _v5058r5_is_transient_iface(value):
     """UI-only filter for transient libguestfs interfaces."""
     return str(value or "").strip().lower().startswith("guestfs-")
-
 
 # Storage filtered Node view hotfix.
 # The previous query referenced node_inventory alias "ni" in WHERE without
@@ -134,16 +130,13 @@ def _v5058r5_storage_node_filtered_table(conn, values, start_ts):
       {_storage_pager(values, total)}
     </div>'''
 
-
 # Update every saved filtered-view alias used by the later Storage wrappers.
 _v48135_storage_node_table = _v5058r5_storage_node_filtered_table
 _v48136_storage_node_filtered_base = _v5058r5_storage_node_filtered_table
 _v48137_storage_node_filtered_base = _v5058r5_storage_node_filtered_table
 
-
 # UI-only interface sanitization. Collection and database rows are untouched.
 _v5058r5_interface_table_base = interface_table
-
 
 def interface_table(title, bridge, node, rows, period, q="", sort_by="total", order="desc", vm_status="active"):
     filtered = [row for row in (rows or []) if not _v5058r5_is_transient_iface(row[0] if row else "")]
@@ -152,9 +145,7 @@ def interface_table(title, bridge, node, rows, period, q="", sort_by="total", or
         q=q, sort_by=sort_by, order=order, vm_status=vm_status,
     )
 
-
 # Physical interface names are sanitized in the final rendered HTML layer.
-
 
 # Gap-aware chart helpers. A real zero remains a point at zero. A missing time
 # bucket starts a new SVG polyline so the unavailable interval stays blank.
@@ -168,7 +159,6 @@ def _v5058r5_sorted_chart_rows(rows):
             by_bucket[bucket] = row
     return [by_bucket[key] for key in sorted(by_bucket)]
 
-
 def _v5058r5_chart_cadence(rows):
     ordered = _v5058r5_sorted_chart_rows(rows)
     gaps = [
@@ -181,7 +171,6 @@ def _v5058r5_chart_cadence(rows):
     gaps.sort()
     lower = gaps[:max(1, min(len(gaps), max(3, len(gaps) // 2)))]
     return max(1, safe_int(lower[len(lower) // 2], CACHE_BUCKET_SECONDS))
-
 
 def _v5058r5_sample_segments(segments, max_points=360):
     total = sum(len(segment) for segment in segments)
@@ -201,7 +190,6 @@ def _v5058r5_sample_segments(segments, max_points=360):
             current.append(segment[-1])
         sampled.append(current)
     return sampled
-
 
 def _v5058r5_chart_segments(rows, key=None, valid_key=None, max_points=360):
     ordered = _v5058r5_sorted_chart_rows(rows)
@@ -235,7 +223,6 @@ def _v5058r5_chart_segments(rows, key=None, valid_key=None, max_points=360):
         segments.append(current)
     return _v5058r5_sample_segments(segments, max_points=max_points)
 
-
 def _v5058r5_chart_domain(rows):
     ordered = _v5058r5_sorted_chart_rows(rows)
     if not ordered:
@@ -244,14 +231,12 @@ def _v5058r5_chart_domain(rows):
     end = safe_int(ordered[-1].get("bucket"), start)
     return start, max(start + 1, end)
 
-
 def _v5058r5_xy(row, key, start_ts, end_ts, x0, y0, plot_w, plot_h, max_v):
     bucket = safe_int(row.get("bucket"), start_ts)
     x = x0 + ((bucket - start_ts) / float(max(1, end_ts - start_ts))) * plot_w
     value = max(0.0, safe_float(row.get(key), 0.0))
     y = y0 + plot_h - ((value / max_v) * plot_h if max_v else 0)
     return x, y
-
 
 def _v5058r5_segment_polylines(rows, key, css_class, start_ts, end_ts, x0, y0, plot_w, plot_h, max_v, valid_key=None):
     items = []
@@ -266,7 +251,6 @@ def _v5058r5_segment_polylines(rows, key, css_class, start_ts, end_ts, x0, y0, p
             x, y = points[0].split(",")
             items.append(f'<circle cx="{x}" cy="{y}" r="2.6" class="dot {css_class.replace("-line", "-dot")}"/>')
     return "".join(items)
-
 
 def _v5058r5_x_labels(rows, left, plot_w, h):
     ordered = _v5058r5_sorted_chart_rows(rows)
@@ -287,7 +271,6 @@ def _v5058r5_x_labels(rows, left, plot_w, h):
         label = row.get("label") or fmt_chart_label(bucket, _v5058r5_chart_cadence(ordered))
         labels.append(f'<text x="{x:.1f}" y="{h - 15}" class="x-label" text-anchor="middle">{escape(label)}</text>')
     return "".join(labels)
-
 
 def _v5058r5_hover_zones(rows, series, start_ts, end_ts, left, top, plot_w, plot_h):
     ordered = _v5058r5_sorted_chart_rows(rows)
@@ -318,7 +301,6 @@ def _v5058r5_hover_zones(rows, series, start_ts, end_ts, left, top, plot_w, plot
             f'height="{plot_h}" class="hover-zone"><title>{escape(chr(10).join(parts))}</title></rect>'
         )
     return "".join(items)
-
 
 def node_chart_svg(rows, title):
     ordered = _v5058r5_sorted_chart_rows(rows)
@@ -355,7 +337,6 @@ def node_chart_svg(rows, title):
       </svg></div>
     </div>'''
 
-
 def vm_chart_svg(rows, title):
     ordered = _v5058r5_sorted_chart_rows(rows)
     if not ordered or max((safe_float(row.get("rx"), 0) + safe_float(row.get("tx"), 0) for row in ordered), default=0) <= 0:
@@ -390,7 +371,6 @@ def vm_chart_svg(rows, title):
         {_v5058r5_hover_zones(ordered, series, start_ts, end_ts, left, top, plot_w, plot_h)}
       </svg></div>
     </div>'''
-
 
 def vm_metric_chart_svg(rows, title, series, source_note="", render_zero=False):
     ordered = _v5058r5_sorted_chart_rows(rows)
@@ -449,16 +429,13 @@ def vm_metric_chart_svg(rows, title, series, source_note="", render_zero=False):
       </svg></div>
     </div>'''
 
-
 # Snapshot tables remain fully functional but are closed by default. They
 # automatically reopen after a sort or pagination action.
 _v5058r5_node_chart_table_base = node_chart_table
 _v5058r5_vm_chart_table_base = vm_chart_table
 
-
 def _v5058r5_strip_snapshot_hint(html):
     return re.sub(r'<div class="table-hint">.*?</div>', '', str(html or ''), count=1, flags=re.S)
-
 
 def node_chart_table(rows, node, period, q="", chart_sort="time", chart_order="desc", table_sort="total", table_order="desc"):
     inner = _v5058r5_node_chart_table_base(
@@ -474,7 +451,6 @@ def node_chart_table(rows, node, period, q="", chart_sort="time", chart_order="d
       <div class="snapshot-fold-body" id="real-snapshot-samples-panel">{inner}</div>
     </details>'''
 
-
 def vm_chart_table(rows, node, vm_uuid, bridge, iface, period, raw_sort="time", raw_order="desc"):
     inner = _v5058r5_vm_chart_table_base(
         rows, node, vm_uuid, bridge, iface, period,
@@ -489,11 +465,7 @@ def vm_chart_table(rows, node, vm_uuid, bridge, iface, period, raw_sort="time", 
       <div class="snapshot-fold-body" id="retained-network-snapshots-panel">{inner}</div>
     </details>'''
 
-
 # Compact select-based appearance controls in the upper-right header area.
-
-
-
 
 V5059R1_A11Y_SCRIPT = r'''
 <script id="v5059r1-snapshot-accessibility">
@@ -510,7 +482,6 @@ V5059R1_A11Y_SCRIPT = r'''
 })();
 </script>
 '''
-
 
 V5058R5_UI_CSS = r'''
 <style id="v5058r5-professional-ui">
@@ -720,9 +691,7 @@ body.endpoint-node-health-page .card>table .node-name-cell small{margin-top:3px!
 </style>
 '''
 
-
 _page_v5058r5_base = page
-
 
 def page(title, content):
     response = _page_v5058r5_base(title, content)
@@ -736,5 +705,3 @@ def page(title, content):
         app.logger.exception("Could not apply r5 professional UI layer")
     return response
 
-
-# ---------------------------------------------------------------------------

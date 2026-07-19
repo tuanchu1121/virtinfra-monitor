@@ -1,11 +1,8 @@
-# VirtInfra Monitor 50.5.9 prod-r5 - additive Node Groups hotfix
-# Release: 50.5.9-prod-r8-safe-dead-code-prune
+# Release: 50.5.9-prod-r9-safe-runtime-history-prune
 # Installed only after all existing append-only runtime implementations are
 # registered, so baseline wrappers and view functions remain intact.
-# ---------------------------------------------------------------------------
 import sys as _node_groups_sys
 import node_groups as _node_groups_hotfix
-
 
 class _NodeGroupsModuleProxy:
     """Forward module attribute access to this exec_module() globals mapping."""
@@ -18,7 +15,6 @@ class _NodeGroupsModuleProxy:
 
     def __setattr__(self, name, value):
         globals()[name] = value
-
 
 _node_groups_module = _node_groups_sys.modules.get(__name__)
 if _node_groups_module is None:

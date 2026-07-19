@@ -7,15 +7,11 @@ from runtime_source import read_app_source
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app" / "app.py"
-MARKER = "# VirtInfra Monitor 50.5.9 prod-r5 - additive Node Groups hotfix"
+LOADER_LAYER = ROOT / "app/runtime_layers/43_node_groups_loader.py"
 
 
 def _loader_source() -> str:
-    source = read_app_source()
-    marker_pos = source.index(MARKER)
-    block_start = source.rfind("# ---------------------------------------------------------------------------", 0, marker_pos)
-    assert block_start >= 0
-    return "sentinel = 'before'\n" + source[block_start:]
+    return "sentinel = 'before'\n" + LOADER_LAYER.read_text(encoding="utf-8")
 
 
 def _execute_loader(tmp_path: Path, *, register_target: bool):

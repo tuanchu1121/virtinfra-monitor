@@ -1,34 +1,22 @@
 def period_label(period):
     return PERIOD_LABELS.get(period, period)
 
-
 def period_seconds(period):
     return PERIODS.get(period, PERIODS["1h"])
-
 
 def clean_period(period):
     period = PERIOD_ALIASES.get(str(period or ""), str(period or ""))
     return period if period in PERIODS else "1h"
-
-
-def clean_interface_sort(sort_by):
-    # VM/interface tables should only be sortable by traffic columns.
-    # Keep this whitelist fixed to avoid SQL injection in ORDER BY.
-    allowed = {"rx", "tx", "total", "mbps", "peakmbps", "pps", "peakpps", "sample", "drops", "errors", "cpu", "vcpu", "ram", "diskr", "diskw"}
-    return sort_by if sort_by in allowed else "total"
-
 
 def clean_chart_table_sort(sort_by):
     # Raw Data table in the VM chart page.
     allowed = {"time", "rx", "tx", "total", "mbps", "peakmbps", "pps", "peakpps", "sample", "drops", "errors"}
     return sort_by if sort_by in allowed else "time"
 
-
 def clean_node_chart_sort(sort_by):
     # Raw Data table in the node chart page.
     allowed = {"time", "public", "private", "rx", "tx", "total"}
     return sort_by if sort_by in allowed else "time"
-
 
 def clean_node_sort(sort_by):
     """Dashboard sort whitelist for coherent exact-snapshot columns."""
@@ -39,26 +27,20 @@ def clean_node_sort(sort_by):
     }
     return sort_by if sort_by in allowed else "node"
 
-
-
 def clean_sort_order(order):
     return "asc" if str(order).lower() == "asc" else "desc"
 
-
 def reverse_order(order):
     return "asc" if clean_sort_order(order) == "desc" else "desc"
-
 
 def range_for_period(period):
     end = now_ts()
     start = end - period_seconds(period)
     return start, end
 
-
 def bucket_for(ts):
     ts = int(ts)
     return (ts // CACHE_BUCKET_SECONDS) * CACHE_BUCKET_SECONDS
-
 
 def _snapshot_bucket_candidates_sql(node_scoped=True):
     """Compatibility fallback for DBs that have not backfilled snapshot index."""
@@ -72,7 +54,6 @@ def _snapshot_bucket_candidates_sql(node_scoped=True):
         UNION
         SELECT bucket FROM node_physical_net_stats{where}
     """
-
 
 def resolve_snapshot_bucket(conn, period, node=None):
     """Resolve a real retained snapshot without silently substituting current data.
@@ -130,8 +111,6 @@ def resolve_snapshot_bucket(conn, period, node=None):
     selected = selected or int((row or [0])[0] or 0)
     return selected, latest
 
-
-
 def resolve_table_snapshot_bucket(conn, table, node, target_bucket):
     """Find the nearest bucket for one metric table around a selected snapshot."""
     if not target_bucket:
@@ -149,25 +128,6 @@ def resolve_table_snapshot_bucket(conn, table, node, target_bucket):
     ).fetchone()
     return int((row or [0])[0] or 0)
 
-
-def fmt_full(ts):
-    if not ts:
-        return "-"
-    return datetime.fromtimestamp(int(ts), TZ).strftime("%Y-%m-%d %H:%M:%S")
-
-
-def fmt_range(ts):
-    if not ts:
-        return "-"
-    return datetime.fromtimestamp(int(ts), TZ).strftime("%Y-%m-%d %H:%M")
-
-
-def fmt_push(ts):
-    if not ts:
-        return "-"
-    return datetime.fromtimestamp(int(ts), TZ).strftime("%H:%M")
-
-
 def human(v):
     v = float(v or 0)
     for unit in ["B", "KB", "MB", "GB", "TB", "PB"]:
@@ -176,17 +136,14 @@ def human(v):
         v /= 1024
     return f"{v:.2f} PB"
 
-
 def human_rate(v):
     return f"{human(v)}/s"
-
 
 def fmt_pps(packets, seconds=None):
     seconds = float(seconds or CACHE_BUCKET_SECONDS or 300)
     if seconds <= 0:
         seconds = CACHE_BUCKET_SECONDS
     return fmt_pps_value(float(packets or 0) / seconds)
-
 
 def fmt_pps_value(pps):
     pps = float(pps or 0)
@@ -196,7 +153,6 @@ def fmt_pps_value(pps):
         return f"{pps/1000:.2f}k/s"
     return f"{pps:.2f}/s"
 
-
 def fmt_ram_pair(rss_kib, current_kib):
     rss_kib = float(rss_kib or 0)
     current_kib = float(current_kib or 0)
@@ -205,7 +161,6 @@ def fmt_ram_pair(rss_kib, current_kib):
     if current_kib > 0:
         return f"{fmt_kib(rss_kib)} / {fmt_kib(current_kib)}"
     return fmt_kib(rss_kib)
-
 
 def fmt_metric_value(v, kind="raw"):
     v = float(v or 0)
@@ -227,21 +182,17 @@ def fmt_metric_value(v, kind="raw"):
         return str(int(v))
     return f"{v:.2f}"
 
-
 def fmt_mbps(bytes_delta, seconds=None):
     seconds = float(seconds or CACHE_BUCKET_SECONDS or 300)
     if seconds <= 0:
         seconds = CACHE_BUCKET_SECONDS
     return f"{(float(bytes_delta or 0) * 8 / seconds / 1000000):.2f} Mbps"
 
-
 def fmt_percent(v):
     return f"{float(v or 0):.1f}%"
 
-
 def pct_clamp(v):
     return max(0.0, min(100.0, float(v or 0)))
-
 
 def pct_of_ref(value, ref):
     ref = float(ref or 0)
@@ -249,13 +200,11 @@ def pct_of_ref(value, ref):
         return 0.0
     return pct_clamp(float(value or 0) * 100.0 / ref)
 
-
 def ram_percent(mem_used, mem_total):
     mem_total = float(mem_total or 0)
     if mem_total <= 0:
         return 0.0
     return pct_clamp(float(mem_used or 0) * 100.0 / mem_total)
-
 
 def vm_core_cpu_percent(cpu_percent, vcpu_current=0):
     """Return VM CPU in core-based percent: 100% = 1 full core, 400% = 4 full cores.
@@ -270,18 +219,14 @@ def vm_core_cpu_percent(cpu_percent, vcpu_current=0):
         return cpu * vcpu
     return cpu
 
-
 def fmt_vm_cpu(cpu_percent, vcpu_current=0):
     return f"{vm_core_cpu_percent(cpu_percent, vcpu_current):.1f}%"
-
 
 def fmt_vm_cpu_with_vcpu(cpu_percent, vcpu_current=0):
     return f"{fmt_vm_cpu(cpu_percent, vcpu_current)} / {int(vcpu_current or 0)} vCPU"
 
-
 def fmt_kib(v):
     return human(float(v or 0) * 1024)
-
 
 def safe_int(value, default=0):
     try:
@@ -289,29 +234,24 @@ def safe_int(value, default=0):
     except (TypeError, ValueError):
         return default
 
-
 def safe_float(value, default=0.0):
     try:
         return float(value)
     except (TypeError, ValueError):
         return default
 
-
 def clean_network_sample_quality(value):
     value = str(value or "LEGACY").strip().upper()
     return value if value in {"GOOD", "DEGRADED", "POOR", "NO_DATA", "LEGACY"} else "LEGACY"
-
 
 def network_sample_quality_rank(value):
     return {"LEGACY": 0, "NO_DATA": 0, "GOOD": 1, "DEGRADED": 2, "POOR": 3}.get(
         clean_network_sample_quality(value), 0
     )
 
-
 def network_quality_from_rank(value):
     value = safe_int(value, 0)
     return "POOR" if value >= 3 else "DEGRADED" if value == 2 else "GOOD" if value == 1 else "LEGACY"
-
 
 def network_sample_badge(quality, actual=0, expected=0, max_gap=0):
     quality = clean_network_sample_quality(quality)
@@ -321,7 +261,6 @@ def network_sample_badge(quality, actual=0, expected=0, max_gap=0):
     css = {"GOOD": "active", "DEGRADED": "yellow", "POOR": "red", "NO_DATA": "stale", "LEGACY": "stale"}.get(quality, "stale")
     title = f"Network samples {actual}/{expected}; max gap {max_gap:.1f}s"
     return f'<span class="vm-state {css}" title="{escape(title, quote=True)}">{escape(quality)}</span>'
-
 
 def clean_ip_sequence(value):
     """Return a compact, unique list of address/CIDR strings from agent JSON."""
@@ -344,7 +283,6 @@ def clean_ip_sequence(value):
             break
     return result
 
-
 def decode_ip_json(value):
     try:
         decoded = json.loads(value or "[]")
@@ -352,11 +290,9 @@ def decode_ip_json(value):
         decoded = []
     return clean_ip_sequence(decoded)
 
-
 def like_pattern(q):
     q = (q or "").strip()
     return f"%{q}%"
-
 
 def clean_vm_status(status):
     status = (status or "active").strip().lower()
@@ -372,7 +308,6 @@ def clean_vm_status(status):
     allowed = {"active", "missing", "pending_migration", "migrated", "purged", "all"}
     return status if status in allowed else "active"
 
-
 def vm_status_label(status):
     status = clean_vm_status(status)
     return {
@@ -383,7 +318,6 @@ def vm_status_label(status):
         "purged": "Purged",
         "all": "All",
     }.get(status, "Active")
-
 
 def vm_status_sql(alias="vi", status="active"):
     """Closed-list SQL fragment, safe because status is normalized."""
@@ -403,7 +337,6 @@ def vm_status_sql(alias="vi", status="active"):
         return f"AND {col} = 'purged'"
     return f"AND {col} = 'active' AND {alias}.deleted_at IS NULL"
 
-
 def vm_status_badge(status, live=None):
     status = clean_vm_status(status)
     if status == "active" and live == "stale":
@@ -419,7 +352,6 @@ def vm_status_badge(status, live=None):
     if status == "purged":
         return '<span class="vm-state red">PURGED</span>'
     return f'<span class="vm-state">{escape(vm_status_label(status).upper())}</span>'
-
 
 def vm_status_tabs(node, period, q, sort_by, sort_order, vm_status):
     current = clean_vm_status(vm_status)
@@ -458,7 +390,6 @@ def vm_status_tabs(node, period, q, sort_by, sort_order, vm_status):
         <div class="admin-note">Migrated VM rows are kept for review, then dashboard/cache rows are purged automatically. Raw usage history is kept unless BW_VM_MIGRATION_PURGE_RAW_HISTORY=1.</div>
     </div>
     """
-
 
 def _presence_upsert_seen(conn, vm_uuid, node, seen_ts, iface="-", bridge="-"):
     conn.execute("""
@@ -511,7 +442,6 @@ def _presence_upsert_seen(conn, vm_uuid, node, seen_ts, iface="-", bridge="-"):
             END
     """, (node, vm_uuid, seen_ts, seen_ts, iface, bridge))
 
-
 def _mark_missing_on_node(conn, node, seen_set, seen_ts):
     rows = conn.execute("""
         SELECT vm_uuid, missing_since, missing_count, status
@@ -535,7 +465,6 @@ def _mark_missing_on_node(conn, node, seen_set, seen_ts):
             WHERE vm_uuid=? AND node=? AND COALESCE(status, 'active') != 'hidden'
         """, (vm_uuid, node))
 
-
 def _old_node_missing_enough(conn, vm_uuid, old_node, seen_ts):
     row = conn.execute("""
         SELECT status, missing_since, missing_count, last_seen
@@ -552,7 +481,6 @@ def _old_node_missing_enough(conn, vm_uuid, old_node, seen_ts):
     if status in ("missing", "migrated", "purged") and missing_since and (seen_ts - missing_since) >= VM_MIGRATION_CONFIRM_SECONDS:
         return True, f"old node missing since {fmt_full(missing_since)}"
     return False, f"waiting old node missing confirmation ({missing_count}/{VM_MIGRATION_CONFIRM_PUSHES} pushes)"
-
 
 def _create_or_update_location(conn, vm_uuid, node, seen_ts, iface="-", bridge="-"):
     old = conn.execute("""
@@ -652,7 +580,6 @@ def _create_or_update_location(conn, vm_uuid, node, seen_ts, iface="-", bridge="
         WHERE vm_uuid=?
     """, (node, old_node, seen_ts, move_count + 1, seen_ts, iface, bridge, f"MIGRATED_FROM:{old_node}", vm_uuid))
 
-
 def process_node_vm_presence(conn, node, seen_vm_locations, seen_ts, inventory_complete=False):
     """Refresh seen VMs; mark unseen VMs missing only after a complete inventory."""
     seen_set = set()
@@ -669,7 +596,6 @@ def process_node_vm_presence(conn, node, seen_vm_locations, seen_ts, inventory_c
     for vm_uuid in seen_set:
         loc = seen_vm_locations.get(vm_uuid) or {}
         _create_or_update_location(conn, vm_uuid, node, seen_ts, str(loc.get("iface") or "-"), str(loc.get("bridge") or "-"))
-
 
 def auto_purge_migrated_vms(conn=None):
     own_conn = conn is None
@@ -713,37 +639,11 @@ def auto_purge_migrated_vms(conn=None):
         if own_conn:
             conn.close()
 
-
 # Backward-compatible name used by older code paths. It records a seen VM but
 # migration is now confirmed by process_node_vm_presence(), not immediately.
 def update_vm_location(conn, vm_uuid, node, seen_ts, iface="-", bridge="-"):
     process_node_vm_presence(conn, node, {vm_uuid: {"iface": iface, "bridge": bridge}}, seen_ts)
     return False
-
-def get_vm_current_location(vm_uuid):
-    conn = db()
-    try:
-        row = conn.execute("""
-            SELECT vm_uuid, node, previous_node, moved_at, move_count, last_seen, last_iface, last_bridge, alert_flags
-            FROM vm_location_latest
-            WHERE vm_uuid=?
-        """, (vm_uuid,)).fetchone()
-        if not row:
-            return None
-        return {
-            "vm_uuid": row[0],
-            "node": row[1],
-            "previous_node": row[2],
-            "moved_at": row[3],
-            "move_count": row[4],
-            "last_seen": row[5],
-            "last_iface": row[6],
-            "last_bridge": row[7],
-            "alert_flags": row[8],
-        }
-    finally:
-        conn.close()
-
 
 def get_recent_vm_migrations(node=None, limit=10):
     limit = max(1, min(100, safe_int(limit, 10)))
@@ -765,7 +665,6 @@ def get_recent_vm_migrations(node=None, limit=10):
         """, (limit,)).fetchall()
     finally:
         conn.close()
-
 
 def vm_migration_table(rows, title="Recent VM Migrations"):
     body = ""
@@ -802,7 +701,6 @@ def vm_migration_table(rows, title="Recent VM Migrations"):
     </div>
     """
 
-
 def clean_node_net_mode(mode):
     mode = (mode or "both").strip().lower()
     aliases = {
@@ -816,11 +714,9 @@ def clean_node_net_mode(mode):
     mode = aliases.get(mode, mode)
     return mode if mode in {"both", "public", "private"} else "both"
 
-
 def node_net_label(mode):
     mode = clean_node_net_mode(mode)
     return {"both": "Public + Private", "public": "Public", "private": "Private"}.get(mode, "Public + Private")
-
 
 def node_net_tabs(node, period, q, sort_by, sort_order, net_mode):
     current = clean_node_net_mode(net_mode)
@@ -850,7 +746,6 @@ def node_net_tabs(node, period, q, sort_by, sort_order, net_mode):
     </div>
     """
 
-
 def human_age_short(seconds):
     seconds = max(0, int(seconds or 0))
     if seconds < 60:
@@ -863,7 +758,6 @@ def human_age_short(seconds):
         return f"{hours}h {minutes % 60}m"
     days = hours // 24
     return f"{days}d {hours % 24}h"
-
 
 def node_status_state(last_push):
     """Return live status from the number of missed 5-minute pushes.
@@ -882,7 +776,6 @@ def node_status_state(last_push):
         return "yellow", age, missed_pushes
     return "red", age, missed_pushes
 
-
 def status_badge(last_push, show_age=True):
     state, age, missed_pushes = node_status_state(last_push)
     if state == "green":
@@ -898,7 +791,6 @@ def status_badge(last_push, show_age=True):
         f'<span class="status {escape(state)}" '
         f'title="Live heartbeat: {escape(age_text, quote=True)}; {escape(miss_text, quote=True)}">{escape(visible)}</span>'
     )
-
 
 def get_node_live_last_seen(node):
     conn = db()
@@ -933,7 +825,6 @@ def get_node_live_last_seen(node):
     finally:
         conn.close()
 
-
 def get_snapshot_tier(node, bucket):
     if not bucket:
         return "-"
@@ -946,24 +837,6 @@ def get_snapshot_tier(node, bucket):
         return str((row or ["raw"])[0] or "raw")
     finally:
         conn.close()
-
-
-
-def period_links(current, endpoint="index", node=None, q="", vm_status="active", net="both"):
-    links = []
-    for period in PERIODS:
-        params = {"period": period}
-        if q:
-            params["q"] = q
-        if endpoint == "node_page":
-            params["net"] = clean_node_net_mode(net)
-            href = url_for("node_page", node=node, **params)
-        else:
-            href = url_for("index", **params)
-        cls = "active" if period == current else ""
-        links.append(f'<a class="{cls}" href="{href}">{escape(period_label(period))}</a>')
-    return "".join(links)
-
 
 def range_card(period, start, end, q="", endpoint="index", node=None, vm_status="active", net="both"):
     # The visible search box is global everywhere. On a node page it returns to
@@ -1002,5 +875,4 @@ def range_card(period, start, end, q="", endpoint="index", node=None, vm_status=
         </form>
     </div>
     """
-
 

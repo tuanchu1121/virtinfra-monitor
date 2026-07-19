@@ -450,7 +450,7 @@ def main() -> int:
             }
             for rule in app_module.app.url_map.iter_rules()
         ], key=lambda item: (item["rule"], item["endpoint"], item["methods"]))
-        baseline_rows = json.loads((ROOT / "audit/node-groups/BASELINE_ROUTES.json").read_text(encoding="utf-8"))
+        baseline_rows = json.loads((ROOT / "tests/contracts/node_groups_baseline_routes.json").read_text(encoding="utf-8"))
         key = lambda item: (item["rule"], item["endpoint"], tuple(item["methods"]))
         current_counter = Counter(key(item) for item in route_rows)
         baseline_counter = Counter(key(item) for item in baseline_rows)

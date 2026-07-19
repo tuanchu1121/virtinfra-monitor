@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static regression contract for professional fixed presets and one Custom theme."""
+"""Static regression contract for effective professional presets, unified selector and one Custom theme."""
 from __future__ import annotations
 
 import ast
@@ -22,7 +22,7 @@ required = [
     'V5049_THEME_SELECTION_KEY = "virtinfra-theme-selection-v4"',
     'V5049_CUSTOM_THEME_ID = "simple-custom"',
     'data-custom-theme',
-    'simple-theme-select',
+    'unified-theme-select',
     'simple_theme_settings_updated',
     '@app.route("/admin/theme", methods=["GET", "POST"])',
     'require_admin()',

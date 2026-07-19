@@ -1,11 +1,8 @@
-# 50.5.7 Agent-token compatibility
-# ---------------------------------------------------------------------------
 def _v5057_agent_tokens():
     values = [str(TOKEN or "").strip()]
     legacy = str(os.environ.get("BW_MONITOR_LEGACY_TOKENS", "") or "")
     values.extend(part.strip() for part in re.split(r"[\s,]+", legacy))
     return tuple(dict.fromkeys(value for value in values if value))
-
 
 V5057_AGENT_TOKENS = _v5057_agent_tokens()
 V5057_OPERATIONAL_PUSH_ACCEPT_AFTER = max(
@@ -13,17 +10,11 @@ V5057_OPERATIONAL_PUSH_ACCEPT_AFTER = max(
     safe_int(get_admin_setting("operational_push_accept_after", "0"), 0),
 )
 
-
 def valid_agent_token(value):
     supplied = str(value or "")
     return any(hmac.compare_digest(supplied, expected) for expected in V5057_AGENT_TOKENS)
 
-
-# ---------------------------------------------------------------------------
-# 50.5.7 safe FIFO maintenance + canonical VM detail correctness
-# ---------------------------------------------------------------------------
 V5057_VERSION = "50.5.9-prod-r3-ui-alignment-overflow-hotfix"
-
 
 def enqueue_maintenance_job(action, parameters, actor):
     payload = dict(parameters or {})
@@ -36,7 +27,6 @@ def enqueue_maintenance_job(action, parameters, actor):
         exclusive=exclusive,
     )
 
-
 def _v5057_queue_has_pending_jobs():
     conn = db()
     try:
@@ -48,13 +38,11 @@ def _v5057_queue_has_pending_jobs():
     finally:
         conn.close()
 
-
 def _v5057_verify_current_admin_password(password):
     row = current_dashboard_user()
     if not row or str(row[3] or "") != "admin" or not safe_int(row[4], 0):
         return False
     return bool(password) and check_password_hash(str(row[2] or ""), str(password))
-
 
 @app.route("/admin/maintenance/cancel", methods=["POST"])
 def admin_cancel_maintenance_v5057():
@@ -74,9 +62,7 @@ def admin_cancel_maintenance_v5057():
     maintenance_queue.wake_dispatcher()
     return redirect(url_for("admin_page", dbmsg=message) + "#maintenance-queue")
 
-
 _v5057_admin_database_maintenance_base = app.view_functions.get("admin_database_maintenance")
-
 
 def admin_database_maintenance_v5057():
     action = str(request.form.get("action") or "").strip().lower()
@@ -178,12 +164,9 @@ def admin_database_maintenance_v5057():
         )
         return redirect(url_for("admin_page", dberr=error) + "#maintenance-queue")
 
-
 app.view_functions["admin_database_maintenance"] = admin_database_maintenance_v5057
 
-
 _v5057_database_maintenance_card_base = database_maintenance_card
-
 
 def database_maintenance_card(message="", error=""):
     html = _v5057_database_maintenance_card_base(message, error)
@@ -277,7 +260,6 @@ def database_maintenance_card(message="", error=""):
         app.logger.exception("Could not render accounting maintenance card")
     return html
 
-
 # --- Canonical current VM resolver ----------------------------------------
 def resolve_direct_vm_search(q):
     q = str(q or "").strip()
@@ -354,7 +336,6 @@ def resolve_direct_vm_search(q):
         return result
     return None
 
-
 def get_vm_current_location(vm_uuid):
     conn = db()
     try:
@@ -380,9 +361,7 @@ def get_vm_current_location(vm_uuid):
     finally:
         conn.close()
 
-
 _v5057_vm_snapshot_history_base = _v5054_vm_snapshot_overview
-
 
 def _v5057_live_vm_snapshot(node, vm_uuid, bridge="", iface=""):
     conn = db()
@@ -473,7 +452,6 @@ def _v5057_live_vm_snapshot(node, vm_uuid, bridge="", iface=""):
     finally:
         conn.close()
 
-
 def _v5054_vm_snapshot_overview(node, vm_uuid, period, bridge="", iface=""):
     period=clean_period(period)
     if _request_target_ts() is None and period=="5m":
@@ -490,7 +468,6 @@ def _v5054_vm_snapshot_overview(node, vm_uuid, period, bridge="", iface=""):
         result["cpu_core_percent"]=full*vcpu
     return result
 
-
 def _v48129_vm_detail_cpu_stat(full_percent, vcpu):
     full=max(0.0,min(100.0,safe_float(full_percent,0.0)))
     vcpu_count=max(0,safe_int(vcpu,0))
@@ -498,9 +475,7 @@ def _v48129_vm_detail_cpu_stat(full_percent, vcpu):
     level=_v48129_level(full)
     return f'''<div class="stat vm-detail-cpu-stat resource-{level}"><span class="vm-detail-stat-label">CPU</span><b>{full:.1f}% full</b><span class="resource-meter vm-detail-cpu-meter"><i style="width:{min(100.0,full):.1f}%"></i></span><small>{core:.1f}% core · {vcpu_count} vCPU</small></div>'''
 
-
 _v5057_vm_disks_history_base = _v48133_vm_disks
-
 
 def _v48133_vm_disks(node, vm_uuid):
     period=clean_period(request.args.get("period","5m"))
@@ -522,7 +497,6 @@ def _v48133_vm_disks(node, vm_uuid):
             conn.close()
     return _v5057_vm_disks_history_base(node,vm_uuid)
 
-
 def _v48135_vm_disk_total_overview(rows):
     if not rows:
         return ""
@@ -533,7 +507,6 @@ def _v48135_vm_disk_total_overview(rows):
     level=_v48133_disk_level(pct)
     return f'''<div class="stat vm-disk-total-overview disk-level-{level}"><div class="vm-disk-stat-label">VM DISK ASSIGNED</div><b>{_disk_io_bytes(assigned)}</b><small>Host allocated {_disk_io_bytes(allocated)} · {pct:.1f}% · {len(rows)} disk{'s' if len(rows)!=1 else ''}</small><span class="vm-disk-overview-meter"><i style="width:{min(100.0,max(0.0,pct)):.1f}%"></i></span><small class="vm-disk-storage-line">Physical {_disk_io_bytes(physical)}</small></div>'''
 
-
 def _v48133_vm_disk_io_card(rows):
     if not rows:
         return ""
@@ -543,7 +516,6 @@ def _v48133_vm_disk_io_card(rows):
         pct=allocated*100.0/assigned if assigned>0 else 0.0; level=_v48133_disk_level(pct); latest=max(latest,safe_int(seen,0)); dev=device or (("/dev/"+block) if block else "-")
         panels.append(f'''<article class="vm-disk-panel disk-level-{level}"><div class="vm-disk-panel-head"><div><span>VIRTUAL DISK</span><h4>{escape(target or '-')}</h4></div><div class="vm-disk-storage-badge"><b>{escape(mount or '-')}</b><small>{escape(dev)}</small></div></div><div class="vm-disk-panel-capacity"><div><span>ASSIGNED DISK SIZE</span><b>{_disk_io_bytes(assigned)}</b><small>Host allocated {_disk_io_bytes(allocated)} · {pct:.1f}%</small></div><span class="vm-disk-overview-meter"><i style="width:{min(100.0,max(0.0,pct)):.1f}%"></i></span></div><div class="vm-disk-panel-metrics"><div><span>READ</span><b>{_disk_io_rate(rb)}</b></div><div><span>WRITE</span><b>{_disk_io_rate(wb)}</b></div><div><span>READ IOPS</span><b>{_disk_io_iops(ri)}</b></div><div><span>WRITE IOPS</span><b>{_disk_io_iops(wi)}</b></div></div><div class="vm-disk-panel-meta"><div><span>SOURCE</span><code title="{escape(source or '-',quote=True)}">{escape(source or '-')}</code></div><div><span>FILESYSTEM</span><b>{escape(fstype or '-')}</b></div><div><span>PHYSICAL</span><b>{_disk_io_bytes(physical)}</b></div><div><span>LAST SAMPLE</span><b>{fmt_push(seen)}</b></div></div></article>''')
     return f'''<div class="card vm-disk-detail-card vm-disk-panels-only" id="virtual-disk-io"><div class="table-title-row"><div><h3>Virtual Disk I/O</h3><div class="table-hint">Assigned disk size is the guest-visible capacity. Host allocated is shown separately. Live 5m reads vm_disk_current; historical periods read the exact retained storage snapshot.</div></div><div class="count-badges"><span>Disks <b>{len(rows)}</b></span><span>Seen <b>{fmt_push(latest)}</b></span></div></div><div class="vm-disk-detail-grid">{''.join(panels)}</div></div>'''
-
 
 # Historical VM RAM must use the same selected snapshot as CPU/network/disk.
 # Live 5m uses the current cache; all other periods use the exact retained
@@ -574,8 +546,6 @@ def _v48103_latest_ram(node, vm_uuid):
     finally:
         conn.close()
 
-
-# 50.5.7 live VM route guard. A stale bookmark or old-node link must not show
 # current cards from an obsolete node. Historical/custom-time views retain the
 # requested node so migration investigations remain possible.
 _v5057_vm_page_route_base = app.view_functions.get("vm_page")
@@ -622,7 +592,6 @@ def get_vm_interface_identities(node, vm_uuid, bridge="", iface=""):
     finally:
         conn.close()
 
-
 def vm_network_identity_card(node, vm_uuid, bridge="", iface=""):
     rows = get_vm_interface_identities(node, vm_uuid, bridge=bridge, iface=iface)
     if not rows:
@@ -647,7 +616,6 @@ def vm_network_identity_card(node, vm_uuid, bridge="", iface=""):
       <div class="vm-network-identity-list">{"".join(cards)}</div>
     </div>'''
 
-
 V5057_MAC_IDENTITY_CSS = r'''
 <style id="v5057-mac-identity">
 .vm-network-identity-list{display:flex;flex-direction:column;gap:10px}
@@ -662,9 +630,7 @@ html[data-theme=dark] .vm-network-identity-row .stat span{color:#9fb0c4}
 </style>
 '''
 
-
 _v5057_mac_vm_page_base = app.view_functions.get("vm_page")
-
 
 def vm_page_v5057_mac_identity():
     response = _v5057_mac_vm_page_base()
@@ -693,11 +659,9 @@ def vm_page_v5057_mac_identity():
         app.logger.exception("Could not apply VM MAC identity UI")
     return response
 
-
 if _v5057_mac_vm_page_base is not None:
     app.view_functions["vm_page"] = vm_page_v5057_mac_identity
 
-# 50.5.7 canonical live Node detail. The 5m page now reads the same bounded
 # current rows as Dashboard/Top VM. Historical/custom-time views keep the exact
 # retained snapshot path.
 _v5057_get_node_overview_history = get_node_overview
@@ -705,10 +669,8 @@ _v5057_get_node_metric_overview_history = get_node_metric_overview
 _v5057_get_node_host_period_history = get_node_host_period
 _v5057_get_node_filesystems_snapshot_history = get_node_filesystems_snapshot
 
-
 def _v5057_node_live_request(period):
     return _request_target_ts() is None and clean_period(period) == "5m"
-
 
 def get_node_overview(node, period, q="", vm_status="active"):
     if not _v5057_node_live_request(period):
@@ -758,7 +720,6 @@ def get_node_overview(node, period, q="", vm_status="active"):
         )
     finally:
         conn.close()
-
 
 def get_node_metric_overview(node, period, q="", vm_status="active"):
     if not _v5057_node_live_request(period):
@@ -813,7 +774,6 @@ def get_node_metric_overview(node, period, q="", vm_status="active"):
     finally:
         conn.close()
 
-
 def get_node_host_period(node, period):
     if not _v5057_node_live_request(period):
         return _v5057_get_node_host_period_history(node, period)
@@ -831,7 +791,6 @@ def get_node_host_period(node, period):
         return row
     finally:
         conn.close()
-
 
 def get_node_filesystems_snapshot(node, period):
     if not _v5057_node_live_request(period):
@@ -857,5 +816,3 @@ def get_node_filesystems_snapshot(node, period):
     finally:
         conn.close()
 
-
-# ---------------------------------------------------------------------------

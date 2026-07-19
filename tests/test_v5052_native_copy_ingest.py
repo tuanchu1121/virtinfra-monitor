@@ -13,15 +13,26 @@ APP = read_app_source()
 PG = PG_PATH.read_text(encoding="utf-8")
 INSTALLER = (ROOT / "deploy" / "postgres" / "install-postgres-native.sh").read_text(encoding="utf-8")
 INDEX_PROFILE = (ROOT / "postgres" / "sql" / "005_ingest_write_profile.sql").read_text(encoding="utf-8")
+V5052 = (ROOT / "app/runtime_layers/37_native_copy_ingest.py").read_text(encoding="utf-8")
+INGEST_LAYER = (ROOT / "app/runtime_layers/10_ingest_push.py").read_text(encoding="utf-8")
 
 
 def _v5052_block() -> str:
-    block = APP.split("# v50.5.2 native PostgreSQL COPY ingest", 1)[1]
-    return block.split("# 50.5.7 Agent-token compatibility", 1)[0]
+    return V5052
+
+
+def _function_source(source: str, name: str) -> str:
+    import ast
+    tree = ast.parse(source)
+    node = next(
+        item for item in tree.body
+        if isinstance(item, ast.FunctionDef) and item.name == name
+    )
+    return "\n".join(source.splitlines()[node.lineno - 1:node.end_lineno])
 
 
 def test_release_and_native_copy_contract() -> None:
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r8-safe-dead-code-prune"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r9-safe-runtime-history-prune"
     assert "def copy_rows(" in PG
     assert "cursor.copy(statement)" in PG
     assert "copy.write_row(values)" in PG
@@ -42,9 +53,7 @@ def test_release_and_native_copy_contract() -> None:
 
 
 def test_push_uses_copy_stages_and_stage_timings() -> None:
-    push = APP.split('def push():', 1)[1].split(
-        "# ---------------------------------------------------------------------------\n# v48.7.0", 1
-    )[0]
+    push = _function_source(INGEST_LAYER, "push")
     assert "_v5052_write_interface_copy_batch(" in push
     assert "_v5052_write_vm_copy_batch(" in push
     assert "_v5052_merge_latest_metrics(" in push

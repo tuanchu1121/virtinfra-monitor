@@ -52,7 +52,6 @@ def admin_setup():
     """
     return page("Emergency Admin Setup" if emergency_mode else "Initial Admin Setup", content)
 
-
 @app.route("/admin/login", methods=["GET", "POST"])
 def admin_login():
     next_url = safe_next_url(request.args.get("next") or request.form.get("next"))
@@ -141,7 +140,6 @@ def admin_login():
     """
     return page("Admin Login", content)
 
-
 @app.route("/admin/password", methods=["GET", "POST"])
 def admin_change_password():
     deny = require_admin()
@@ -190,7 +188,6 @@ def admin_change_password():
     """
     return page("Change Admin Password", content)
 
-
 @app.route("/admin/logout")
 def admin_logout():
     username = session.get("admin_username") or dashboard_username()
@@ -198,7 +195,6 @@ def admin_logout():
         log_account_event("logout", username=username, realm="admin", role="admin")
     session.clear()
     return redirect(url_for("admin_login"))
-
 
 @app.route("/admin/users")
 def admin_users_page():
@@ -307,7 +303,6 @@ def admin_users_page():
     """
     return page("Dashboard Users", content)
 
-
 @app.route("/admin/users/create", methods=["POST"])
 def admin_create_user():
     deny = require_admin()
@@ -324,7 +319,6 @@ def admin_create_user():
     upsert_dashboard_user(username, password, role=role, is_active=1)
     log_account_event("user_created", username=username, realm="admin", role=role, detail=f"created_by={session.get('admin_username') or dashboard_username()}")
     return redirect(url_for("admin_users_page"))
-
 
 @app.route("/admin/users/action", methods=["POST"])
 def admin_user_action():
@@ -375,7 +369,6 @@ def admin_user_action():
         return Response("Invalid action\n", status=400, mimetype="text/plain")
 
     return redirect(url_for("admin_users_page"))
-
 
 @app.route("/admin/logs")
 def admin_logs_page():
@@ -511,7 +504,6 @@ def admin_logs_page():
     """
     return page("Logs", content)
 
-
 @app.route("/admin/logs/clear", methods=["POST"])
 def admin_logs_clear():
     deny = require_admin()
@@ -532,7 +524,6 @@ def admin_logs_clear():
     log_account_event("logs_cleared", username=actor, realm="admin", role="admin", detail=f"type={log_type}; mode={mode}; deleted={deleted}; filter={q}")
     return redirect(url_for('admin_logs_page', type=log_type, q=q, limit=limit, page=page_no))
 
-
 @app.route("/admin/system-health")
 def admin_system_health_page():
     deny = require_admin()
@@ -549,7 +540,6 @@ def admin_system_health_page():
     {monitor_system_health_card()}
     """
     return page("System Health", content)
-
 
 @app.route("/admin")
 def admin_page():
@@ -720,8 +710,6 @@ def admin_page():
     # uses <div id="bw-content"> and has no </main>, so the card was invisible.
     return page("Admin", content)
 
-
-
 @app.route("/admin/database-maintenance", methods=["POST"])
 @app.route("/admin/database-maintenance", methods=["POST"])
 def admin_database_maintenance():
@@ -782,7 +770,6 @@ def _delete_count(conn, sql, params=()):
     cur = conn.execute(sql, params)
     return max(0, int(cur.rowcount or 0))
 
-
 def _collect_node_vm_uuids(conn, node):
     """Return all real VM UUIDs that still reference a node in any VM table."""
     rows = conn.execute("""
@@ -815,7 +802,6 @@ def _collect_node_vm_uuids(conn, node):
           AND vm_uuid != '-'
     """, {"node": node}).fetchall()
     return sorted({str(row[0]).strip() for row in rows if row and row[0]})
-
 
 def _repair_vm_location_after_purge(conn, vm_uuid, removed_node):
     """Repair or remove the global VM location after purging one node's copy.
@@ -912,7 +898,6 @@ def _repair_vm_location_after_purge(conn, vm_uuid, removed_node):
     else:
         conn.execute("DELETE FROM vm_location_latest WHERE vm_uuid=?", (vm_uuid,))
 
-
 def _refresh_node_snapshot_vm_counts(conn, node):
     """Recalculate VM/interface counts while preserving node push snapshots."""
     conn.execute("""
@@ -943,9 +928,6 @@ def _refresh_node_snapshot_vm_counts(conn, node):
             ), 0)
         WHERE node=?
     """, (node,))
-
-
-
 
 def purge_all_vms_for_node(conn, node):
     """Delete every VM and VM history under a node, but keep the node itself.
@@ -1025,7 +1007,6 @@ def purge_all_vms_for_node(conn, node):
     deleted["vm_uuids"] = len(vm_uuids)
     return deleted
 
-
 def purge_node_data(conn, node):
     """Permanently delete every database row belonging to one node."""
     deleted = purge_all_vms_for_node(conn, node)
@@ -1055,7 +1036,6 @@ def purge_node_data(conn, node):
 
     return deleted
 
-
 @app.route("/admin/cleanup", methods=["POST"])
 def admin_run_cleanup():
     deny = require_admin()
@@ -1063,7 +1043,6 @@ def admin_run_cleanup():
         return deny
     auto_cleanup_inventory()
     return redirect(url_for("admin_page"))
-
 
 @app.route("/admin/delete_vm", methods=["POST"])
 def admin_delete_vm():
@@ -1101,7 +1080,6 @@ def admin_delete_vm():
         conn.close()
     return redirect(url_for("admin_page"))
 
-
 @app.route("/admin/restore_vm", methods=["POST"])
 def admin_restore_vm():
     deny = require_admin()
@@ -1121,7 +1099,6 @@ def admin_restore_vm():
     finally:
         conn.close()
     return redirect(url_for("admin_page"))
-
 
 @app.route("/admin/delete_node", methods=["POST"])
 def admin_delete_node():
@@ -1158,7 +1135,6 @@ def admin_delete_node():
         conn.close()
     return redirect(url_for("admin_page"))
 
-
 @app.route("/admin/restore_node", methods=["POST"])
 def admin_restore_node():
     deny = require_admin()
@@ -1177,7 +1153,6 @@ def admin_restore_node():
     finally:
         conn.close()
     return redirect(url_for("admin_page"))
-
 
 @app.route("/admin/purge_node_vms", methods=["POST"])
 def admin_purge_node_vms():
@@ -1198,7 +1173,6 @@ def admin_purge_node_vms():
         err = f"Could not queue node VM purge: {exc}"
         log_account_event("node_vms_purge_queue_failed", username=actor, realm="admin", role="admin", detail=err[:500])
         return redirect(url_for("admin_page", dberr=err))
-
 
 @app.route("/admin/bulk_nodes", methods=["POST"])
 def admin_bulk_nodes():
@@ -1258,7 +1232,6 @@ def admin_bulk_nodes():
 
     log_account_event("bulk_node_action", username=actor, realm="admin", role="admin", detail=f"action={action};nodes={','.join(nodes[:100])}")
     return redirect(url_for("admin_page"))
-
 
 @app.route("/admin/bulk_vms", methods=["POST"])
 def admin_bulk_vms():
@@ -1327,14 +1300,12 @@ def admin_bulk_vms():
     log_account_event("bulk_vm_action", username=actor, realm="admin", role="admin", detail=f"action={action};selected={len(selected)};nodes={','.join(affected_nodes[:100])}")
     return redirect(url_for("admin_page"))
 
-
 @app.route("/admin/api/system-health")
 def admin_api_system_health():
     deny = require_admin()
     if deny:
         return deny
     return jsonify(get_monitor_system_health())
-
 
 @app.route("/health")
 def health():

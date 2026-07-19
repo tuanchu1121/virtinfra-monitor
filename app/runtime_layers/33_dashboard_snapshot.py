@@ -1,35 +1,27 @@
-# VirtInfra Monitor v50.2.3 Dashboard Selected Snapshot fix
-# ---------------------------------------------------------------------------
 # Time display is intentionally fixed to the original Asia/Ho_Chi_Minh zone.
 # There is no runtime timezone switch. Stored timestamps remain Unix/UTC values;
 # only presentation uses the original UTC+7 clock.
 
-
 def display_timezone_name():
     return TZ_NAME
 
-
 def _display_timezone():
     return TZ
-
 
 def fmt_full(ts):
     if not ts:
         return "-"
     return datetime.fromtimestamp(int(ts), TZ).strftime("%Y-%m-%d %H:%M:%S")
 
-
 def fmt_range(ts):
     if not ts:
         return "-"
     return datetime.fromtimestamp(int(ts), TZ).strftime("%Y-%m-%d %H:%M")
 
-
 def fmt_push(ts):
     if not ts:
         return "-"
     return datetime.fromtimestamp(int(ts), TZ).strftime("%H:%M")
-
 
 def fmt_chart_label(ts, step):
     dt = datetime.fromtimestamp(int(ts), TZ)
@@ -38,7 +30,6 @@ def fmt_chart_label(ts, step):
     if step >= 3600:
         return dt.strftime("%m-%d %H:%M")
     return dt.strftime("%H:%M")
-
 
 def _parse_datetime_local(value):
     value = (value or "").strip()
@@ -63,17 +54,14 @@ def _parse_datetime_local(value):
             pass
     return None
 
-
 def _datetime_local_value(ts):
     if not ts:
         return ""
     return datetime.fromtimestamp(int(ts), TZ).strftime("%Y-%m-%dT%H:%M")
 
-
 @app.route("/livez")
 def virtinfra_livez():
     return jsonify({"status": "ok", "service": PRODUCT_NAME}), 200
-
 
 @app.route("/healthz")
 def virtinfra_healthz():
@@ -83,15 +71,12 @@ def virtinfra_healthz():
     except Exception as exc:
         return jsonify({"status": "error", "service": PRODUCT_NAME, "database": "unavailable", "detail": str(exc)[:300]}), 503
 
-
 # Keep the existing Admin overview unchanged. The temporary display-timezone
 # card and POST endpoint were removed to restore the original fixed UTC+7 UI.
 _v502_admin_overview_base = _v490_admin_overview
 
-
 def _v490_admin_overview(stats):
     return _v502_admin_overview_base(stats)
-
 
 # PostgreSQL-backed cache generation invalidates every Gunicorn worker even when
 # Redis is disabled. This makes Hide/Restore visible immediately across workers.
@@ -114,7 +99,6 @@ def _v48140_cache_generation():
             conn.close()
     except Exception:
         return max(1, _v48140_local_generation)
-
 
 def _v48140_bump_cache_generation():
     global _v48140_local_generation
@@ -141,7 +125,6 @@ def _v48140_bump_cache_generation():
         pass
     return generation
 
-
 def _virtinfra_wrap_inventory_mutation(endpoint_name):
     current = app.view_functions.get(endpoint_name)
     if current is None or getattr(current, "_virtinfra_cache_mutation", False):
@@ -156,13 +139,11 @@ def _virtinfra_wrap_inventory_mutation(endpoint_name):
     wrapper._virtinfra_cache_mutation = True
     app.view_functions[endpoint_name] = wrapper
 
-
 for _virtinfra_endpoint in (
     "admin_delete_node", "admin_restore_node", "admin_delete_vm", "admin_restore_vm",
     "admin_bulk_nodes", "admin_bulk_vms", "admin_purge_node_vms",
 ):
     _virtinfra_wrap_inventory_mutation(_virtinfra_endpoint)
-
 
 VIRTINFRA_FINAL_CSS = r"""
 <style id="virtinfra-v502-final-ui">
@@ -186,9 +167,7 @@ VIRTINFRA_FINAL_CSS = r"""
 </style>
 """
 
-
 _page_virtinfra_v502_base = page
-
 
 def page(title, content):
     response = _page_virtinfra_v502_base(title, VIRTINFRA_FINAL_CSS + content)
@@ -200,4 +179,3 @@ def page(title, content):
         app.logger.exception("Could not apply VirtInfra final UI layer")
     return response
 
-# ---------------------------------------------------------------------------

@@ -1,12 +1,9 @@
 
-
 def local_hour_start(ts):
     return ((int(ts) + RETENTION_TZ_OFFSET_SECONDS) // 3600) * 3600 - RETENTION_TZ_OFFSET_SECONDS
 
-
 def local_day_start(ts):
     return ((int(ts) + RETENTION_TZ_OFFSET_SECONDS) // 86400) * 86400 - RETENTION_TZ_OFFSET_SECONDS
-
 
 def add_bandwidth_rollup(conn, data_time, node, vm_uuid, bridge,
                          rx_delta, tx_delta, rx_packets_delta, tx_packets_delta,
@@ -62,7 +59,6 @@ def add_bandwidth_rollup(conn, data_time, node, vm_uuid, bridge,
             last_push=MAX(bandwidth_daily.last_push, excluded.last_push)
     """, (day_start,) + values)
 
-
 def _delete_in_batches(conn, table, where_sql, params, batch_rows=RETENTION_BATCH_ROWS):
     total = 0
     while True:
@@ -80,7 +76,6 @@ def _delete_in_batches(conn, table, where_sql, params, batch_rows=RETENTION_BATC
         if changed < batch_rows:
             break
     return total
-
 
 def _rollup_and_delete_legacy_usage(conn, raw_cutoff):
     """Atomically roll legacy usage into billing tables, one local hour at a time.
@@ -178,8 +173,6 @@ def _rollup_and_delete_legacy_usage(conn, raw_cutoff):
             raise
     return total_deleted
 
-
-
 def delete_history_older_than(days):
     """Delete old detailed metrics while preserving billing/latest state."""
     allowed_days = {1, 3, 7}
@@ -211,7 +204,6 @@ def delete_history_older_than(days):
         return {"days": days, "cutoff": cutoff, "deleted": deleted, "total_deleted": sum(safe_int(v, 0) for v in deleted.values())}
     finally:
         conn.close()
-
 
 def run_retention(dry_run=False):
     """Apply exact-snapshot tiering and preserve exact billing totals.
@@ -451,7 +443,6 @@ def run_retention(dry_run=False):
         raise
     finally:
         conn.close()
-
 
 @app.route("/push", methods=["POST"])
 def push():
@@ -832,7 +823,6 @@ def push():
         _v5052_merge_latest_metrics(conn, node, data_time)
         native_latest_ms = (time.perf_counter() - native_latest_started) * 1000.0
 
-
         if node_host:
             load1 = float(node_host.get("load1") or 0)
             load5 = float(node_host.get("load5") or 0)
@@ -1098,6 +1088,3 @@ def push():
         )
     return {"ok": True, "count": len(interfaces), "vms": len(vms), "physical": len(physical_interfaces), "bridges": len(bridge_addresses), "inventory_complete": inventory_complete, "version": data.get("version", 1), "agent_config": get_agent_runtime_config()}
 
-
-
-# ---------------------------------------------------------------------------

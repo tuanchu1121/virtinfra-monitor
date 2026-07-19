@@ -1,5 +1,3 @@
-# v48.11.0 API Management and read-only REST API v1
-# ---------------------------------------------------------------------------
 # Design goals:
 # - Keep the existing Agent /push token completely separate from external API keys.
 # - Store only SHA-256 hashes of high-entropy API secrets; show plaintext once.
@@ -7,7 +5,6 @@
 # - Support scopes, optional IP/CIDR allowlists, expiry, revoke/rotate and audit.
 # - Avoid a write per poll: last-used metadata is flushed at most once per minute.
 # - Do not enable CORS implicitly. Native Windows clients do not need CORS.
-# ---------------------------------------------------------------------------
 
 V48110_VERSION = "48.11.0"
 API_VERSION = "v1"
@@ -40,7 +37,6 @@ _api_rate_windows = {}
 _api_last_used_lock = threading.Lock()
 _api_last_used_cache = {}
 
-
 def _api_parse_networks(raw):
     values = []
     for item in str(raw or "").replace("\n", ",").replace(";", ",").split(","):
@@ -53,12 +49,9 @@ def _api_parse_networks(raw):
             app.logger.warning("Ignoring invalid trusted proxy network: %s", item)
     return tuple(values)
 
-
 API_TRUSTED_PROXIES = _api_parse_networks(API_TRUSTED_PROXIES_RAW)
 
-
 _db_v48110_base = db
-
 
 def _v48110_ensure_schema(conn):
     """Create API tables additively. Existing monitor tables are never rebuilt."""
@@ -102,7 +95,6 @@ def _v48110_ensure_schema(conn):
     """)
     conn.commit()
 
-
 def db():
     global _api_schema_ready
     conn = _db_v48110_base()
@@ -113,14 +105,12 @@ def db():
                 _api_schema_ready = True
     return conn
 
-
 def _api_json_load_list(value):
     try:
         data = json.loads(value or "[]")
     except (TypeError, ValueError, json.JSONDecodeError):
         return []
     return [str(item) for item in data] if isinstance(data, list) else []
-
 
 def _api_clean_scopes(values):
     if isinstance(values, str):
@@ -132,7 +122,6 @@ def _api_clean_scopes(values):
             cleaned.append(value)
     return cleaned
 
-
 def _api_clean_name(value):
     value = " ".join(str(value or "").strip().split())
     if len(value) < 3:
@@ -140,7 +129,6 @@ def _api_clean_name(value):
     if len(value) > 80:
         raise ValueError("API key name must not exceed 80 characters.")
     return value
-
 
 def _api_normalize_allowlist(raw):
     """Validate exact IPs and CIDRs; return canonical strings."""
@@ -169,16 +157,13 @@ def _api_normalize_allowlist(raw):
         raise ValueError("A maximum of 64 IP/CIDR entries is allowed per key.")
     return result
 
-
 def _api_secret_hash(secret):
     return hashlib.sha256(str(secret).encode("utf-8")).hexdigest()
-
 
 def _api_generate_token():
     key_id = secrets.token_hex(6)
     secret = secrets.token_urlsafe(32)
     return key_id, secret, f"{API_KEY_PREFIX}_{key_id}_{secret}"
-
 
 def _api_parse_token(token):
     token = str(token or "").strip()
@@ -192,7 +177,6 @@ def _api_parse_token(token):
         return None, None
     return key_id, secret
 
-
 def _api_log_event(conn, event_type, key_id="", key_name="", actor="", source_ip="", detail=""):
     conn.execute(
         """INSERT INTO api_key_events(event_time,event_type,key_id,key_name,actor,source_ip,detail)
@@ -200,7 +184,6 @@ def _api_log_event(conn, event_type, key_id="", key_name="", actor="", source_ip
         (now_ts(), str(event_type or "")[:48], str(key_id or "")[:64], str(key_name or "")[:120],
          str(actor or "")[:120], str(source_ip or "")[:128], str(detail or "")[:1000]),
     )
-
 
 def _api_create_key_record(conn, name, scopes, allowed_ips, expires_at, actor, note="", rotated_from=""):
     name = _api_clean_name(name)
@@ -235,7 +218,6 @@ def _api_create_key_record(conn, name, scopes, allowed_ips, expires_at, actor, n
             continue
     raise RuntimeError("Could not allocate a unique API key ID.")
 
-
 def _api_key_row_to_dict(row):
     if not row:
         return None
@@ -249,7 +231,6 @@ def _api_key_row_to_dict(row):
     data["allowed_ips"] = _api_json_load_list(data.pop("allowed_ips_json", "[]"))
     return data
 
-
 def _api_get_key_by_id(conn, key_id):
     row = conn.execute(
         """SELECT id,key_id,name,secret_hash,scopes_json,allowed_ips_json,is_active,
@@ -260,14 +241,12 @@ def _api_get_key_by_id(conn, key_id):
     ).fetchone()
     return _api_key_row_to_dict(row)
 
-
 def _api_ip_in_networks(ip_value, networks):
     try:
         address = ipaddress.ip_address(str(ip_value or "").strip())
     except ValueError:
         return False
     return any(address in network for network in networks)
-
 
 def api_client_ip():
     """Return the API caller IP without blindly trusting spoofable XFF headers."""
@@ -279,7 +258,6 @@ def api_client_ip():
         return str(ipaddress.ip_address(forwarded))
     except ValueError:
         return remote
-
 
 def _api_allowlist_matches(client_ip, allowed_items):
     if not allowed_items:
@@ -299,7 +277,6 @@ def _api_allowlist_matches(client_ip, allowed_items):
             continue
     return False
 
-
 def _api_response(payload=None, status=200):
     body = {"ok": 200 <= int(status) < 300, "api_version": API_VERSION, "generated_at": now_ts()}
     if payload:
@@ -313,13 +290,11 @@ def _api_response(payload=None, status=200):
     response.headers["X-Request-ID"] = request_id
     return response
 
-
 def _api_error(code, message, status, detail=None):
     error = {"code": str(code), "message": str(message)}
     if detail:
         error["detail"] = str(detail)
     return _api_response({"error": error}, status=status)
-
 
 def _api_extract_bearer():
     header = str(request.headers.get("Authorization") or "").strip()
@@ -329,7 +304,6 @@ def _api_extract_bearer():
     if not sep or scheme.lower() != "bearer":
         return ""
     return value.strip()
-
 
 def _api_rate_allowed(key_id, client_ip):
     current_minute = int(time.time() // 60)
@@ -343,7 +317,6 @@ def _api_rate_allowed(key_id, client_ip):
         count = safe_int(_api_rate_windows.get(bucket_key), 0) + 1
         _api_rate_windows[bucket_key] = count
     return count <= API_RATE_LIMIT_PER_MINUTE, count
-
 
 def _api_flush_last_used(key_id, client_ip):
     now = now_ts()
@@ -364,7 +337,6 @@ def _api_flush_last_used(key_id, client_ip):
         conn.commit()
     finally:
         conn.close()
-
 
 def _api_authenticate(required_scopes=()):
     g.api_request_id = secrets.token_hex(8)
@@ -412,7 +384,6 @@ def _api_authenticate(required_scopes=()):
     _api_flush_last_used(key_id, client_ip)
     return key, None
 
-
 def require_api_scopes(*scopes):
     scopes = tuple(_api_clean_scopes(scopes))
 
@@ -426,16 +397,13 @@ def require_api_scopes(*scopes):
         return wrapped
     return decorator
 
-
 def _api_limit_offset(default=200):
     limit = max(1, min(API_MAX_LIMIT, safe_int(request.args.get("limit"), default)))
     offset = max(0, safe_int(request.args.get("offset"), 0))
     return limit, offset
 
-
 def _api_parse_flags(value):
     return [item for item in str(value or "").split(",") if item]
-
 
 def _api_vm_abuse_item(row):
     # Keep this mapping explicit so API compatibility does not depend on SELECT *.
@@ -491,7 +459,6 @@ def _api_vm_abuse_item(row):
         "policy": {"revision": safe_int(policy_revision, 0), "engine_version": str(engine_version or "")},
     }
 
-
 _API_ABUSE_SELECT = """
 SELECT a.node,a.vm_uuid,a.last_seen,a.abuse_since,a.abuse_flags,a.severity,
        a.network_rx_hit,a.network_tx_hit,
@@ -509,7 +476,6 @@ FROM vm_abuse_state a
 LEFT JOIN vm_current_fast c ON c.node=a.node AND c.vm_uuid=a.vm_uuid
 LEFT JOIN vm_inventory v ON v.node=a.node AND v.vm_uuid=a.vm_uuid
 """
-
 
 def _api_abuse_filters(include_uuid=False):
     where = ["a.is_abuse=1", "a.last_seen>=?"]
@@ -538,7 +504,6 @@ def _api_abuse_filters(include_uuid=False):
         params.append(severity_min)
     return where, params
 
-
 @app.route("/api/v1/me", methods=["GET"])
 @require_api_scopes()
 def api_v1_me():
@@ -548,7 +513,6 @@ def api_v1_me():
         "allowed_ips": key["allowed_ips"], "expires_at": safe_int(key.get("expires_at"), 0) or None,
         "rate_limit_per_minute": API_RATE_LIMIT_PER_MINUTE,
     }})
-
 
 @app.route("/api/v1/health", methods=["GET"])
 @require_api_scopes()
@@ -565,7 +529,6 @@ def api_v1_health():
     return _api_response({"data": {
         "status": "ok", "app_version": V48110_VERSION, "database": "ok", "current_abuse_count": current_abuse,
     }})
-
 
 @app.route("/api/v1/abuse/vms", methods=["GET"])
 @require_api_scopes("abuse:read")
@@ -601,7 +564,6 @@ def api_v1_abuse_vms():
         "sort": sort if sort in sort_map else "severity", "order": order.lower(),
     }})
 
-
 @app.route("/api/v1/abuse/vms/<vm_uuid>", methods=["GET"])
 @require_api_scopes("abuse:read")
 def api_v1_abuse_vm(vm_uuid):
@@ -624,7 +586,6 @@ def api_v1_abuse_vm(vm_uuid):
     if len(rows) > 1 and not node:
         return _api_error("ambiguous_vm_location", "The VM UUID exists on more than one node. Provide ?node=<node>.", 409)
     return _api_response({"data": _api_vm_abuse_item(rows[0])})
-
 
 @app.route("/api/v1/abuse/events", methods=["GET"])
 @require_api_scopes("abuse_events:read")
@@ -687,7 +648,6 @@ def api_v1_abuse_events():
         })
     return _api_response({"data": data, "meta": {"count": len(data), "total": total, "limit": limit, "offset": offset}})
 
-
 def _api_vm_current_item(row):
     (
         node, vm_uuid, last_seen, interval_seconds, iface_count,
@@ -723,7 +683,6 @@ def _api_vm_current_item(row):
         "disk": {"read_bps": round(safe_float(disk_read, 0), 4), "write_bps": round(safe_float(disk_write, 0), 4), "read_iops": round(safe_float(disk_read_iops, 0), 4), "write_iops": round(safe_float(disk_write_iops, 0), 4)},
     }
 
-
 _API_VM_CURRENT_SELECT = """
 SELECT c.node,c.vm_uuid,c.last_seen,c.interval_seconds,c.iface_count,
        c.public_mbps,c.private_mbps,c.rx_mbps,c.tx_mbps,c.total_mbps,
@@ -737,7 +696,6 @@ SELECT c.node,c.vm_uuid,c.last_seen,c.interval_seconds,c.iface_count,
 FROM vm_current_fast c
 LEFT JOIN vm_inventory v ON v.node=c.node AND v.vm_uuid=c.vm_uuid
 """
-
 
 @app.route("/api/v1/vms", methods=["GET"])
 @require_api_scopes("vm:read")
@@ -768,7 +726,6 @@ def api_v1_vms():
         conn.close()
     return _api_response({"data": [_api_vm_current_item(row) for row in rows], "meta": {"count": len(rows), "total": total, "limit": limit, "offset": offset, "sort": sort if sort in sort_map else "last_seen", "order": order.lower()}})
 
-
 @app.route("/api/v1/vms/<vm_uuid>/current", methods=["GET"])
 @require_api_scopes("vm:read")
 def api_v1_vm_current(vm_uuid):
@@ -788,7 +745,6 @@ def api_v1_vm_current(vm_uuid):
     if len(rows) > 1 and not node:
         return _api_error("ambiguous_vm_location", "The VM UUID exists on more than one node. Provide ?node=<node>.", 409)
     return _api_response({"data": _api_vm_current_item(rows[0])})
-
 
 @app.route("/api/v1/nodes", methods=["GET"])
 @require_api_scopes("node:read")
@@ -823,16 +779,13 @@ def api_v1_nodes():
         })
     return _api_response({"data": data, "meta": {"count": len(data), "total": total, "limit": limit, "offset": offset}})
 
-
 # ------------------------------ Admin API Management -----------------------
 
 def _api_admin_actor():
     return str(session.get("admin_username") or session.get("dashboard_username") or "admin")[:120]
 
-
 def _api_admin_redirect(msg="", err=""):
     return redirect(url_for("admin_api_keys_page", apimsg=msg or None, apierr=err or None))
-
 
 def _api_expiration_from_form(value):
     value = str(value or "never").strip().lower()
@@ -846,7 +799,6 @@ def _api_expiration_from_form(value):
         raise ValueError("Invalid expiration option.")
     return now_ts() + days * 86400
 
-
 def _api_scope_checkboxes(selected=None):
     selected = set(selected or API_DEFAULT_SCOPES)
     rows = []
@@ -854,7 +806,6 @@ def _api_scope_checkboxes(selected=None):
         checked = "checked" if scope in selected else ""
         rows.append(f'<label class="api-scope"><input type="checkbox" name="scopes" value="{escape(scope,quote=True)}" {checked}><span><b>{escape(scope)}</b><small>{escape(label)}</small></span></label>')
     return "".join(rows)
-
 
 def _api_admin_key_rows():
     conn = db()
@@ -873,7 +824,6 @@ def _api_admin_key_rows():
         conn.close()
     return [_api_key_row_to_dict(row) for row in rows], events
 
-
 def _api_admin_status(key):
     if not safe_int(key.get("is_active"), 0):
         return "Revoked", "status-down"
@@ -881,7 +831,6 @@ def _api_admin_status(key):
     if expires and expires <= now_ts():
         return "Expired", "status-down"
     return "Active", "status-online"
-
 
 def _api_docs_examples():
     base = request.url_root.rstrip("/")
@@ -904,7 +853,6 @@ def _api_docs_examples():
   -H 'Authorization: Bearer bwm_live_xxxxxxxxxxxx_SECRET' \\
   '{escape(base)}/api/v1/abuse/vms?limit=200'</pre></div>
     </div>"""
-
 
 @app.route("/admin/api-keys", methods=["GET"])
 def admin_api_keys_page():
@@ -994,7 +942,6 @@ def admin_api_keys_page():
     """
     return page("API Management", content)
 
-
 @app.route("/admin/api-keys/create", methods=["POST"])
 def admin_api_key_create():
     auth = require_admin()
@@ -1023,7 +970,6 @@ def admin_api_key_create():
         app.logger.exception("Could not create API key")
         return _api_admin_redirect(err=str(exc)[:500])
 
-
 @app.route("/admin/api-keys/revoke", methods=["POST"])
 def admin_api_key_revoke():
     auth = require_admin()
@@ -1048,7 +994,6 @@ def admin_api_key_revoke():
         return _api_admin_redirect(err=str(exc)[:500])
     finally:
         conn.close()
-
 
 @app.route("/admin/api-keys/rotate", methods=["POST"])
 def admin_api_key_rotate():
@@ -1083,18 +1028,14 @@ def admin_api_key_rotate():
     finally:
         conn.close()
 
-
 # Add API Management to the final sectioned Admin navigation without rewriting
 # the entire v48.10.6 admin page.
 _v48110_admin_nav_base = _v490_admin_nav
-
 
 def _v490_admin_nav(active):
     html = _v48110_admin_nav_base(active)
     api_link = f'<a class="{"active" if active == "api" else ""}" href="{url_for("admin_api_keys_page")}">API</a>'
     return html.replace("</nav>", api_link + "</nav>", 1)
-
-
 
 @app.route("/api/v1/bandwidth/vms", methods=["GET"])
 @require_api_scopes("bandwidth:read")
@@ -1148,7 +1089,6 @@ def api_v1_bandwidth_vms():
         })
     return _api_response({"data": data, "meta": {"count": len(data), "total": total, "limit": limit, "offset": offset}})
 
-
 @app.route("/api/v1/bandwidth/vms/<vm_uuid>", methods=["GET"])
 @require_api_scopes("bandwidth:read")
 def api_v1_bandwidth_vm(vm_uuid):
@@ -1195,5 +1135,3 @@ def api_v1_bandwidth_vm(vm_uuid):
     }
     return _api_response({"data": data})
 
-
-# ---------------------------------------------------------------------------

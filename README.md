@@ -1,12 +1,12 @@
 # VirtInfra Monitor v50 PostgreSQL Native
 
-**Release:** `50.5.9-prod-r8-safe-dead-code-prune`
-Production monitoring for KVM/libvirt nodes and virtual machines. PostgreSQL 17 + TimescaleDB is the only runtime data plane. This repository keeps the complete v48/v49 dashboard, Abuse Engine, storage views, Admin tools, REST API and Agent protocol, while replacing the runtime data store with one PostgreSQL 17 + TimescaleDB database.
+**Release:** `50.5.9-prod-r9-safe-runtime-history-prune`
+Production monitoring for KVM/libvirt nodes and virtual machines. PostgreSQL 17 + TimescaleDB is the only runtime data plane. The repository includes the complete dashboard, Abuse Engine, storage views, Admin tools, REST API and Agent protocol in one canonical release tree.
 
 
 > **Operations source of truth:** [`SOURCE_OF_TRUTH_VI.md`](SOURCE_OF_TRUTH_VI.md)
 >
-> **Canonical-source bootstrap:** the installer verifies `SHA256SUMS` and stages only files in the release manifest. Old v48/v49 folders accidentally left in a GitHub Desktop repository are ignored during installation.
+> **Canonical-source bootstrap:** the installer verifies `SHA256SUMS` and stages only files in the release manifest. Stale duplicate source folders accidentally left in a GitHub Desktop repository are ignored during installation.
 
 > Windows GitHub Desktop is supported. The bootstrap validates required files, invokes source scripts through `bash`, and normalizes Linux shell modes after download.
 

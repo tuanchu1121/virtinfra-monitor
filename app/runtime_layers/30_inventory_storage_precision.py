@@ -1,14 +1,10 @@
-# v48.13.4 admin inventory status filters
-# ---------------------------------------------------------------------------
 
 V48134_VERSION = "48.13.4"
 V48134_ADMIN_STATUS = {"all", "active", "hidden", "stale"}
 
-
 def _v48134_clean_admin_status(value):
     value = str(value or "all").strip().lower()
     return value if value in V48134_ADMIN_STATUS else "all"
-
 
 def _v48134_status_sql(alias, last_col, status):
     cutoff = now_ts() - VM_STALE_SECONDS
@@ -21,7 +17,6 @@ def _v48134_status_sql(alias, last_col, status):
         return f"NOT {hidden} AND COALESCE({alias}.{last_col},0)<?", [cutoff]
     return "1=1", []
 
-
 def _v48134_admin_pager(section, q, status, page_no, max_page, per_page):
     if max_page <= 1:
         return ""
@@ -31,7 +26,6 @@ def _v48134_admin_pager(section, q, status, page_no, max_page, per_page):
     prev_cls = "disabled" if page_no <= 1 else ""
     next_cls = "disabled" if page_no >= max_page else ""
     return f'<div class="pagination"><a class="btn {prev_cls}" href="{escape(prev_url,quote=True)}">← Previous</a><span>Page <b>{page_no}</b> / <b>{max_page}</b></span><a class="btn {next_cls}" href="{escape(next_url,quote=True)}">Next →</a></div>'
-
 
 def _v48134_admin_nodes(q, status, page_no, per_page):
     status = _v48134_clean_admin_status(status)
@@ -129,7 +123,6 @@ def _v48134_admin_nodes(q, status, page_no, per_page):
     finally:
         conn.close()
 
-
 def _v48134_admin_vms(q, status, page_no, per_page):
     status = _v48134_clean_admin_status(status)
     status_sql, params = _v48134_status_sql("vi", "last_seen", status)
@@ -198,11 +191,9 @@ def _v48134_admin_vms(q, status, page_no, per_page):
     finally:
         conn.close()
 
-
 def _v48134_status_options(selected):
     labels = (("all", "All status"), ("active", "Active"), ("hidden", "Hidden"), ("stale", "Stale"))
     return "".join(f'<option value="{key}"{" selected" if selected == key else ""}>{label}</option>' for key, label in labels)
-
 
 def _v48134_admin_nodes_section(q, status, page_no, per_page):
     rows, total, page_no, max_page = _v48134_admin_nodes(q, status, page_no, per_page)
@@ -225,7 +216,6 @@ def _v48134_admin_nodes_section(q, status, page_no, per_page):
     <form id="bulk-nodes-form" method="post" action="{url_for('admin_bulk_nodes')}" onsubmit="return confirm('Apply selected node action?')"><input type="hidden" name="csrf_token" value="{escape(csrf_token(),quote=True)}"><div class="bulk-bar compact-bulk"><label><input type="checkbox" onclick="document.querySelectorAll('.node-select').forEach(cb=>cb.checked=this.checked)"> Select page</label><select name="action"><option value="hide">Hide</option><option value="restore">Restore</option><option value="purge_vms">Purge all VMs</option><option value="purge">Purge node</option></select><button class="btn-danger">Apply</button></div></form>
     <div class="table-wrap"><table class="admin-clean-table"><thead><tr><th></th><th>NODE / STATUS</th><th>PUBLIC IP</th><th>PRIVATE IP</th><th>VM</th><th>LAST PUSH</th><th>ACTION</th></tr></thead><tbody>{body}</tbody></table></div>{_v48134_admin_pager('nodes',q,status,page_no,max_page,per_page)}</div>'''
 
-
 def _v48134_admin_vms_section(q, status, page_no, per_page):
     rows, total, page_no, max_page = _v48134_admin_vms(q, status, page_no, per_page)
     body = ""
@@ -246,7 +236,6 @@ def _v48134_admin_vms_section(q, status, page_no, per_page):
     <form class="search" method="get"><input type="hidden" name="section" value="vms"><input name="q" value="{escape(q,quote=True)}" placeholder="Search node, IP, MAC, VM UUID, bridge or interface"><select name="status">{_v48134_status_options(status)}</select><select name="per_page"><option value="100" {'selected' if per_page==100 else ''}>100 rows</option><option value="200" {'selected' if per_page==200 else ''}>200 rows</option><option value="500" {'selected' if per_page==500 else ''}>500 rows</option></select><button>Filter</button><a class="clear" href="{url_for('admin_page',section='vms')}">Reset</a></form>
     <form id="bulk-vms-form" method="post" action="{url_for('admin_bulk_vms')}" onsubmit="return confirm('Apply selected VM action?')"><input type="hidden" name="csrf_token" value="{escape(csrf_token(),quote=True)}"><div class="bulk-bar compact-bulk"><label><input type="checkbox" onclick="document.querySelectorAll('.vm-select').forEach(cb=>cb.checked=this.checked)"> Select page</label><select name="action"><option value="hide">Hide</option><option value="restore">Restore</option><option value="purge">Purge</option></select><button class="btn-danger">Apply</button></div></form>
     <div class="table-wrap"><table class="admin-clean-table"><thead><tr><th></th><th>NODE / IP</th><th>VM UUID</th><th>STATUS / SEEN</th><th>BRIDGE / IFACE</th><th>ACTION</th></tr></thead><tbody>{body}</tbody></table></div>{_v48134_admin_pager('vms',q,status,page_no,max_page,per_page)}</div>'''
-
 
 def admin_page_v48134():
     deny = require_admin()
@@ -277,26 +266,18 @@ def admin_page_v48134():
     '''
     return page('Admin', content)
 
-
 app.view_functions['admin_page'] = admin_page_v48134
-
-# ---------------------------------------------------------------------------
-# v48.13.5 filesystem-root precision and capacity-bar polish
-# ---------------------------------------------------------------------------
 
 V48135_VERSION = "48.13.5"
 V48135_BUILD = "r2"
-
 
 def _v48135_base_device(device):
     value = str(device or "").strip()
     return value.split("[", 1)[0] if "[" in value else value
 
-
 def _v48135_mount_rank(mount):
     mount = str(mount or "").rstrip("/") or "/"
     return (0 if mount == "/" else 1, mount.count("/"), len(mount), mount)
-
 
 def _v48135_real_filesystem_rows(rows):
     """Collapse service-sandbox bind aliases but preserve real /home mounts."""
@@ -323,13 +304,10 @@ def _v48135_real_filesystem_rows(rows):
     result.sort(key=lambda row: _v48135_mount_rank(row[0]))
     return result
 
-
 _get_node_filesystems_snapshot_v48135_base = get_node_filesystems_snapshot
-
 
 def get_node_filesystems_snapshot(node, period):
     return _v48135_real_filesystem_rows(_get_node_filesystems_snapshot_v48135_base(node, period))
-
 
 def node_filesystem_table(rows):
     rows = _v48135_real_filesystem_rows(rows)
@@ -373,7 +351,6 @@ def node_filesystem_table(rows):
       </tr></thead><tbody>{body}</tbody></table></div>
     </div>'''
 
-
 V48135_TOP_FIX_CSS = r'''
 <style id="v48135-top-disk-meter-fix">
 body.app-v490.endpoint-top-page .top-disk-capacity .disk-cap-meter{display:block;height:6px;margin-top:6px;border-radius:999px;background:#e4e7ec;overflow:hidden}
@@ -388,28 +365,8 @@ html[data-theme=dark] body.app-v490.endpoint-top-page .top-disk-capacity .disk-c
 
 _top_vm_table_v48135_base = top_vm_table
 
-
 def top_vm_table(rows, period, q, sort_by, order, scope, limit):
     return V48135_TOP_FIX_CSS + _top_vm_table_v48135_base(rows, period, q, sort_by, order, scope, limit)
-
-
-def _v48135_vm_disk_total_overview(rows):
-    if not rows:
-        return ""
-    assigned = sum(max(0, safe_int(row[6], 0)) for row in rows)
-    allocated = sum(max(0, safe_int(row[7], 0)) for row in rows)
-    physical = sum(max(0, safe_int(row[8], 0)) for row in rows)
-    pct = allocated * 100.0 / assigned if assigned > 0 else 0.0
-    level = _v48133_disk_level(pct)
-    return f'''
-      <div class="stat vm-disk-total-overview disk-level-{level}">
-        <div class="vm-disk-stat-label">VM DISK</div>
-        <b>{_disk_io_bytes(allocated)} / {_disk_io_bytes(assigned)}</b>
-        <small>{pct:.1f}% allocated · {len(rows)} disk{'s' if len(rows)!=1 else ''}</small>
-        <span class="vm-disk-overview-meter"><i style="width:{min(100.0,max(0.0,pct)):.1f}%"></i></span>
-        <small class="vm-disk-storage-line">Physical {_disk_io_bytes(physical)} · Host allocated / assigned</small>
-      </div>'''
-
 
 V48135_VM_CSS = r'''
 <style id="v48135-vm-disk-total-polish">
@@ -424,7 +381,6 @@ html[data-theme=dark] .vm-disk-total-overview .vm-disk-overview-meter{background
 # Use the original VM renderer as the base so the v48.13.5 insertion is not
 # dependent on a previous response-regex wrapper having succeeded.
 _vm_page_v48135_base = _vm_page_v48133_base or app.view_functions.get("vm_page")
-
 
 def vm_page_v48135():
     response = _vm_page_v48135_base()
@@ -457,10 +413,8 @@ def vm_page_v48135():
         app.logger.exception("Could not apply v48.13.5-r2 VM disk panel UI")
     return response
 
-
 if _vm_page_v48135_base is not None:
     app.view_functions["vm_page"] = vm_page_v48135
-
 
 def _v48135_storage_disk_table(conn, values, start_ts):
     """One customer disk per visually distinct row; never group vda/vdb."""
@@ -529,9 +483,7 @@ def _v48135_storage_disk_table(conn, values, start_ts):
         <th>{h('READ','read')}</th><th>{h('WRITE','write')}</th><th>{h('R IOPS','readiops')}</th><th>{h('W IOPS','writeiops')}</th><th>{h('SEEN','seen')}</th>
       </tr></thead><tbody>{''.join(body)}</tbody></table></div>{_storage_pager(values,total)}</div>'''
 
-
 _v48133_storage_disk_table = _v48135_storage_disk_table
-
 
 def _v48135_storage_node_table(conn, values, start_ts):
     """Render only real filesystem roots and dedupe sandbox aliases."""
@@ -598,28 +550,20 @@ def _v48135_storage_node_table(conn, values, start_ts):
     return f'''<div class="card storage-table-card"><div class="table-title-row"><div><h3>Storage Node</h3><div class="table-hint">Only real filesystem roots are shown. `/home` stays separate from `/` when it is a distinct LVM, RAID or block filesystem.</div></div></div>
       <div class="table-wrap"><table class="storage-node-table"><thead><tr><th>{h('NODE','node')}</th><th>{h('MOUNT / DEVICE','mount')}</th><th><div>USED / SIZE</div><small>{h('USED','used')} · {h('SIZE','size')} · {h('%','usepct')}</small></th><th>{h('READ','read')}</th><th>{h('WRITE','write')}</th><th>{h('R IOPS','readiops')}</th><th>{h('W IOPS','writeiops')}</th><th>{h('UTIL','util')}</th><th>VM / DISKS</th><th>{h('SEEN','seen')}</th></tr></thead><tbody>{''.join(body)}</tbody></table></div>{_storage_pager(values,total)}</div>'''
 
-
 _v48133_storage_node_table = _v48135_storage_node_table
-
-# ---------------------------------------------------------------------------
-# v48.13.6 grouped Storage I/O, working Top VM disk sort and /home visibility
-# ---------------------------------------------------------------------------
 
 V48136_VERSION = "48.13.6"
 V48136_BUILD = "r1"
 
-
 # The previous Top VM renderer already generated the three links, but the
 # request sanitizer discarded their keys and silently fell back to TOTAL.
 _clean_top_sort_v48136_base = clean_top_sort
-
 
 def clean_top_sort(sort_by):
     value = str(sort_by or "").strip().lower()
     if value in V48133_DISK_SORT_KEYS:
         return value
     return _clean_top_sort_v48136_base(value)
-
 
 V48136_STORAGE_CSS = r'''
 <style id="v48136-storage-grouped-ui">
@@ -634,7 +578,6 @@ html[data-theme=dark] .storage-vm-group-row+tr td,html[data-theme=dark] .storage
 @media(max-width:1250px){.storage-child-item,.storage-node-child-item{grid-template-columns:1fr 1fr}.storage-child-metrics,.storage-node-child-metrics{grid-column:1/-1}.storage-group-table{min-width:1420px}}
 </style>
 '''
-
 
 def _v48136_disk_child_html(node, vm_uuid, disk_row, period):
     (
@@ -663,7 +606,6 @@ def _v48136_disk_child_html(node, vm_uuid, disk_row, period):
         </div>
         <div class="storage-child-footer"><span>Storage <b>{escape(mount or '-')}</b></span><span>Device <b>{escape(dev)}</b></span><a href="{escape(filter_href,quote=True)}">Open this storage</a></div>
       </div>'''
-
 
 def _v48136_storage_disk_group_table(conn, values, start_ts):
     groups, details, total = _v48133_storage_disk_groups(conn, values, start_ts)
@@ -700,11 +642,7 @@ def _v48136_storage_disk_group_table(conn, values, start_ts):
       </tr></thead><tbody>{''.join(body)}</tbody></table></div>{_storage_pager(values,total)}
     </div>'''
 
-
 _v48136_storage_disk_filtered_base = _v48133_storage_disk_table
-
-
-
 
 def _v48136_real_storage_rows(conn, values, start_ts):
     where = ["s.last_seen>=?"]
@@ -742,7 +680,6 @@ def _v48136_real_storage_rows(conn, values, start_ts):
             chosen[key] = (rank, row)
     return [item[1] for item in chosen.values()]
 
-
 def _v48136_node_mount_child(values, row):
     node, _public_ip, mount, device, block, raid, fs, size, used, avail, usep, rb, wb, ri, wi, util, seen, disk_count, vm_count = row
     dev = _v48135_base_device(device) or (("/dev/" + block) if block else "-")
@@ -759,7 +696,6 @@ def _v48136_node_mount_child(values, row):
           <div class="storage-child-metric"><span>UTIL</span><b>{safe_float(util,0):.1f}%</b></div>
         </div>
       </div>'''
-
 
 def _v48136_storage_node_group_table(conn, values, start_ts):
     rows = _v48136_real_storage_rows(conn, values, start_ts)
@@ -819,9 +755,5 @@ def _v48136_storage_node_group_table(conn, values, start_ts):
       </tr></thead><tbody>{''.join(body)}</tbody></table></div>{_storage_pager(values,total)}
     </div>'''
 
-
 _v48136_storage_node_filtered_base = _v48133_storage_node_table
 
-
-
-# ---------------------------------------------------------------------------

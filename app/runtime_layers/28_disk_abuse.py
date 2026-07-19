@@ -1,13 +1,10 @@
-# v48.13.2 disk-only extension
 # Original Dashboard, Top VM, VM Abuse and Node Health renderers stay untouched.
-# ---------------------------------------------------------------------------
 
 NODE_FILESYSTEM_IO_CSS = r'''
 <style id="node-filesystem-io-v48132r2">
 .node-filesystem-io-table{min-width:1420px}.node-filesystem-io-table td.num,.node-filesystem-io-table th:nth-child(n+8){text-align:right;white-space:nowrap}
 </style>
 '''
-
 
 def ensure_disk_io_schema(conn):
     conn.executescript("""
@@ -57,7 +54,6 @@ def ensure_disk_io_schema(conn):
       PRIMARY KEY(node, mount)
     );
     """)
-
 
 def ingest_disk_io_current(conn, node, data_time, interval_seconds, vms, node_host):
     """Store only the latest per-disk and per-storage sample.
@@ -170,7 +166,6 @@ def ingest_disk_io_current(conn, node, data_time, interval_seconds, vms, node_ho
         ))
     conn.execute("DELETE FROM node_storage_current WHERE node=? AND last_seen<?", (node, data_time))
 
-
 def _disk_io_bytes(value):
     value = max(0.0, safe_float(value, 0.0))
     units = ("B", "KiB", "MiB", "GiB", "TiB", "PiB")
@@ -180,14 +175,11 @@ def _disk_io_bytes(value):
         value /= 1024.0
     return "0 B"
 
-
 def _disk_io_rate(value):
     return _disk_io_bytes(value) + "/s"
 
-
 def _disk_io_iops(value):
     return f"{max(0.0, safe_float(value, 0.0)):,.1f}"
-
 
 def _disk_io_capacity(allocated, assigned, label="allocated / assigned"):
     allocated = max(0, safe_int(allocated, 0))
@@ -209,7 +201,6 @@ def _disk_io_capacity(allocated, assigned, label="allocated / assigned"):
         f'</div>'
     )
 
-
 def _storage_io_params(**updates):
     values = {
         "view": (request.args.get("view") or "disks").strip().lower(),
@@ -225,12 +216,10 @@ def _storage_io_params(**updates):
     values.update(updates)
     return values
 
-
 def _storage_io_url(values, **updates):
     merged = dict(values)
     merged.update(updates)
     return url_for("storage_io_page", **merged)
-
 
 def _storage_sort_header(values, label, key):
     active = values["sort"] == key
@@ -239,17 +228,6 @@ def _storage_sort_header(values, label, key):
     href = _storage_io_url(values, sort=key, order=order, page=1)
     active_class = " active" if active else ""
     return f'<a class="storage-sort{active_class}" href="{escape(href, quote=True)}">{escape(label)}{arrow}</a>'
-
-
-def _storage_period_links(values):
-    links = []
-    for key in PERIODS:
-        label = PERIOD_LABELS.get(key, key)
-        cls = "active" if key == values["period"] else ""
-        href = _storage_io_url(values, period=key, page=1)
-        links.append(f'<a class="{cls}" href="{escape(href, quote=True)}">{escape(label)}</a>')
-    return "".join(links)
-
 
 def _storage_pager(values, total):
     limit = values["limit"]
@@ -271,7 +249,6 @@ def _storage_pager(values, total):
         + "".join(pieces)
         + f'<a href="{escape(_storage_io_url(values, page=nxt), quote=True)}">Next</a></div></div>'
     )
-
 
 def _storage_filter_options(conn, values):
     nodes = [r[0] for r in conn.execute(
@@ -295,7 +272,6 @@ def _storage_filter_options(conn, values):
         selected = " selected" if item == values["mount"] else ""
         mount_options.append(f'<option value="{escape(item, quote=True)}"{selected}>{escape(item)}</option>')
     return "".join(node_options), "".join(mount_options)
-
 
 def _storage_io_disk_table(conn, values, start_ts):
     sort_map = {
@@ -372,7 +348,6 @@ def _storage_io_disk_table(conn, values, start_ts):
         '</tr></thead><tbody>' + "".join(body) + '</tbody></table></div>' + _storage_pager(values, total) + '</div>'
     )
 
-
 def _storage_io_backend_table(conn, values, start_ts):
     sort_map = {
         "node": "s.node", "mount": "s.mount", "size": "s.size", "used": "s.used",
@@ -438,7 +413,6 @@ def _storage_io_backend_table(conn, values, start_ts):
         '</tr></thead><tbody>' + "".join(body) + '</tbody></table></div>' + _storage_pager(values, total) + '</div>'
     )
 
-
 STORAGE_IO_CSS = r'''
 <style id="storage-io-v48132">
 .storage-hero{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}.storage-hero h2{margin:4px 0 6px}.storage-hero p{margin:0;color:var(--muted,#667085)}
@@ -452,7 +426,6 @@ html[data-theme=dark] .storage-sort.active{color:#84adff}html[data-theme=dark] .
 @media(max-width:1050px){.storage-filter{grid-template-columns:1fr 1fr}.storage-hero{display:block}.storage-tabs{margin-top:12px}}
 </style>
 '''
-
 
 @app.route("/storage")
 def storage_io_page():
@@ -492,4 +465,3 @@ def storage_io_page():
     )
     return page("Storage I/O", content)
 
-# ---------------------------------------------------------------------------

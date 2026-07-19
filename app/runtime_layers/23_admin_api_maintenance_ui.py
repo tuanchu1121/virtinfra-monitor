@@ -1,21 +1,14 @@
-# v48.12.3 safe compact workflow
 # - batched history deletion stays online
 # - PostgreSQL VACUUM ANALYZE remains online; destructive jobs are still serialized
 # - API log cleanup stays online unless compact is explicitly requested
 
-# v48.12.2 maintenance queue render fix
-# ---------------------------------------------------------------------------
 V48122_MAINTENANCE_FIX = True
 
-# ---------------------------------------------------------------------------
-# v48.12.2 API admin polish, editable allowlists, password UX and proxy support
-# ---------------------------------------------------------------------------
 V48122_VERSION = "48.12.2"
 V48123_VERSION = "48.12.3"
 
 # Optional scope for external operational tools that need API connection/audit logs.
 API_SUPPORTED_SCOPES["api_logs:read"] = "Read API request logs and API management/authentication events"
-
 
 def _v48122_scope_checkboxes(selected=None):
     selected = set(selected if selected is not None else API_DEFAULT_SCOPES)
@@ -41,10 +34,8 @@ def _v48122_scope_checkboxes(selected=None):
         html.append('</div>')
     return ''.join(html)
 
-
 def _v48120_api_scope_checkboxes():
     return _v48122_scope_checkboxes()
-
 
 def _v48120_api_key_table():
     conn = db()
@@ -105,7 +96,6 @@ def _v48120_api_key_table():
         )
     return ''.join(body), len(keys)
 
-
 def _v48122_expiration_value(value, current):
     value = str(value or 'keep').strip().lower()
     if value == 'keep':
@@ -115,7 +105,6 @@ def _v48122_expiration_value(value, current):
     if value not in {'7', '30', '90', '180', '365'}:
         raise ValueError('Invalid expiration option.')
     return now_ts() + int(value) * 86400
-
 
 @app.route('/admin/api-keys/edit', methods=['GET', 'POST'])
 def admin_api_key_edit():
@@ -226,13 +215,11 @@ def admin_api_key_edit():
     </div>'''
     return page('Edit API Key', content)
 
-
 def _v48122_api_log_filters():
     limit, offset = _api_limit_offset(default=100)
     since = max(0, safe_int(request.args.get('since'), 0))
     key_id = str(request.args.get('key_id') or '').strip().lower()
     return limit, offset, since, key_id
-
 
 @app.route('/api/v1/logs/requests', methods=['GET'])
 @require_api_scopes('api_logs:read')
@@ -286,7 +273,6 @@ def api_v1_request_logs():
         'meta': {'total': total, 'count': len(data), 'limit': limit, 'offset': offset},
     })
 
-
 @app.route('/api/v1/logs/events', methods=['GET'])
 @require_api_scopes('api_logs:read')
 def api_v1_management_logs():
@@ -336,7 +322,6 @@ def api_v1_management_logs():
         'meta': {'total': total, 'count': len(data), 'limit': limit, 'offset': offset},
     })
 
-
 def _v48120_docs_tab():
     base = request.url_root.rstrip('/')
     return f'''
@@ -353,14 +338,12 @@ curl -sS \\
     </div>
     <div class="card" style="margin-top:14px"><span class="eyebrow">EXTENDED READ-ONLY API</span><h3>Optional context endpoints</h3><div class="endpoint-list"><div><code>GET /api/v1/vms</code><span>Current VM metrics, scope <b>vm:read</b></span></div><div><code>GET /api/v1/vms/&lt;uuid&gt;/current?node=&lt;node&gt;</code><span>One VM snapshot, scope <b>vm:read</b></span></div><div><code>GET /api/v1/nodes</code><span>Lightweight node context, scope <b>node:read</b></span></div><div><code>GET /api/v1/bandwidth/vms</code><span>Current VM Mbps/PPS, scope <b>bandwidth:read</b></span></div><div><code>GET /api/v1/bandwidth/vms/&lt;uuid&gt;?node=&lt;node&gt;</code><span>One VM network snapshot, scope <b>bandwidth:read</b></span></div><div><code>GET /api/v1/logs/requests</code><span>API connection/request logs, scope <b>api_logs:read</b></span></div><div><code>GET /api/v1/logs/events</code><span>Key lifecycle and authentication events, scope <b>api_logs:read</b></span></div></div></div>'''
 
-
 # Controlled reverse-proxy support. Enable only when port 8080 is not publicly
 # reachable and Nginx/HAProxy is the sole trusted hop.
 WEB_TRUST_PROXY = os.environ.get('BW_WEB_TRUST_PROXY', '0') == '1'
 if WEB_TRUST_PROXY:
     from werkzeug.middleware.proxy_fix import ProxyFix
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
-
 
 V48122_UI_CSS = r"""
 <style id="v48122-ui-polish">
@@ -405,7 +388,6 @@ V48122_UI_JS = r"""
 
 _page_v48122_base = page
 
-
 def page(title, content):
     response = _page_v48122_base(title, content)
     try:
@@ -417,5 +399,3 @@ def page(title, content):
         app.logger.exception('Could not apply v48.12.2 UI polish layer')
     return response
 
-
-# ---------------------------------------------------------------------------

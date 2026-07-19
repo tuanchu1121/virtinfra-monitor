@@ -1,12 +1,12 @@
 # VirtInfra Monitor modular runtime
 
-Release: `50.5.9-prod-r8-safe-dead-code-prune`
+Release: `50.5.9-prod-r9-safe-runtime-history-prune`
 
 ## Purpose
 
 The former `app/app.py` contained the complete append-only runtime in one file. The new entrypoint is intentionally small and loads ordered runtime components from `app/runtime_layers/`.
 
-This release is a structural refactor only. It preserves the existing Flask application object, route paths, endpoint names, payloads, SQL behavior, schema, queue behavior, retention behavior and compatibility overrides.
+This release keeps the modular loader and removes only proven-dead source history. It preserves the existing Flask application object, route paths, endpoint names, payloads, SQL behavior, schema, queue behavior, retention behavior and compatibility overrides.
 
 ## Runtime layout
 
@@ -16,11 +16,11 @@ This release is a structural refactor only. It preserves the existing Flask appl
 - `app/runtime_layers/00_*.py` through `43_*.py`: functional and compatibility layers.
 - `app/node_groups.py`: additive Node Groups/RBAC integration, retained as an independently testable module.
 
-Each layer is compiled using its own filename, then executed in the shared `app.py` module namespace. This keeps the exact historical binding order while making stack traces and reviews point to the responsible component.
+Each layer is compiled using its own filename, then executed in the shared `app.py` module namespace. This keeps the effective binding order while making stack traces and reviews point to the responsible component.
 
 ## Safety properties
 
-- The combined layer source is byte-equivalent to the pre-refactor runtime.
+- The semantic bytecode of every live runtime function matches the validated baseline.
 - Runtime validation confirms the same 83 Flask routes.
 - Existing contract tests read the canonical combined runtime through `tests/runtime_source.py`.
 - The production installer removes stale runtime layers before installing the current manifest.

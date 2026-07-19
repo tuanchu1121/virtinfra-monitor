@@ -1,5 +1,3 @@
-# v48.8.2 dynamic abuse policy, event history, sortable UI, custom timestamp, full reset, visible admin policy
-# ---------------------------------------------------------------------------
 
 ABUSE_SETTING_DEFAULTS = {
     "abuse_network_enabled": "1",
@@ -14,66 +12,10 @@ ABUSE_SETTING_DEFAULTS = {
     "abuse_disk_required_seconds": "900",
 }
 
-
 def _setting_bool(value, default=True):
     if value is None:
         return bool(default)
     return str(value).strip().lower() in {"1", "true", "yes", "on", "enabled"}
-
-
-def get_abuse_settings(conn=None):
-    own = conn is None
-    if own:
-        conn = db()
-    try:
-        keys = tuple(ABUSE_SETTING_DEFAULTS)
-        placeholders = ",".join("?" for _ in keys)
-        rows = conn.execute(
-            f"SELECT key,value,updated_at FROM admin_settings WHERE key IN ({placeholders})",
-            keys,
-        ).fetchall()
-        values = dict(ABUSE_SETTING_DEFAULTS)
-        revision = 0
-        for key, value, updated_at in rows:
-            values[str(key)] = str(value)
-            revision = max(revision, safe_int(updated_at, 0))
-        return {
-            "network_enabled": _setting_bool(values["abuse_network_enabled"], True),
-            "network_pps": max(1000.0, safe_float(values["abuse_network_pps"], 200000.0)),
-            "network_required_seconds": max(15, min(300, safe_int(values["abuse_network_required_seconds"], 270))),
-            "cpu_enabled": _setting_bool(values["abuse_cpu_enabled"], True),
-            "cpu_full_percent": max(1.0, min(100.0, safe_float(values["abuse_cpu_full_percent"], 90.0))),
-            "cpu_required_seconds": max(300, min(86400, safe_int(values["abuse_cpu_required_seconds"], 1800))),
-            "disk_enabled": _setting_bool(values["abuse_disk_enabled"], True),
-            "disk_bps": max(0.0, safe_float(values["abuse_disk_bps"], 200.0 * 1024 * 1024)),
-            "disk_iops": max(0.0, safe_float(values["abuse_disk_iops"], 5000.0)),
-            "disk_required_seconds": max(300, min(86400, safe_int(values["abuse_disk_required_seconds"], 900))),
-            "revision": revision,
-        }
-    finally:
-        if own:
-            conn.close()
-
-
-def _apply_abuse_settings_to_runtime(cfg):
-    global ABUSE_NETWORK_PPS, ABUSE_NETWORK_REQUIRED_SECONDS
-    global ABUSE_CPU_FULL_PERCENT, ABUSE_CPU_REQUIRED_SECONDS
-    global ABUSE_DISK_BPS, ABUSE_DISK_IOPS, ABUSE_DISK_REQUIRED_SECONDS
-    ABUSE_NETWORK_PPS = cfg["network_pps"] if cfg["network_enabled"] else 10**18
-    ABUSE_NETWORK_REQUIRED_SECONDS = cfg["network_required_seconds"] if cfg["network_enabled"] else 10**9
-    ABUSE_CPU_FULL_PERCENT = cfg["cpu_full_percent"] if cfg["cpu_enabled"] else 10**9
-    ABUSE_CPU_REQUIRED_SECONDS = cfg["cpu_required_seconds"] if cfg["cpu_enabled"] else 10**9
-    if cfg["disk_enabled"]:
-        ABUSE_DISK_BPS = cfg["disk_bps"]
-        ABUSE_DISK_IOPS = cfg["disk_iops"]
-        ABUSE_DISK_REQUIRED_SECONDS = cfg["disk_required_seconds"]
-    else:
-        ABUSE_DISK_BPS = 0.0
-        ABUSE_DISK_IOPS = 0.0
-        ABUSE_DISK_REQUIRED_SECONDS = 10**9
-
-
-
 
 @app.before_request
 def _v480_refresh_abuse_runtime_settings():
@@ -84,18 +26,9 @@ def _v480_refresh_abuse_runtime_settings():
     except Exception:
         app.logger.exception("Could not refresh abuse settings")
 
-
-
-
-
-
 _refresh_fast_current_state_v470 = refresh_fast_current_state
 
-
-
-
 _run_retention_v470 = run_retention
-
 
 def run_retention(dry_run=False):
     stats = _run_retention_v470(dry_run=dry_run)
@@ -112,27 +45,6 @@ def run_retention(dry_run=False):
         return stats
     finally:
         conn.close()
-
-
-def _parse_datetime_local(value):
-    value = (value or "").strip()
-    if not value:
-        return None
-    for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S"):
-        try:
-            dt = datetime.strptime(value, fmt).replace(tzinfo=TZ)
-            ts = int(dt.timestamp())
-            return max(now_ts() - HOURLY_RETENTION_DAYS * 86400, min(now_ts(), ts))
-        except ValueError:
-            pass
-    return None
-
-
-def _datetime_local_value(ts):
-    if not ts:
-        return ""
-    return datetime.fromtimestamp(int(ts), TZ).strftime("%Y-%m-%dT%H:%M")
-
 
 def dashboard_custom_time_card(target_ts, q="", sort_by="node", sort_order="asc"):
     target_value = _datetime_local_value(target_ts)
@@ -152,7 +64,6 @@ def dashboard_custom_time_card(target_ts, q="", sort_by="node", sort_order="asc"
       <div class="table-hint">This dashboard is a snapshot view, not a sum across a range. The monitor selects the nearest retained real agent push at or before the time entered, so CPU, RAM, PPS and disk remain coherent.</div>
     </div>
     """
-
 
 def index_v480():
     period = clean_period(request.args.get("period", "5m"))
@@ -176,31 +87,13 @@ def index_v480():
     """
     return page("VirtInfra Monitor", content)
 
-
 app.view_functions["index"] = index_v480
-
 
 def _abuse_type_label(event_type):
     return {"started":"ABUSE STARTED", "updated":"RULE CHANGED", "recovered":"RECOVERED"}.get(str(event_type), str(event_type).upper())
 
-
 def _abuse_type_class(event_type):
     return "crit" if event_type == "started" else ("warn" if event_type == "updated" else "ok")
-
-
-def _abuse_flag_labels(flags, cfg):
-    result = []
-    values = {x for x in str(flags or "").split(",") if x}
-    if "NETWORK_RX_PPS_5M" in values:
-        result.append(f"RX PPS ≥ {cfg['network_pps']:,.0f}")
-    if "NETWORK_TX_PPS_5M" in values:
-        result.append(f"TX PPS ≥ {cfg['network_pps']:,.0f}")
-    if "CPU_30M" in values:
-        result.append(f"CPU ≥ {cfg['cpu_full_percent']:.1f}%")
-    if "DISK_15M" in values:
-        result.append("Disk sustained")
-    return result or ["-"]
-
 
 def _abuse_sort_link(label, key, tab, q, current_sort, current_order, limit):
     next_order = reverse_order(current_order) if current_sort == key else "desc"
@@ -209,7 +102,6 @@ def _abuse_sort_link(label, key, tab, q, current_sort, current_order, limit):
         arrow = " ↓" if current_order == "desc" else " ↑"
     href = url_for("vm_abuse_page", tab=tab, q=q or None, sort=key, order=next_order, limit=limit)
     return f'<a class="sort-link" href="{escape(href, quote=True)}">{escape(label)}{arrow}</a>'
-
 
 def _current_abuse_query(q, sort_by, order, limit):
     allowed = {
@@ -255,7 +147,6 @@ def _current_abuse_query(q, sort_by, order, limit):
     finally:
         conn.close()
 
-
 def _history_abuse_query(q, sort_by, order, limit):
     allowed = {
         "time":"e.event_time", "type":"e.event_type COLLATE NOCASE", "node":"e.node COLLATE NOCASE",
@@ -287,7 +178,6 @@ def _history_abuse_query(q, sort_by, order, limit):
     finally:
         conn.close()
 
-
 def _abuse_page_style():
     return """
     <style>
@@ -299,7 +189,6 @@ def _abuse_page_style():
       @media(max-width:950px){.abuse-policy,.abuse-settings-grid{grid-template-columns:1fr}.custom-time-form{align-items:stretch}.custom-time-form input{width:100%}}
     </style>
     """
-
 
 def vm_abuse_page_v480():
     tab = (request.args.get("tab") or "current").strip().lower()
@@ -381,9 +270,7 @@ def vm_abuse_page_v480():
     content=f"""{_abuse_page_style()}<div class="card top-card"><div class="overview-head"><h3>VM Abuse</h3><div class="overview-meta"><span>Current query <b>bounded state table</b></span><span>History retention <b>7 days</b></span></div></div>{tabs}{policy}{search}</div>{table}"""
     return page("VM Abuse",content)
 
-
 app.view_functions["vm_abuse_page"] = vm_abuse_page_v480
-
 
 @app.route("/abuse/vms/clear", methods=["POST"])
 def clear_abuse_events():
@@ -407,7 +294,6 @@ def clear_abuse_events():
     actor=dashboard_username() or get_admin_username()
     log_account_event("abuse_history_cleared",username=actor,realm="admin",role="admin",detail=f"mode={mode};deleted={deleted};q={q}"[:500])
     return redirect(url_for("vm_abuse_page",tab="history",q=q or None))
-
 
 @app.route("/admin/abuse-settings", methods=["POST"])
 def admin_abuse_settings():
@@ -443,20 +329,12 @@ def admin_abuse_settings():
     log_account_event("abuse_settings_updated",username=actor,realm="admin",role="admin",detail=f"action={action};network_pps={cfg['network_pps']};cpu={cfg['cpu_full_percent']};disk_bps={cfg['disk_bps']}"[:500])
     return redirect(url_for("admin_page",abusemsg="Abuse settings saved. Agent v10 receives the network PPS threshold in the next push response; allow one full 5-minute window before judging the new network rule."))
 
-
-
-
 _admin_page_v470 = app.view_functions.get("admin_page")
-
 
 def admin_page_v480():
     # The original admin_page now renders abuse_settings_admin_card() directly near the top.
     # Keep this wrapper only for endpoint compatibility.
     return _admin_page_v470()
 
-
 app.view_functions["admin_page"] = admin_page_v480
 
-
-
-# ---------------------------------------------------------------------------

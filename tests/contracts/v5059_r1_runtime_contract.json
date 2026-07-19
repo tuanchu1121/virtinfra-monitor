@@ -1,6 +1,5 @@
 {
   "agent_sha256": "d637ec4fa0de2e07622402e3da60ae54ccf2d3f84f046de2141c813ee3b58081",
-  "baseline": "50.5.8-prod-r5-professional-ui-storage-hotfix",
   "postgres_sql_tree_sha256": "0a56aa450c979b170ba431924e4bdc515fbcea45e81583cbe33b344f451d022c",
   "request_args": [
     [
@@ -9,7 +8,7 @@
     ],
     [
       "abusemsg",
-      2
+      1
     ],
     [
       "apierr",
@@ -21,7 +20,7 @@
     ],
     [
       "at",
-      16
+      14
     ],
     [
       "bridge",
@@ -85,7 +84,7 @@
     ],
     [
       "net",
-      5
+      4
     ],
     [
       "next",
@@ -1235,56 +1234,6 @@
       "keys": [
         "node",
         "uuid",
-        "diskcount",
-        "assigned",
-        "allocated",
-        "allocpct",
-        "read",
-        "write",
-        "readiops",
-        "writeiops",
-        "seen"
-      ],
-      "name": "sort_map"
-    },
-    {
-      "keys": [
-        "node",
-        "uuid",
-        "disk",
-        "mount",
-        "diskcount",
-        "assigned",
-        "allocated",
-        "allocpct",
-        "read",
-        "write",
-        "readiops",
-        "writeiops",
-        "seen"
-      ],
-      "name": "sort_map"
-    },
-    {
-      "keys": [
-        "node",
-        "mount",
-        "size",
-        "used",
-        "usepct",
-        "read",
-        "write",
-        "readiops",
-        "writeiops",
-        "util",
-        "seen"
-      ],
-      "name": "sort_map"
-    },
-    {
-      "keys": [
-        "node",
-        "uuid",
         "disk",
         "mount",
         "allocated",
@@ -1295,34 +1244,6 @@
         "readiops",
         "writeiops",
         "seen"
-      ],
-      "name": "sort_map"
-    },
-    {
-      "keys": [
-        "node",
-        "uuid",
-        "type",
-        "severity",
-        "rx_mbps",
-        "tx_mbps",
-        "rx_peak",
-        "tx_peak",
-        "cpu",
-        "cpucore",
-        "ram",
-        "ramused",
-        "ramrss",
-        "ramassigned",
-        "diskallocated",
-        "diskassigned",
-        "diskallocpct",
-        "diskslots",
-        "diskr",
-        "diskw",
-        "readiops",
-        "writeiops",
-        "last_seen"
       ],
       "name": "sort_map"
     },
@@ -1389,11 +1310,11 @@
   "url_for_endpoints": [
     [
       "admin_abuse_page",
-      39
+      38
     ],
     [
       "admin_abuse_settings",
-      4
+      2
     ],
     [
       "admin_api_key_create",
@@ -1401,7 +1322,7 @@
     ],
     [
       "admin_api_key_delete",
-      2
+      1
     ],
     [
       "admin_api_key_edit",
@@ -1409,11 +1330,11 @@
     ],
     [
       "admin_api_key_revoke",
-      3
+      2
     ],
     [
       "admin_api_key_rotate",
-      3
+      2
     ],
     [
       "admin_api_keys_page",
@@ -1449,7 +1370,7 @@
     ],
     [
       "admin_database_maintenance",
-      14
+      8
     ],
     [
       "admin_delete_node",
@@ -1541,7 +1462,7 @@
     ],
     [
       "index",
-      19
+      17
     ],
     [
       "manage_vm_abuse_data_v48129",
@@ -1557,7 +1478,7 @@
     ],
     [
       "node_page",
-      41
+      36
     ],
     [
       "reset_all_abuse_data_v48129",
@@ -1569,19 +1490,19 @@
     ],
     [
       "top_node_page",
-      7
+      5
     ],
     [
       "top_page",
-      12
+      9
     ],
     [
       "vm_abuse_page",
-      59
+      53
     ],
     [
       "vm_page",
-      36
+      33
     ]
   ],
   "view_overrides": [

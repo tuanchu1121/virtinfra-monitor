@@ -1,5 +1,3 @@
-# v48.12.4 single-worker maintenance guard
-# ---------------------------------------------------------------------------
 V48124_VERSION = "48.12.4"
 MAX_ACTIVE_MAINTENANCE_JOBS = 1
 V48124_MAX_PURGE_SELECTION_ITEMS = max(
@@ -8,7 +6,6 @@ V48124_MAX_PURGE_SELECTION_ITEMS = max(
 V48124_ENQUEUE_BUSY_TIMEOUT_MS = max(
     500, min(15000, int(os.environ.get("BW_MAINTENANCE_ENQUEUE_BUSY_TIMEOUT_MS", "3000")))
 )
-
 
 def _v48124_maintenance_runner_paths():
     runner = os.path.join(os.path.dirname(os.path.abspath(__file__)), "maintenance.py")
@@ -21,108 +18,6 @@ def _v48124_maintenance_runner_paths():
     if not os.path.isfile(template_path):
         raise RuntimeError(f"Maintenance service template is missing: {template_path}")
     return systemctl
-
-
-def enqueue_maintenance_job(action, parameters, actor):
-    """Create exactly one active PostgreSQL maintenance job.
-
-    A transaction-scoped PostgreSQL advisory lock serializes concurrent Admin
-    submissions. A partial unique index is the database-level backstop, so a
-    double click or two Gunicorn workers cannot create duplicate active jobs.
-    """
-    action = str(action or "").strip().lower()
-    allowed_actions = {
-        "retention", "vacuum", "delete_history", "delete_compact",
-        "clear_monitoring_data", "reset_app_data",
-        "purge_nodes", "purge_node_vms", "purge_vms",
-        "clear_api_logs", "clear_api_data",
-    }
-    if action not in allowed_actions:
-        raise ValueError("Unsupported maintenance action")
-
-    systemctl = _v48124_maintenance_runner_paths()
-    payload = json.dumps(parameters or {}, separators=(",", ":"), sort_keys=True)
-    conn = db()
-    job_id = 0
-    unit_name = ""
-    try:
-        conn.execute(
-            "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
-            (maintenance_native.MAINTENANCE_ENQUEUE_LOCK,),
-        )
-        stale_before = now_ts() - 24 * 3600
-        conn.execute(
-            """UPDATE maintenance_jobs
-               SET status='error', finished_at=?,
-                   message='Recovered stale maintenance row older than 24 hours'
-               WHERE status IN ('queued','running') AND created_at<?""",
-            (now_ts(), stale_before),
-        )
-        active = conn.execute(
-            """SELECT id,action,status,unit_name,created_at
-               FROM maintenance_jobs
-               WHERE status IN ('queued','running')
-               ORDER BY id LIMIT 1"""
-        ).fetchone()
-        if active:
-            active_id, active_action, active_status, active_unit, created_at = active
-            age = max(0, now_ts() - safe_int(created_at, now_ts()))
-            raise RuntimeError(
-                f"Maintenance job #{active_id} ({active_action}) is already {active_status} "
-                f"for {age}s as {active_unit or 'worker pending'}. Only one job is allowed."
-            )
-        cur = conn.execute(
-            """INSERT INTO maintenance_jobs(
-                   created_at,action,parameters,status,requested_by,message
-               ) VALUES(?,?,?,'queued',?,'Waiting for exclusive maintenance worker')""",
-            (now_ts(), action, payload, actor or "admin"),
-        )
-        job_id = int(cur.lastrowid)
-        unit_name = f"bw-monitor-maintenance@{job_id}.service"
-        conn.execute(
-            "UPDATE maintenance_jobs SET unit_name=? WHERE id=?",
-            (unit_name, job_id),
-        )
-        conn.commit()
-    except dbapi.IntegrityError as exc:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        raise RuntimeError(
-            "Another maintenance job became active at the same time. No duplicate job was created."
-        ) from exc
-    except Exception:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        raise
-    finally:
-        conn.close()
-
-    proc = subprocess.run(
-        [systemctl, "--no-block", "start", unit_name],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        timeout=15,
-        check=False,
-    )
-    if proc.returncode != 0:
-        msg = (proc.stdout or "systemctl start failed").strip()[:1000]
-        conn = db()
-        try:
-            conn.execute(
-                "UPDATE maintenance_jobs SET status='error',finished_at=?,message=? WHERE id=?",
-                (now_ts(), msg, job_id),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-        raise RuntimeError(msg)
-    return job_id, unit_name
-
 
 def enqueue_batched_purge_jobs(action, items, actor):
     """Queue one exclusive job; the worker performs internal batches.
@@ -162,14 +57,11 @@ def enqueue_batched_purge_jobs(action, items, actor):
     job_id, unit_name = enqueue_maintenance_job(action, parameters, actor)
     return [(job_id, unit_name, len(clean))]
 
-
 def _v48124_busy_admin_redirect(message):
     return redirect(url_for("admin_page", dberr=message) + "#maintenance-queue")
 
-
 _v48124_admin_delete_node_base = app.view_functions.get("admin_delete_node")
 _v48124_admin_delete_vm_base = app.view_functions.get("admin_delete_vm")
-
 
 def admin_delete_node_v48124():
     deny = require_admin()
@@ -202,7 +94,6 @@ def admin_delete_node_v48124():
     finally:
         conn.close()
     return redirect(url_for("admin_page"))
-
 
 def admin_delete_vm_v48124():
     deny = require_admin()
@@ -237,12 +128,10 @@ def admin_delete_vm_v48124():
         conn.close()
     return redirect(url_for("admin_page"))
 
-
 if _v48124_admin_delete_node_base is not None:
     app.view_functions["admin_delete_node"] = admin_delete_node_v48124
 if _v48124_admin_delete_vm_base is not None:
     app.view_functions["admin_delete_vm"] = admin_delete_vm_v48124
-
 
 V48124_UI_JS = r"""
 <script id="v48124-submit-once">
@@ -269,7 +158,6 @@ V48124_UI_JS = r"""
 
 _page_v48124_base = page
 
-
 def page(title, content):
     response = _page_v48124_base(title, content)
     try:
@@ -280,12 +168,10 @@ def page(title, content):
         app.logger.exception("Could not apply v48.12.4 submit-once guard")
     return response
 
-# v48.12.4 inventory write fail-fast coverage for Restore and bulk Hide/Restore.
 _v48124_admin_restore_node_base = app.view_functions.get("admin_restore_node")
 _v48124_admin_restore_vm_base = app.view_functions.get("admin_restore_vm")
 _v48124_admin_bulk_nodes_base = app.view_functions.get("admin_bulk_nodes")
 _v48124_admin_bulk_vms_base = app.view_functions.get("admin_bulk_vms")
-
 
 def _v48124_inventory_write(executor):
     conn = db()
@@ -305,7 +191,6 @@ def _v48124_inventory_write(executor):
     finally:
         conn.close()
 
-
 def admin_restore_node_v48124():
     deny = require_admin()
     if deny:
@@ -321,7 +206,6 @@ def admin_restore_node_v48124():
         )
     )
     return response or redirect(url_for("admin_page"))
-
 
 def admin_restore_vm_v48124():
     deny = require_admin()
@@ -339,7 +223,6 @@ def admin_restore_vm_v48124():
         )
     )
     return response or redirect(url_for("admin_page"))
-
 
 def admin_bulk_nodes_v48124():
     action = str(request.form.get("action") or "hide").strip().lower()
@@ -382,7 +265,6 @@ def admin_bulk_nodes_v48124():
         detail=f"action={action};nodes={','.join(nodes[:100])}",
     )
     return redirect(url_for("admin_page"))
-
 
 def admin_bulk_vms_v48124():
     action = str(request.form.get("action") or "hide").strip().lower()
@@ -433,7 +315,6 @@ def admin_bulk_vms_v48124():
     )
     return redirect(url_for("admin_page"))
 
-
 if _v48124_admin_restore_node_base is not None:
     app.view_functions["admin_restore_node"] = admin_restore_node_v48124
 if _v48124_admin_restore_vm_base is not None:
@@ -443,5 +324,3 @@ if _v48124_admin_bulk_nodes_base is not None:
 if _v48124_admin_bulk_vms_base is not None:
     app.view_functions["admin_bulk_vms"] = admin_bulk_vms_v48124
 
-
-# ---------------------------------------------------------------------------

@@ -1,4 +1,3 @@
-# v48.10.0 authoritative abuse policy engine
 #
 # Goals:
 # - Admin policy is the only source of truth. No hard-coded duration labels.
@@ -10,20 +9,16 @@
 # - Directional PPS remains based on Agent v10's 15-second sampler and is only
 #   accepted when the threshold reported by the agent matches the current policy.
 # - Current pages read bounded state tables only. No raw-history scan.
-# ---------------------------------------------------------------------------
 
 V4810_VERSION = "48.10.0"
 ABUSE_ENGINE_VERSION = "cycles-v2"
 ABUSE_EVAL_CYCLE_SECONDS = CACHE_BUCKET_SECONDS
 
-
 def _v4810_required_cycles(required_seconds):
     return max(1, int(math.ceil(max(1, safe_int(required_seconds, ABUSE_EVAL_CYCLE_SECONDS)) / float(ABUSE_EVAL_CYCLE_SECONDS))))
 
-
 def _v4810_bool_int(value):
     return 1 if bool(value) else 0
-
 
 def _v4810_migrate_schema():
     conn = db()
@@ -121,9 +116,7 @@ def _v4810_migrate_schema():
     finally:
         conn.close()
 
-
 _v4810_migrate_schema()
-
 
 # Ensure all final policy keys exist in the defaults dictionary used by Admin.
 ABUSE_SETTING_DEFAULTS.update({
@@ -143,7 +136,6 @@ ABUSE_SETTING_DEFAULTS.update({
     "abuse_disk_iops": "5000",
     "abuse_disk_required_seconds": "900",
 })
-
 
 def get_abuse_settings(conn=None):
     own = conn is None
@@ -205,7 +197,6 @@ def get_abuse_settings(conn=None):
         if own:
             conn.close()
 
-
 def _apply_abuse_settings_to_runtime(cfg):
     # Keep legacy globals synchronized for old labels/routes, while the v48.10
     # engine below evaluates directly from cfg and is therefore worker-safe.
@@ -231,7 +222,6 @@ def _apply_abuse_settings_to_runtime(cfg):
         ABUSE_DISK_READ_BPS = ABUSE_DISK_WRITE_BPS = ABUSE_DISK_BPS = ABUSE_DISK_IOPS = 0.0
         ABUSE_DISK_REQUIRED_SECONDS = 10**9
 
-
 def get_agent_runtime_config():
     cfg = get_abuse_settings()
     return {
@@ -241,7 +231,6 @@ def get_agent_runtime_config():
         "pps_warn": cfg["network_pps"] if cfg["network_enabled"] else 0,
         "network_enabled": bool(cfg["network_enabled"]),
     }
-
 
 def _v4810_policy_json(cfg):
     return {
@@ -268,44 +257,9 @@ def _v4810_policy_json(cfg):
         "disk_required_cycles": cfg["disk_required_cycles"],
     }
 
-
-def _v4810_state_map(conn, node):
-    rows = conn.execute("""
-        SELECT node,vm_uuid,last_seen,is_abuse,abuse_since,abuse_flags,severity,
-               network_rx_hit,network_tx_hit,cpu_streak_seconds,disk_streak_seconds,
-               rx_pps,tx_pps,rx_peak_pps,tx_peak_pps,seconds_over_rx_pps,seconds_over_tx_pps,
-               cpu_full_percent,cpu_core_percent,vcpu_current,
-               disk_read_bps,disk_write_bps,disk_read_iops,disk_write_iops,
-               COALESCE(network_rx_mbps_hit,0),COALESCE(network_tx_mbps_hit,0),
-               COALESCE(network_rx_mbps_streak_seconds,0),COALESCE(network_tx_mbps_streak_seconds,0),
-               COALESCE(rx_mbps,0),COALESCE(tx_mbps,0),
-               COALESCE(policy_revision,0),COALESCE(policy_applied_at,0),COALESCE(last_eval_bucket,0),
-               COALESCE(cpu_streak_cycles,0),COALESCE(disk_streak_cycles,0),
-               COALESCE(network_rx_mbps_streak_cycles,0),COALESCE(network_tx_mbps_streak_cycles,0),
-               COALESCE(network_pps_policy_synced,0),COALESCE(network_pps_reported_threshold,0),
-               COALESCE(engine_version,'')
-        FROM vm_abuse_state WHERE node=?
-    """, (node,)).fetchall()
-    keys = [
-        "node","vm_uuid","last_seen","is_abuse","abuse_since","abuse_flags","severity",
-        "network_rx_hit","network_tx_hit","cpu_streak_seconds","disk_streak_seconds",
-        "rx_pps","tx_pps","rx_peak_pps","tx_peak_pps","seconds_over_rx_pps","seconds_over_tx_pps",
-        "cpu_full_percent","cpu_core_percent","vcpu_current",
-        "disk_read_bps","disk_write_bps","disk_read_iops","disk_write_iops",
-        "network_rx_mbps_hit","network_tx_mbps_hit",
-        "network_rx_mbps_streak_seconds","network_tx_mbps_streak_seconds",
-        "rx_mbps","tx_mbps","policy_revision","policy_applied_at","last_eval_bucket",
-        "cpu_streak_cycles","disk_streak_cycles",
-        "network_rx_mbps_streak_cycles","network_tx_mbps_streak_cycles",
-        "network_pps_policy_synced","network_pps_reported_threshold","engine_version",
-    ]
-    return {str(r[1]): dict(zip(keys, r)) for r in rows}
-
-
 # Keep the authoritative original current-table writer captured before older
 # policy wrappers. It updates vm_current_fast / vm_iface_current / node_current_fast.
 _v4810_current_writer = _refresh_fast_current_state_v470
-
 
 def _v4810_pps_sync_map(interfaces, cfg):
     result = {}
@@ -339,7 +293,6 @@ def _v4810_pps_sync_map(interfaces, cfg):
         rec["synced"] = bool(rec["count"] > 0 and rec["has_report"] and rec["all_match"])
     return result
 
-
 def _v4810_next_streak(old_cycles, hit, policy_same, contiguous, advance_cycle):
     old_cycles = max(0, safe_int(old_cycles, 0))
     if not hit:
@@ -349,7 +302,6 @@ def _v4810_next_streak(old_cycles, hit, policy_same, contiguous, advance_cycle):
     if policy_same and contiguous:
         return old_cycles + 1
     return 1
-
 
 def _v4810_disk_hit(cfg, read_bps, write_bps, read_iops, write_iops):
     if not cfg["disk_effective_enabled"]:
@@ -367,7 +319,6 @@ def _v4810_disk_hit(cfg, read_bps, write_bps, read_iops, write_iops):
         matches.append(total_iops / cfg["disk_iops"])
     return bool(matches), matches
 
-
 def _v4810_canonical_flags(flags):
     result = []
     mapping = {
@@ -384,7 +335,6 @@ def _v4810_canonical_flags(flags):
         if flag not in result:
             result.append(flag)
     return result
-
 
 def _v4810_insert_abuse_event(conn, event_type, state, event_time, flags=None, severity=None, cfg=None, detail=""):
     if not state:
@@ -424,10 +374,8 @@ def _v4810_insert_abuse_event(conn, event_type, state, event_time, flags=None, s
         ABUSE_ENGINE_VERSION,
     ))
 
-
 # Compatibility alias used by existing history code.
 _insert_abuse_event = _v4810_insert_abuse_event
-
 
 def refresh_fast_current_state(conn, node, data_time, interval_seconds, interfaces, vms, node_host, inventory_complete=False):
     """Authoritative bounded-state abuse evaluation.
@@ -633,7 +581,6 @@ def refresh_fast_current_state(conn, node, data_time, interval_seconds, interfac
             )
     return result
 
-
 def _v4810_reset_current_state_for_policy(conn, revision, changed_at):
     conn.execute("""
         UPDATE vm_abuse_state
@@ -649,7 +596,6 @@ def _v4810_reset_current_state_for_policy(conn, revision, changed_at):
             policy_revision=?,policy_applied_at=?,last_eval_bucket=0,
             engine_version=?
     """, (revision, changed_at, ABUSE_ENGINE_VERSION))
-
 
 def _v4810_save_policy(values, actor, action="save"):
     conn = db()
@@ -691,7 +637,6 @@ def _v4810_save_policy(values, actor, action="save"):
         raise
     finally:
         conn.close()
-
 
 def admin_abuse_settings_v4810():
     deny = require_admin()
@@ -756,27 +701,7 @@ def admin_abuse_settings_v4810():
     )
     return redirect(url_for("admin_abuse_page",msg=msg))
 
-
 app.view_functions["admin_abuse_settings"] = admin_abuse_settings_v4810
-
-
-def _abuse_flag_labels(flags, cfg):
-    values = set(_v4810_canonical_flags(flags))
-    result = []
-    if "NETWORK_RX_PPS" in values:
-        result.append(f"RX PPS ≥ {cfg['network_pps']:,.0f} for {cfg['network_required_seconds']}s")
-    if "NETWORK_TX_PPS" in values:
-        result.append(f"TX PPS ≥ {cfg['network_pps']:,.0f} for {cfg['network_required_seconds']}s")
-    if "NETWORK_RX_AVG_MBPS" in values:
-        result.append(f"RX AVG ≥ {cfg['network_avg_mbps']:,.0f} Mbps · {cfg['network_mbps_required_cycles']} cycle(s)")
-    if "NETWORK_TX_AVG_MBPS" in values:
-        result.append(f"TX AVG ≥ {cfg['network_avg_mbps']:,.0f} Mbps · {cfg['network_mbps_required_cycles']} cycle(s)")
-    if "CPU_SUSTAINED" in values:
-        result.append(f"CPU Full ≥ {cfg['cpu_full_percent']:.1f}% · {cfg['cpu_required_cycles']} cycle(s)")
-    if "DISK_SUSTAINED" in values:
-        result.append(f"Disk sustained · {cfg['disk_required_cycles']} cycle(s)")
-    return result or ["-"]
-
 
 def _v4810_policy_status():
     cfg = get_abuse_settings()
@@ -829,14 +754,6 @@ def _v4810_policy_status():
         return cfg,row or (0,0,0,0,0,0,0),versions,progress
     finally:
         conn.close()
-
-
-def _v4810_progress_bar(current, required):
-    current = max(0,safe_int(current,0))
-    required = max(1,safe_int(required,1))
-    pct = min(100.0,current*100.0/required)
-    return f'<div class="rule-progress"><span style="width:{pct:.1f}%"></span></div><small>{current}/{required} cycles</small>'
-
 
 def abuse_settings_admin_card():
     cfg,status,versions,progress = _v4810_policy_status()
@@ -946,7 +863,6 @@ def abuse_settings_admin_card():
     <details class="card admin-fold"><summary>Recent policy revisions</summary><div class="fold-content"><div class="table-wrap"><table><thead><tr><th>REVISION</th><th>CHANGED</th><th>ADMIN</th><th>ACTION</th></tr></thead><tbody>{version_rows}</tbody></table></div></div></details>
     """
 
-
 def _v4810_current_abuse_query(q,sort_by,order,limit):
     allowed = {
         "severity":"a.severity","node":"a.node COLLATE NOCASE","vm":"a.vm_uuid COLLATE NOCASE",
@@ -1002,10 +918,8 @@ def _v4810_current_abuse_query(q,sort_by,order,limit):
     finally:
         conn.close()
 
-
 def _v4810_metric_pair(label_a,value_a,label_b,value_b,sub_a="",sub_b=""):
     return f"""<div class="metric-pair"><div><span>{escape(label_a)}</span><b>{value_a}</b>{f'<small>{escape(sub_a)}</small>' if sub_a else ''}</div><div><span>{escape(label_b)}</span><b>{value_b}</b>{f'<small>{escape(sub_b)}</small>' if sub_b else ''}</div></div>"""
-
 
 def _v4810_abuse_current_page(q,sort_by,order,limit):
     rows,total,counts,sort_by,order,cfg = _v4810_current_abuse_query(q,sort_by,order,limit)
@@ -1051,7 +965,6 @@ def _v4810_abuse_current_page(q,sort_by,order,limit):
     table = f"""<div class="card abuse-current-card"><div class="section-head"><div><h3>Current VM Abuse</h3><p>Policy v{cfg['revision']} · exact 5-minute cycle engine · bounded current-state query.</p></div><div class="count-badges"><span>All <b>{total}</b></span><span>PPS <b>{counts[0]}</b></span><span>AVG Mbps <b>{counts[1]}</b></span><span>CPU <b>{counts[2]}</b></span><span>Disk <b>{counts[3]}</b></span></div></div><div class="table-wrap"><table class="abuse-v490-table"><colgroup><col class="c-rank"><col class="c-id"><col class="c-reason"><col class="c-network"><col class="c-peak"><col class="c-cpu"><col class="c-disk"><col class="c-time"></colgroup><thead><tr><th>#</th><th>{h('NODE / VM','node')}</th><th>{h('REASON / SEVERITY','severity')}</th><th><div>NETWORK AVG</div><small>{h('RX Mbps','rx_mbps')} · {h('TX Mbps','tx_mbps')}</small></th><th><div>PPS PEAK / WINDOW</div><small>{h('RX PPS','rx_peak')} · {h('TX PPS','tx_peak')}</small></th><th>{h('CPU','cpu')}</th><th>{h('DISK','iops')}</th><th>{h('TIMELINE','last_seen')}</th></tr></thead><tbody>{body}</tbody></table></div></div>"""
     return f"""<div class="card page-hero"><div><span class="eyebrow">ABUSE MONITORING</span><h2>VM Abuse</h2><p>Admin policy is authoritative. Directional PPS is sampler-verified; sustained monitor rules use complete five-minute cycles.</p></div><div class="hero-meta"><span>Policy <b>v{cfg['revision']}</b></span><span>Engine <b>{ABUSE_ENGINE_VERSION}</b></span><span>Delete <b>Admin only</b></span></div></div><div class="card abuse-toolbar">{tabs}{search}</div><details class="card policy-fold"><summary>Current policy</summary>{_public_abuse_policy(cfg)}</details>{table}"""
 
-
 def vm_abuse_page_v4810():
     tab = (request.args.get("tab") or "current").strip().lower()
     if tab == "history":
@@ -1062,9 +975,7 @@ def vm_abuse_page_v4810():
     limit = max(10,min(1000,safe_int(request.args.get("limit"),200)))
     return page("VM Abuse",_v4810_abuse_current_page(q,sort_by,order,limit))
 
-
 app.view_functions["vm_abuse_page"] = vm_abuse_page_v4810
-
 
 # Add a final visual polish layer for the new policy diagnostics without changing
 # the rest of the v48.9 theme.
@@ -1079,7 +990,6 @@ html[data-theme=dark] .rule-progress{background:#26374f}html[data-theme=dark] .p
 """
 _page_v4810_base = page
 
-
 def page(title,content):
     response = _page_v4810_base(title,content)
     try:
@@ -1089,7 +999,6 @@ def page(title,content):
     except Exception:
         app.logger.exception("Could not apply v48.10.0 visual layer")
     return response
-
 
 def _merge_event_abuse_cfg(current_cfg, event_cfg):
     merged = dict(current_cfg)
@@ -1118,31 +1027,3 @@ def _merge_event_abuse_cfg(current_cfg, event_cfg):
     )
     return merged
 
-
-def _public_abuse_policy(cfg):
-    pps_line = (
-        f"RX or TX ≥ {cfg['network_pps']:,.0f} PPS for {cfg['network_required_seconds']}s inside one sampled 5-minute window"
-        if cfg["network_enabled"] else "Directional PPS rule disabled"
-    )
-    mbps_line = (
-        f"RX or TX AVG ≥ {cfg['network_avg_mbps']:,.1f} Mbps for {cfg['network_mbps_required_cycles']} complete 5-minute cycle(s)"
-        if cfg["network_mbps_enabled"] and cfg["network_avg_mbps"] > 0 else "Directional AVG Mbps rule disabled"
-    )
-    cpu_line = (
-        f"CPU Full ≥ {cfg['cpu_full_percent']:.1f}% for {cfg['cpu_required_cycles']} complete 5-minute cycle(s)"
-        if cfg["cpu_enabled"] else "CPU rule disabled"
-    )
-    disk_line = (
-        f"{_disk_policy_text(cfg)} for {cfg['disk_required_cycles']} complete 5-minute cycle(s)"
-        if cfg["disk_effective_enabled"] else "Disk rule disabled or every disk threshold is 0"
-    )
-    return f"""
-      <div class="abuse-policy" style="grid-template-columns:repeat(4,minmax(210px,1fr))">
-        <div><b>Network PPS {'ON' if cfg['network_enabled'] else 'OFF'}</b><small>{escape(pps_line)}.</small></div>
-        <div><b>Network AVG Mbps {'ON' if cfg['network_mbps_enabled'] and cfg['network_avg_mbps'] > 0 else 'OFF'}</b><small>{escape(mbps_line)}.</small></div>
-        <div><b>CPU {'ON' if cfg['cpu_enabled'] else 'OFF'}</b><small>{escape(cpu_line)}.</small></div>
-        <div><b>Disk {'ON' if cfg['disk_effective_enabled'] else 'OFF'}</b><small>{escape(disk_line)}.</small></div>
-      </div>
-    """
-
-# ---------------------------------------------------------------------------

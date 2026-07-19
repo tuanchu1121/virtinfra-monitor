@@ -1,15 +1,11 @@
-# v50.5.0 batched ingest and single-write hot path
-# ---------------------------------------------------------------------------
 V5050_VERSION = "50.5.0"
 _V5050_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-
 
 def _v5050_ident(value):
     value = str(value or "")
     if not _V5050_IDENT.fullmatch(value):
         raise ValueError(f"unsafe SQL identifier: {value!r}")
     return value
-
 
 def _v5050_bulk_upsert_rows(conn, table, key_columns, rows):
     """UPSERT a homogeneous row batch with one PostgreSQL statement.
@@ -45,11 +41,7 @@ def _v5050_bulk_upsert_rows(conn, table, key_columns, rows):
     )
     return max(0, safe_int(cur.rowcount, 0))
 
-
 _v5050_legacy_location_transition = _create_or_update_location
-
-
-
 
 def _v5050_current_writer(conn, node, data_time, interval_seconds, interfaces, vms, node_host, inventory_complete=False):
     """Update small current tables in O(VM + interface) during the existing push.
@@ -244,7 +236,6 @@ def _v5050_current_writer(conn, node, data_time, interval_seconds, interfaces, v
         conn.execute("DELETE FROM vm_current_fast WHERE node=? AND last_seen<?", (node, data_time))
         conn.execute("DELETE FROM vm_abuse_state WHERE node=? AND last_seen<?", (node, data_time))
 
-
 def _v5050_refresh_fast_current_state(conn, node, data_time, interval_seconds, interfaces, vms, node_host, inventory_complete=False):
     cfg = get_abuse_settings(conn)
     _apply_abuse_settings_to_runtime(cfg)
@@ -268,8 +259,6 @@ def _v5050_refresh_fast_current_state(conn, node, data_time, interval_seconds, i
         conn, node, data_time, interval_seconds,
         normalized_interfaces, vms, node_host, inventory_complete,
     )
-
-    # v50.5.0 writes balloon fields in the batched current-row UPSERT.
 
     current_rows = conn.execute("""
         SELECT c.vm_uuid,c.last_seen,c.interval_seconds,
@@ -427,8 +416,6 @@ def _v5050_refresh_fast_current_state(conn, node, data_time, interval_seconds, i
                 detail=f"Policy v{cfg['revision']}: VM no longer satisfies any sustained abuse rule")
     return result
 
-
-
 def _v48140_refresh_node_summaries(conn, node):
     node = str(node or "").strip()
     if not node:
@@ -499,9 +486,7 @@ def _v48140_refresh_node_summaries(conn, node):
        )
     """, (node,))
 
-
 # Activate optimized implementations after every legacy compatibility layer loaded.
 _v4810_current_writer = _v5050_current_writer
 refresh_fast_current_state = _v5050_refresh_fast_current_state
 
-# ---------------------------------------------------------------------------

@@ -1101,7 +1101,6 @@ def page(title, content):
     </html>
     """, mimetype="text/html")
 
-
 @app.before_request
 def enforce_dashboard_login():
     endpoint = request.endpoint or ""
@@ -1126,5 +1125,4 @@ def enforce_dashboard_login():
     if endpoint == "admin_page" or endpoint.startswith("admin_"):
         return None
     return require_dashboard()
-
 

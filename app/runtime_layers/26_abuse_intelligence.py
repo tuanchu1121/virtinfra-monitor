@@ -1,5 +1,3 @@
-# v48.12.6 Abuse Intelligence, RAM policy, effective visibility and chart UX
-# ---------------------------------------------------------------------------
 from collections import defaultdict, Counter
 
 V48126_VERSION = "48.12.6"
@@ -15,7 +13,6 @@ ABUSE_SETTING_DEFAULTS.update({
     "abuse_ram_required_seconds": "600",
 })
 
-
 def _v48126_duration(seconds):
     seconds = max(0, safe_int(seconds, 0))
     if seconds < 60:
@@ -29,7 +26,6 @@ def _v48126_duration(seconds):
     days, hours = divmod(hours, 24)
     return f"{days}d {hours:02d}h"
 
-
 def _v48126_primary_type(flags):
     values = [str(x or "").upper() for x in (flags if isinstance(flags, (list, tuple, set)) else _v4810_canonical_flags(flags))]
     if any("NETWORK" in value for value in values):
@@ -42,7 +38,6 @@ def _v48126_primary_type(flags):
         return "disk"
     return "other"
 
-
 def _v48126_flag_union(*values):
     result = []
     for value in values:
@@ -51,19 +46,16 @@ def _v48126_flag_union(*values):
                 result.append(flag)
     return result
 
-
 def _v48126_incident_score(duration_seconds, max_severity):
     # Every occurrence contributes one point. Duration and severity then add
     # weight, so repeated short incidents and long severe incidents are both visible.
     return round(1.0 + (max(0, safe_int(duration_seconds, 0)) / 3600.0) * max(1.0, safe_float(max_severity, 1.0)), 4)
-
 
 def _v48126_visible_sql(node_alias="ni", vm_alias="vi"):
     return (
         f"({node_alias}.node IS NULL OR (COALESCE({node_alias}.status,'active')!='hidden' AND {node_alias}.deleted_at IS NULL)) "
         f"AND ({vm_alias}.node IS NULL OR (COALESCE({vm_alias}.status,'active')!='hidden' AND {vm_alias}.deleted_at IS NULL))"
     )
-
 
 def _v48126_is_visible(conn, node, vm_uuid=None):
     row = conn.execute(
@@ -80,7 +72,6 @@ def _v48126_is_visible(conn, node, vm_uuid=None):
         if row and (str(row[0] or "active") == "hidden" or row[1] is not None):
             return False
     return True
-
 
 def _v48126_close_incident(conn, incident_id, ended_at, max_severity=None, flags=None, event_count_increment=0):
     row = conn.execute(
@@ -105,7 +96,6 @@ def _v48126_close_incident(conn, incident_id, ended_at, max_severity=None, flags
             safe_int(ended_at, started_at), incident_id,
         ),
     )
-
 
 def _v48126_apply_incident_event(conn, event_type, state, event_time, flags, severity, policy_revision, engine_version):
     event_type = str(event_type or "updated").strip().lower()
@@ -177,7 +167,6 @@ def _v48126_apply_incident_event(conn, event_type, state, event_time, flags, sev
             ),
         )
 
-
 def _v48126_rebuild_incidents(conn):
     conn.execute("DELETE FROM vm_abuse_incidents")
     cutoff = now_ts() - 7 * 86400
@@ -192,7 +181,6 @@ def _v48126_rebuild_incidents(conn):
         _v48126_apply_incident_event(
             conn, event_type, state, event_time, flags, severity, revision, engine,
         )
-
 
 def _v48126_migrate_schema():
     conn = db()
@@ -277,16 +265,13 @@ def _v48126_migrate_schema():
     finally:
         conn.close()
 
-
 _v48126_migrate_schema()
-
 
 # ---------- Dynamic policy with RAM ---------------------------------------
 _v48126_get_abuse_settings_base = get_abuse_settings
 _v48126_apply_settings_base = _apply_abuse_settings_to_runtime
 _v48126_policy_json_base = _v4810_policy_json
 _v48126_reset_state_base = _v4810_reset_current_state_for_policy
-
 
 def get_abuse_settings(conn=None):
     own = conn is None
@@ -326,12 +311,10 @@ def get_abuse_settings(conn=None):
         if own:
             conn.close()
 
-
 def _apply_abuse_settings_to_runtime(cfg):
     _v48126_apply_settings_base(cfg)
     global ABUSE_RAM_RSS_PERCENT
     ABUSE_RAM_RSS_PERCENT = cfg["ram_rss_percent"] if cfg.get("ram_effective_enabled") else 10**9
-
 
 def _v4810_policy_json(cfg):
     result = _v48126_policy_json_base(cfg)
@@ -347,7 +330,6 @@ def _v4810_policy_json(cfg):
     })
     return result
 
-
 def _v4810_reset_current_state_for_policy(conn, revision, changed_at):
     # A policy revision starts a new evaluation epoch. Close open incidents at
     # the exact revision boundary before current streaks are reset.
@@ -362,7 +344,6 @@ def _v4810_reset_current_state_for_policy(conn, revision, changed_at):
                engine_version=?""",
         (ABUSE_ENGINE_VERSION,),
     )
-
 
 def _v4810_state_map(conn, node):
     rows = conn.execute("""
@@ -401,9 +382,7 @@ def _v4810_state_map(conn, node):
     ]
     return {str(row[1]): dict(zip(keys, row)) for row in rows}
 
-
 _v48126_insert_event_base = _v4810_insert_abuse_event
-
 
 def _v48126_insert_abuse_event(conn, event_type, state, event_time, flags=None, severity=None, cfg=None, detail=""):
     cfg = cfg or get_abuse_settings(conn)
@@ -436,10 +415,8 @@ def _v48126_insert_abuse_event(conn, event_type, state, event_time, flags=None, 
         safe_int((state or {}).get("policy_revision"), cfg.get("revision", 0)), ABUSE_ENGINE_VERSION,
     )
 
-
 _v4810_insert_abuse_event = _v48126_insert_abuse_event
 _insert_abuse_event = _v48126_insert_abuse_event
-
 
 def _v48126_ram_metrics(current_kib, rss_kib, available_kib, unused_kib, usable_kib):
     current = max(0, safe_int(current_kib, 0))
@@ -464,16 +441,11 @@ def _v48126_ram_metrics(current_kib, rss_kib, available_kib, unused_kib, usable_
         "guest_valid": guest_valid,
     }
 
-
-
-
 # Authoritative v48.12.6 state writer. It preserves the exact cycle logic from
 # cycles-v2 and adds a sustained RAM rule evaluated from the same accepted push.
 
-
 # ---------- Policy Admin --------------------------------------------------
 _v48126_abuse_settings_card_base = abuse_settings_admin_card
-
 
 def abuse_settings_admin_card():
     cfg = get_abuse_settings()
@@ -496,7 +468,6 @@ def abuse_settings_admin_card():
         "CPU, RAM, AVG Mbps and Disk start counting on the next complete push.",
     )
     return html
-
 
 def admin_abuse_settings_v48126():
     deny = require_admin()
@@ -563,9 +534,7 @@ def admin_abuse_settings_v48126():
              "CPU, RAM, AVG Mbps and Disk start on the next complete push. PPS waits for Agent synchronization."),
     ))
 
-
 app.view_functions["admin_abuse_settings"] = admin_abuse_settings_v48126
-
 
 def _public_abuse_policy(cfg):
     pps = f"RX or TX ≥ {cfg['network_pps']:,.0f} PPS for {cfg['network_required_seconds']}s" if cfg["network_enabled"] else "Disabled"
@@ -586,7 +555,6 @@ def _public_abuse_policy(cfg):
       <div><b>Disk {'ON' if cfg['disk_effective_enabled'] else 'OFF'}</b><small>{escape(disk)}</small></div>
     </div>"""
 
-
 def _abuse_flag_labels(flags, cfg):
     values = set(_v4810_canonical_flags(flags))
     result = []
@@ -599,10 +567,8 @@ def _abuse_flag_labels(flags, cfg):
     if "DISK_SUSTAINED" in values: result.append("Disk sustained")
     return result or ["Policy match"]
 
-
 # ---------- Effective visibility -----------------------------------------
 _get_top_vm_rows_v48126_base = get_top_vm_rows
-
 
 def get_top_vm_rows(period, q="", sort_by="total", order="desc", scope="all", limit=100):
     requested_limit = max(10, min(1000, safe_int(limit, 100)))
@@ -617,7 +583,6 @@ def get_top_vm_rows(period, q="", sort_by="total", order="desc", scope="all", li
             conn.close()
     return rows[:requested_limit], selected_bucket, latest_bucket, requested_limit
 
-
 # ---------- Abuse Viewer --------------------------------------------------
 def _v48126_type_condition(alias, abuse_type):
     abuse_type = str(abuse_type or "all").strip().lower()
@@ -627,10 +592,8 @@ def _v48126_type_condition(alias, abuse_type):
     if abuse_type == "disk": return f"{alias}.abuse_flags LIKE '%DISK%'"
     return "1=1"
 
-
 def _v48126_range_seconds(value):
     return {"1h":3600,"6h":21600,"24h":86400,"2d":172800,"7d":604800}.get(str(value or "7d"),604800)
-
 
 def _v48126_filter_values():
     return {
@@ -642,7 +605,6 @@ def _v48126_filter_values():
         "limit": max(25, min(500, safe_int(request.args.get("limit"), 100))),
         "page": max(1, safe_int(request.args.get("page"), 1)),
     }
-
 
 def _v48126_filter_form(tab, values, nodes):
     node_options = '<option value="">All nodes</option>' + ''.join(
@@ -669,14 +631,12 @@ def _v48126_filter_form(tab, values, nodes):
       <button type="submit">Filter</button><a class="clear" href="{url_for('vm_abuse_page',tab=tab)}">Clear</a>
     </form>"""
 
-
 def _v48126_tabs(active):
     items = (("current","Current"),("incidents","Incidents"),("summary","Summary"),("events","Raw Events"))
     return '<div class="abuse-tabs abuse-tabs-v48126">' + ''.join(
         f'<a class="{"active" if active==key else ""}" href="{url_for("vm_abuse_page",tab=key)}">{label}</a>'
         for key,label in items
     ) + '</div>'
-
 
 def _v48126_visible_nodes():
     conn = db()
@@ -689,7 +649,6 @@ def _v48126_visible_nodes():
         """, (now_ts()-7*86400,)).fetchall()]
     finally:
         conn.close()
-
 
 def _v48126_current_rows(values):
     cfg = get_abuse_settings()
@@ -740,10 +699,8 @@ def _v48126_current_rows(values):
         return rows,total,counts
     finally: conn.close()
 
-
 def _v48126_reason_badges(flags, cfg):
     return ''.join(f'<span class="metric-pill">{escape(label)}</span>' for label in _abuse_flag_labels(flags,cfg))
-
 
 def _v48126_current_page(values, nodes):
     cfg=get_abuse_settings(); rows,total,counts=_v48126_current_rows(values)
@@ -768,7 +725,6 @@ def _v48126_current_page(values, nodes):
     <div class="card"><div class="section-head"><div><h3>Current VM Abuse</h3><p>Only visible VMs whose parent Node is also visible are shown.</p></div><div class="count-badges"><span>Page <b>{values['page']}/{pages}</b></span><span>Policy <b>v{cfg['revision']}</b></span></div></div>
     <div class="table-wrap"><table class="abuse-current-v48126"><thead><tr><th>NODE / VM</th><th>REASON / SEVERITY</th><th>NETWORK AVG</th><th>PPS PEAK</th><th>CPU</th><th>RAM</th><th>DISK</th><th>TIMELINE</th></tr></thead><tbody>{body}</tbody></table></div>{_v48126_pagination('current',values,total)}</div>"""
 
-
 def _v48126_pagination(tab, values, total):
     pages=max(1,math.ceil(total/values["limit"])); page=min(values["page"],pages)
     if pages<=1: return ""
@@ -778,7 +734,6 @@ def _v48126_pagination(tab, values, total):
     prev=f'<a class="btn {"disabled" if page<=1 else ""}" href="{href(max(1,page-1))}">Previous</a>'
     nxt=f'<a class="btn {"disabled" if page>=pages else ""}" href="{href(min(pages,page+1))}">Next</a>'
     return f'<div class="pagination">{prev}<span>Page <b>{page}</b> of <b>{pages}</b></span>{nxt}</div>'
-
 
 def _v48126_incident_query(values):
     cutoff=now_ts()-_v48126_range_seconds(values["range"])
@@ -797,7 +752,6 @@ def _v48126_incident_query(values):
         return rows,total
     finally:conn.close()
 
-
 def _v48126_incidents_page(values,nodes):
     rows,total=_v48126_incident_query(values);now=now_ts();cfg=get_abuse_settings();body=""
     for row in rows:
@@ -808,7 +762,6 @@ def _v48126_incidents_page(values,nodes):
         body+=f"""<tr><td><span class="status-chip {'status-ok' if status=='open' else ''}">{'ACTIVE' if status=='open' else 'RECOVERED'}</span></td><td><a href="{escape(href,quote=True)}"><b>{escape(node)}</b></a><small class="row-sub mono">{escape(uuid)}</small></td><td>{fmt_full(started)}</td><td>{fmt_full(ended) if ended else '<b>Active now</b>'}</td><td><b>{_v48126_duration(effective_duration)}</b></td><td><b>{safe_float(maxsev,0):.2f}x</b></td><td><b>{effective_score:.2f}</b><small class="row-sub">1 occurrence + severity × hours</small></td><td><div class="abuse-reasons">{_v48126_reason_badges(flags,cfg)}</div></td><td class="num">{safe_int(event_count,0)}</td></tr>"""
     if not body:body='<tr><td colspan="9" class="empty">No visible incident matches the selected filters</td></tr>'
     return f"""<div class="card"><div class="section-head"><div><h3>Abuse Incidents</h3><p>STARTED, UPDATED and RECOVERED events are paired into episodes with a real duration.</p></div><div class="count-badges"><span>Matched <b>{total}</b></span><span>Window <b>{escape(values['range'])}</b></span></div></div><div class="table-wrap"><table class="incident-table-v48126"><thead><tr><th>STATE</th><th>NODE / VM</th><th>START</th><th>END</th><th>DURATION</th><th>MAX SEVERITY</th><th>WEIGHTED SCORE</th><th>REASONS</th><th>EVENTS</th></tr></thead><tbody>{body}</tbody></table></div>{_v48126_pagination('incidents',values,total)}</div>"""
-
 
 def _v48126_summary_data(values):
     cutoff=now_ts()-_v48126_range_seconds(values["range"])
@@ -836,7 +789,6 @@ def _v48126_summary_data(values):
     ranking=sorted(by_vm.values(),key=lambda x:(x["score"],x["incidents"],x["duration"]),reverse=True)
     return rows,ranking,by_day,by_type,active,total_duration
 
-
 def _v48126_summary_page(values,nodes):
     rows,ranking,by_day,by_type,active,total_duration=_v48126_summary_data(values)
     top=ranking[:20];max_score=max([x["score"] for x in top] or [1]);max_day=max(by_day.values() or [1]);cfg=get_abuse_settings()
@@ -853,7 +805,6 @@ def _v48126_summary_page(values,nodes):
     <div class="abuse-kpis-v48126"><div><span>Incidents</span><b>{len(rows)}</b></div><div><span>Active now</span><b>{active}</b></div><div><span>Total duration</span><b>{_v48126_duration(total_duration)}</b></div><div class="wide"><span>Top abused VM</span><b title="{escape(top_name)}">{escape(top_name[:42])}</b></div></div>
     <div class="abuse-chart-grid-v48126"><div class="card chart-card"><div class="chart-title-v48126"><h3>Top VMs by weighted score</h3><small>Click to enlarge</small></div><div class="hbar-chart">{bars}</div></div><div class="card chart-card"><div class="chart-title-v48126"><h3>Incidents by day</h3><small>Click to enlarge</small></div><div class="vbar-chart">{day_items}</div></div></div>
     <div class="card"><div class="section-head"><div><h3>VM Abuse Ranking</h3><p>Score = one point per incident + duration hours × maximum severity.</p></div><div class="count-badges"><span>VM <b>{len(ranking)}</b></span><span>Window <b>{escape(values['range'])}</b></span></div></div><div class="table-wrap"><table class="summary-table-v48126"><thead><tr><th>#</th><th>NODE / VM</th><th>INCIDENTS</th><th>TOTAL DURATION</th><th>LONGEST</th><th>MAX SEVERITY</th><th>SCORE</th><th>PRIMARY</th><th>LAST SEEN</th></tr></thead><tbody>{body}</tbody></table></div></div>"""
-
 
 def _v48126_events_page(values,nodes):
     cutoff=now_ts()-_v48126_range_seconds(values["range"])
@@ -877,7 +828,6 @@ def _v48126_events_page(values,nodes):
     if not body:body='<tr><td colspan="7" class="empty">No visible raw event matches the selected filters</td></tr>'
     return f"""<div class="card"><div class="section-head"><div><h3>Raw Abuse Events</h3><p>Read-only viewer. Deletion and cleanup remain in Admin → Abuse.</p></div><div class="count-badges"><span>Matched <b>{total}</b></span><span>Retention <b>7 days</b></span></div></div><div class="table-wrap"><table class="events-table-v48126"><thead><tr><th>TIME</th><th>EVENT</th><th>NODE / VM</th><th>REASON</th><th>SEVERITY</th><th>RAM</th><th>DETAIL</th></tr></thead><tbody>{body}</tbody></table></div>{_v48126_pagination('events',values,total)}</div>"""
 
-
 def vm_abuse_page_v48126():
     tab=(request.args.get("tab") or "current").strip().lower()
     if tab=="history":tab="incidents"
@@ -890,9 +840,7 @@ def vm_abuse_page_v48126():
     else:content+=_v48126_events_page(values,nodes)
     return page("VM Abuse",content)
 
-
 app.view_functions["vm_abuse_page"] = vm_abuse_page_v48126
-
 
 # ---------- REST API visibility + RAM + incidents ------------------------
 def _v48126_api_full_item(row):
@@ -910,7 +858,6 @@ def _v48126_api_full_item(row):
         "duration_seconds":max(0,safe_int(row[3],0)-safe_int(row[2],row[3])),
     }
 
-
 def _v48126_api_abuse_query(single_uuid=None):
     cfg=get_abuse_settings();where=["a.is_abuse=1","a.last_seen>=?","a.policy_revision=?","a.engine_version=?",_v48126_visible_sql("ni","vi")];params=[now_ts()-FAST_CURRENT_STALE_SECONDS,cfg["revision"],ABUSE_ENGINE_VERSION]
     if single_uuid is not None:where.append("a.vm_uuid=?");params.append(str(single_uuid))
@@ -920,7 +867,6 @@ def _v48126_api_abuse_query(single_uuid=None):
     if q:p=like_pattern(q);where.append("(a.node LIKE ? OR a.vm_uuid LIKE ? OR a.abuse_flags LIKE ?)");params.extend([p,p,p])
     where.append("a.severity>=?");params.append(minsev)
     return where,params
-
 
 _V48126_API_ABUSE_SELECT = """SELECT a.node,a.vm_uuid,a.abuse_since,a.last_seen,a.abuse_flags,a.severity,
  a.rx_mbps,a.tx_mbps,a.rx_pps,a.tx_pps,a.rx_peak_pps,a.tx_peak_pps,
@@ -935,7 +881,6 @@ _V48126_API_ABUSE_SELECT = """SELECT a.node,a.vm_uuid,a.abuse_since,a.last_seen,
  LEFT JOIN vm_current_fast c ON c.node=a.node AND c.vm_uuid=a.vm_uuid
  LEFT JOIN node_inventory ni ON ni.node=a.node
  LEFT JOIN vm_inventory vi ON vi.node=a.node AND vi.vm_uuid=a.vm_uuid"""
-
 
 def _v48126_api_abuse_vms_impl():
     where,params=_v48126_api_abuse_query();limit,offset=_api_limit_offset(200);view=(request.args.get("view") or "summary").strip().lower()
@@ -960,7 +905,6 @@ def _v48126_api_abuse_vms_impl():
             data.append(compact)
     return _api_response({"data":data,"meta":{"count":len(data),"total":total,"limit":limit,"offset":offset,"view":view}})
 
-
 def _v48126_api_abuse_vm_impl(vm_uuid):
     where,params=_v48126_api_abuse_query(vm_uuid);conn=db()
     try:
@@ -970,10 +914,8 @@ def _v48126_api_abuse_vm_impl(vm_uuid):
     if len(rows)>1 and not (request.args.get("node") or "").strip():return _api_error("ambiguous_vm_location","Provide ?node=<node>.",409)
     return _api_response({"data":_v48126_api_full_item(rows[0])})
 
-
 app.view_functions["api_v1_abuse_vms"] = require_api_scopes("abuse:read")(_v48126_api_abuse_vms_impl)
 app.view_functions["api_v1_abuse_vm"] = require_api_scopes("abuse:read")(_v48126_api_abuse_vm_impl)
-
 
 def _v48126_api_abuse_summary_impl():
     where,params=_v48126_api_abuse_query();conn=db()
@@ -988,9 +930,7 @@ def _v48126_api_abuse_summary_impl():
     nodes=sorted(({"node":k,**v} for k,v in by_node.items()),key=lambda x:(x["count"],x["max_severity"]),reverse=True)[:20]
     return _api_response({"data":{"current_abuse":len(rows),"by_type":dict(by_type),"by_flag":dict(by_flag),"nodes":nodes,"oldest_abuse_since":oldest,"latest_seen":latest,"max_severity":round(maxsev,4)}})
 
-
 app.view_functions["api_v1_abuse_summary"] = require_api_scopes("abuse:read")(_v48126_api_abuse_summary_impl)
-
 
 def api_v1_abuse_incidents_v48126():
     limit,offset=_api_limit_offset(200)
@@ -1016,16 +956,13 @@ def api_v1_abuse_incidents_v48126():
         duration=max(0,(now if status=='open' else safe_int(ended,started))-safe_int(started,0));data.append({"incident_id":safe_int(iid,0),"node":str(node),"vm_uuid":str(uuid),"started_at":safe_int(started,0),"ended_at":safe_int(ended,0) or None,"duration_seconds":duration,"status":str(status),"max_severity":round(safe_float(maxsev,0),4),"weighted_score":_v48126_incident_score(duration,maxsev),"flags":_api_parse_flags(flags),"primary_type":str(ptype),"event_count":safe_int(event_count,0)})
     return _api_response({"data":data,"meta":{"count":len(data),"total":total,"limit":limit,"offset":offset}})
 
-
 def api_v1_abuse_rankings_v48126():
     values={"q":(request.args.get("q") or "").strip(),"node":(request.args.get("node") or "").strip(),"type":(request.args.get("type") or "all").strip().lower(),"range":(request.args.get("range") or "7d").strip().lower(),"since":max(0,safe_int(request.args.get("since"),0))}
     values.update({"min_severity":0,"limit":500,"page":1});_rows,ranking,_days,_types,active,total_duration=_v48126_summary_data(values);limit=max(1,min(500,safe_int(request.args.get("limit"),100)))
     return _api_response({"data":[{"node":r["node"],"vm_uuid":r["vm_uuid"],"incidents":r["incidents"],"active_incidents":r["active"],"total_duration_seconds":r["duration"],"longest_duration_seconds":r["longest"],"max_severity":round(r["max_severity"],4),"weighted_score":round(r["score"],4),"primary_type":r["types"].most_common(1)[0][0] if r["types"] else "other","last_seen":r["last_seen"]} for r in ranking[:limit]],"meta":{"count":min(limit,len(ranking)),"total":len(ranking),"active_incidents":active,"total_duration_seconds":total_duration}})
 
-
 app.add_url_rule("/api/v1/abuse/incidents", "api_v1_abuse_incidents_v48126", require_api_scopes("abuse_events:read")(api_v1_abuse_incidents_v48126), methods=["GET"])
 app.add_url_rule("/api/v1/abuse/rankings", "api_v1_abuse_rankings_v48126", require_api_scopes("abuse_events:read")(api_v1_abuse_rankings_v48126), methods=["GET"])
-
 
 # Filter legacy list APIs as a final safety net. Hidden parent Nodes are never
 # returned by monitoring APIs, even if the child VM inventory row is active.
@@ -1060,17 +997,14 @@ def _v48126_wrap_api_visibility(endpoint, mode):
     wrapped.__name__=f"{getattr(base,'__name__',endpoint)}_v48126_visible"
     app.view_functions[endpoint]=wrapped
 
-
 for _endpoint,_mode in (
     ("api_v1_vms","vm"),("api_v1_vm_current","vm"),("api_v1_nodes","node"),
     ("api_v1_bandwidth_vms","vm"),("api_v1_bandwidth_vm","vm"),
 ):
     _v48126_wrap_api_visibility(_endpoint,_mode)
 
-
 # ---------- Retention for incident summaries -----------------------------
 _v48126_run_retention_base = run_retention
-
 
 def run_retention(dry_run=False):
     stats=_v48126_run_retention_base(dry_run=dry_run);cutoff=now_ts()-HISTORY_RETENTION_DAYS*86400;conn=db()
@@ -1081,7 +1015,6 @@ def run_retention(dry_run=False):
             count=_delete_in_batches(conn,"vm_abuse_incidents","status='closed' AND ended_at<?",(cutoff,));conn.execute("PRAGMA optimize");conn.commit()
         stats.setdefault("deleted",{})["vm_abuse_incidents"]=safe_int(count,0);stats["total_deleted"]=sum(safe_int(v,0) for v in stats.get("deleted",{}).values());return stats
     finally:conn.close()
-
 
 # ---------- UI: chart fullscreen, select-all, cleanup alignment -----------
 V48126_UI_CSS = r"""
@@ -1142,7 +1075,6 @@ V48126_UI_JS = r"""
 
 _page_v48126_base = page
 
-
 def page(title, content):
     response = _page_v48126_base(title, content)
     try:
@@ -1154,5 +1086,3 @@ def page(title, content):
         app.logger.exception("Could not apply v48.12.6 UI layer")
     return response
 
-
-# ========================================================================

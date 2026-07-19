@@ -1,4 +1,3 @@
-# v48.10.1 wide responsive shell
 #
 # The previous visual layer capped the main shell and centered it. On large
 # dashboards that left a large unused gutter and forced wide operational
@@ -94,7 +93,6 @@ body.app-v490 th{min-width:0}
 """
 _page_v48101_base = page
 
-
 def page(title, content):
     response = _page_v48101_base(title, content)
     try:
@@ -105,4 +103,3 @@ def page(title, content):
         app.logger.exception("Could not apply v48.10.1 wide UI layer")
     return response
 
-# ---------------------------------------------------------------------------

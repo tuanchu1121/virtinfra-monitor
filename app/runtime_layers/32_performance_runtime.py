@@ -1,7 +1,5 @@
-# v48.14.0 - High Performance Edition
 # Optional Redis hot cache, PostgreSQL pooling, materialized disk summaries,
 # server-side pagination and browser render containment.
-# ---------------------------------------------------------------------------
 V48140_VERSION = "50.0.0"
 V48140_BUILD = "prod-r1-postgres-native"
 
@@ -32,7 +30,6 @@ _v48140_local_lock = _v48140_threading.RLock()
 _v48140_local_cache = _V48140OrderedDict()
 _v48140_local_generation = 1
 
-
 def _v48140_tune_connection(conn):
     """Apply low-risk per-connection tuning without repeating schema DDL."""
     conn.execute("PRAGMA busy_timeout=30000")
@@ -44,12 +41,10 @@ def _v48140_tune_connection(conn):
     conn.execute(f"PRAGMA journal_size_limit={V48140_SQLITE_JOURNAL_LIMIT_MIB * 1024 * 1024}")
     return conn
 
-
 # The legacy db() helper re-ran hundreds of CREATE TABLE / CREATE INDEX
 # statements on every request.  All migrations have already run during module
 # import, so request-time connections can be opened directly and cheaply.
 _v48140_legacy_db = db
-
 
 def db():
     db_dir = os.path.dirname(DB)
@@ -57,7 +52,6 @@ def db():
         os.makedirs(db_dir, exist_ok=True)
     conn = dbapi.connect(DB, timeout=30, cached_statements=512)
     return _v48140_tune_connection(conn)
-
 
 def _v48140_redis_client():
     if not V48140_REDIS_ENABLED or _v48140_redis_module is None:
@@ -86,7 +80,6 @@ def _v48140_redis_client():
             _v48140_redis_state["retry_after"] = now + 30.0
             return None
 
-
 def _v48140_local_get(key):
     now = time.monotonic()
     with _v48140_local_lock:
@@ -100,14 +93,12 @@ def _v48140_local_get(key):
         _v48140_local_cache.move_to_end(key)
         return value
 
-
 def _v48140_local_set(key, value, ttl):
     with _v48140_local_lock:
         _v48140_local_cache[key] = (time.monotonic() + ttl, value)
         _v48140_local_cache.move_to_end(key)
         while len(_v48140_local_cache) > V48140_LOCAL_CACHE_ITEMS:
             _v48140_local_cache.popitem(last=False)
-
 
 def _v48140_cache_get(key):
     client = _v48140_redis_client()
@@ -121,7 +112,6 @@ def _v48140_cache_get(key):
                 _v48140_redis_state["client"] = None
                 _v48140_redis_state["retry_after"] = time.monotonic() + 10.0
     return _v48140_local_get(key)
-
 
 def _v48140_cache_set(key, value, ttl=None):
     if not isinstance(value, str):
@@ -137,39 +127,6 @@ def _v48140_cache_set(key, value, ttl=None):
                 _v48140_redis_state["client"] = None
                 _v48140_redis_state["retry_after"] = time.monotonic() + 10.0
     _v48140_local_set(key, value, ttl)
-
-
-def _v48140_cache_generation():
-    global _v48140_local_generation
-    client = _v48140_redis_client()
-    if client is not None:
-        try:
-            key = "bw:v48140:purge-generation"
-            client.setnx(key, max(1, _v48140_local_generation))
-            raw = client.get(key)
-            return max(1, safe_int(raw, _v48140_local_generation))
-        except Exception:
-            pass
-    return _v48140_local_generation
-
-
-def _v48140_bump_cache_generation():
-    global _v48140_local_generation
-    with _v48140_local_lock:
-        _v48140_local_generation += 1
-        _v48140_local_cache.clear()
-        generation = _v48140_local_generation
-    client = _v48140_redis_client()
-    if client is not None:
-        try:
-            key = "bw:v48140:purge-generation"
-            client.setnx(key, generation)
-            remote = safe_int(client.incr(key), generation + 1)
-            generation = max(generation, remote)
-        except Exception:
-            pass
-    return generation
-
 
 def ensure_v48140_performance_schema(conn):
     ensure_disk_io_schema(conn)
@@ -217,7 +174,6 @@ def ensure_v48140_performance_schema(conn):
       ON vm_disk_current(role,node,vm_uuid,target);
     """)
 
-
 # Schema creation is a process-start task, not a per-request/per-push task.
 # The legacy helpers intentionally remain available as the one-time builders,
 # while these guarded wrappers make steady-state reads and pushes DDL-free.
@@ -226,7 +182,6 @@ _v48140_performance_schema_builder = ensure_v48140_performance_schema
 _v48140_schema_lock = _v48140_threading.RLock()
 _v48140_disk_schema_ready = False
 _v48140_performance_schema_ready = False
-
 
 def ensure_disk_io_schema(conn):
     global _v48140_disk_schema_ready
@@ -237,7 +192,6 @@ def ensure_disk_io_schema(conn):
             _v48140_disk_schema_builder(conn)
             _v48140_disk_schema_ready = True
 
-
 def ensure_v48140_performance_schema(conn):
     global _v48140_performance_schema_ready
     if _v48140_performance_schema_ready:
@@ -246,51 +200,6 @@ def ensure_v48140_performance_schema(conn):
         if not _v48140_performance_schema_ready:
             _v48140_performance_schema_builder(conn)
             _v48140_performance_schema_ready = True
-
-
-def _v48140_refresh_node_summaries(conn, node):
-    node = str(node or "").strip()
-    if not node:
-        return
-    ensure_v48140_performance_schema(conn)
-    conn.execute("DELETE FROM vm_disk_summary_current WHERE node=?", (node,))
-    conn.execute("""
-      INSERT INTO vm_disk_summary_current(
-        node,vm_uuid,disk_count,allocated_bytes,assigned_bytes,physical_bytes,
-        allocation_ratio,read_bps,write_bps,read_iops,write_iops,last_seen
-      )
-      SELECT node,vm_uuid,COUNT(*),
-             COALESCE(SUM(allocation_bytes),0),COALESCE(SUM(capacity_bytes),0),
-             COALESCE(SUM(physical_bytes),0),
-             CASE WHEN COALESCE(SUM(capacity_bytes),0)>0
-                  THEN COALESCE(SUM(allocation_bytes),0)*1.0/SUM(capacity_bytes) ELSE 0 END,
-             COALESCE(SUM(read_bps),0),COALESCE(SUM(write_bps),0),
-             COALESCE(SUM(read_iops),0),COALESCE(SUM(write_iops),0),MAX(last_seen)
-        FROM vm_disk_current
-       WHERE node=? AND role='customer'
-       GROUP BY node,vm_uuid
-    """, (node,))
-
-    conn.execute("DELETE FROM node_storage_mount_summary_current WHERE node=?", (node,))
-    conn.execute("""
-      WITH dc AS (
-        SELECT node,mount,COUNT(*) AS disk_count,COUNT(DISTINCT vm_uuid) AS vm_count
-          FROM vm_disk_current
-         WHERE node=? AND role='customer'
-         GROUP BY node,mount
-      )
-      INSERT INTO node_storage_mount_summary_current(
-        node,mount,device,block,raid_level,fstype,size,used,avail,use_percent,
-        read_bps,write_bps,read_iops,write_iops,util_percent,disk_count,vm_count,last_seen
-      )
-      SELECT s.node,s.mount,s.device,s.block,s.raid_level,s.fstype,s.size,s.used,s.avail,s.use_percent,
-             s.read_bps,s.write_bps,s.read_iops,s.write_iops,s.util_percent,
-             COALESCE(dc.disk_count,0),COALESCE(dc.vm_count,0),s.last_seen
-        FROM node_storage_current s
-        LEFT JOIN dc ON dc.node=s.node AND dc.mount=s.mount
-       WHERE s.node=?
-    """, (node, node))
-
 
 def _v48140_rebuild_all_summaries(conn):
     ensure_v48140_performance_schema(conn)
@@ -308,7 +217,6 @@ def _v48140_rebuild_all_summaries(conn):
       ON CONFLICT(key) DO UPDATE SET value='1',updated_at=excluded.updated_at
     """, (now_ts(),))
     return len(nodes)
-
 
 def _v48140_bootstrap_performance():
     conn = db()
@@ -335,21 +243,15 @@ def _v48140_bootstrap_performance():
                 pass
         conn.close()
 
-
 try:
     _v48140_bootstrap_performance()
 except Exception:
     app.logger.exception("Could not initialize v48.14.0 performance summaries")
 
-
 _ingest_disk_io_current_v48140_base = ingest_disk_io_current
-
-
-
 
 # Build the same request-local summary tables for historical Storage snapshots.
 _v48137_create_snapshot_shadow_tables_v48140_base = _v48137_create_snapshot_shadow_tables
-
 
 def _v48137_create_snapshot_shadow_tables(conn, payload_rows):
     stats = _v48137_create_snapshot_shadow_tables_v48140_base(conn, payload_rows)
@@ -385,10 +287,8 @@ def _v48137_create_snapshot_shadow_tables(conn, payload_rows):
     """)
     return stats
 
-
 def _v48140_public_ip_join(alias="s"):
     return f"LEFT JOIN node_bridge_addresses_latest b ON b.node={alias}.node AND b.bridge=?"
-
 
 def _v48140_disk_search_clause(values, summary_alias="s"):
     clauses = [
@@ -409,7 +309,6 @@ def _v48140_disk_search_clause(values, summary_alias="s"):
         clauses.append(f"({summary_alias}.node LIKE ? OR {summary_alias}.vm_uuid LIKE ? OR COALESCE(b.primary_ipv4,'') LIKE ? OR EXISTS (SELECT 1 FROM vm_disk_current qd WHERE qd.node={summary_alias}.node AND qd.vm_uuid={summary_alias}.vm_uuid AND qd.role='customer' AND (qd.target LIKE ? OR qd.source LIKE ? OR qd.mount LIKE ? OR qd.storage_device LIKE ? OR qd.storage_block LIKE ?)))")
         params.extend([p, p, p, p, p, p, p, p])
     return clauses, params
-
 
 def _v48133_storage_disk_groups(conn, values, start_ts):
     """Fast grouped Storage query using the materialized per-VM summary table."""
@@ -462,7 +361,6 @@ def _v48133_storage_disk_groups(conn, values, start_ts):
             details.setdefault((str(row[0]), str(row[1])), []).append(row[2:])
     return rows, details, total
 
-
 def _v48140_fast_filter_options(conn, values):
     nodes = [str(r[0]) for r in conn.execute("""
       SELECT x.node
@@ -509,9 +407,7 @@ def _v48140_fast_filter_options(conn, values):
         mount_options.append(f'<option value="{escape(item,quote=True)}"{" selected" if item == values.get("mount") else ""}>{escape(item)}</option>')
     return "".join(node_options), "".join(mount_options)
 
-
 _v48137_storage_filter_options = _v48140_fast_filter_options
-
 
 def _v48133_disk_totals_for_pairs(pairs):
     clean = []
@@ -535,7 +431,6 @@ def _v48133_disk_totals_for_pairs(pairs):
         return {(str(r[0]),str(r[1])):(safe_int(r[2],0),safe_int(r[3],0),safe_int(r[4],0)) for r in rows}
     finally:
         conn.close()
-
 
 # Replace the expensive GROUP BY subquery in Current Abuse with the summary table.
 # The function body is redefined compactly while preserving the exact row contract.
@@ -611,11 +506,9 @@ def _v48139_current_rows(values):
     finally:
         conn.close()
 
-
 # Exact purge/update paths also maintain the materialized summary tables and
 # immediately invalidate page caches.
 _purge_vm_data_v48140_base = purge_vm_data
-
 
 def purge_vm_data(conn, node, vm_uuid, refresh_snapshots=True):
     nodes = {str(node or "").strip()} if str(node or "").strip() else set()
@@ -630,9 +523,7 @@ def purge_vm_data(conn, node, vm_uuid, refresh_snapshots=True):
     _v48140_bump_cache_generation()
     return deleted
 
-
 _purge_all_vms_for_node_v48140_base = purge_all_vms_for_node
-
 
 def purge_all_vms_for_node(conn, node):
     result = _purge_all_vms_for_node_v48140_base(conn, node)
@@ -641,9 +532,7 @@ def purge_all_vms_for_node(conn, node):
     _v48140_bump_cache_generation()
     return result
 
-
 _purge_node_data_v48140_base = purge_node_data
-
 
 def purge_node_data(conn, node):
     result = _purge_node_data_v48140_base(conn, node)
@@ -652,12 +541,10 @@ def purge_node_data(conn, node):
     _v48140_bump_cache_generation()
     return result
 
-
 # Make complete reset/clear paths aware of the new materialized tables.
 MONITORING_DATA_TABLES = tuple(dict.fromkeys(tuple(MONITORING_DATA_TABLES) + (
     "vm_disk_summary_current", "node_storage_mount_summary_current",
 )))
-
 
 def _v48140_cached_endpoint(endpoint_name, ttl=None):
     base = app.view_functions.get(endpoint_name)
@@ -688,10 +575,8 @@ def _v48140_cached_endpoint(endpoint_name, ttl=None):
     wrapper._v48140_cached = True
     app.view_functions[endpoint_name] = wrapper
 
-
 for _endpoint in ("index", "top_page", "top_node_page", "vm_abuse_page", "storage_io_page", "node_page", "vm_page"):
     _v48140_cached_endpoint(_endpoint, V48140_PAGE_CACHE_TTL)
-
 
 # Browser rendering is often the last bottleneck after SQL is fast.  Modern
 # browsers can skip layout/paint for off-screen cards while preserving the exact UI.
@@ -704,15 +589,12 @@ V48140_RENDER_CSS = r"""
 
 _page_v48140_base = page
 
-
 def page(title, content):
     return _page_v48140_base(title, V48140_RENDER_CSS + content)
-
 
 @app.before_request
 def _v48140_request_timer_start():
     request.environ["bw.v48140.started"] = _v48140_perf_counter()
-
 
 @app.after_request
 def _v48140_response_performance(response):
@@ -739,45 +621,14 @@ def _v48140_response_performance(response):
             response.headers["Content-Length"] = str(len(response.get_data()))
     return response
 
-
 # Successful pushes may leave page cache stale for at most PAGE_CACHE_TTL
 # seconds.  Destructive operations invalidate immediately through generation.
 # Expose a compact health endpoint for operations and benchmarks.
 @app.route("/api/v1/performance")
 def api_v1_performance_v48140():
     # Keep the same authentication posture as the existing health/API pages.
-    if not session.get("username") and not session.get("admin_username"):
-        return jsonify({"error": "authentication required"}), 401
-    conn = db()
-    try:
-        summary_vms = safe_int(conn.execute("SELECT COUNT(*) FROM vm_disk_summary_current").fetchone()[0], 0)
-        summary_mounts = safe_int(conn.execute("SELECT COUNT(*) FROM node_storage_mount_summary_current").fetchone()[0], 0)
-        page_count = safe_int(conn.execute("PRAGMA page_count").fetchone()[0], 0)
-        page_size = safe_int(conn.execute("PRAGMA page_size").fetchone()[0], 0)
-        wal_path = DB + "-wal"
-        client = _v48140_redis_client()
-        redis_ok = False
-        if client is not None:
-            try:
-                redis_ok = bool(client.ping())
-            except Exception:
-                redis_ok = False
-        return jsonify({
-            "version": V48140_VERSION,
-            "redis": {"enabled": V48140_REDIS_ENABLED, "connected": redis_ok},
-            "page_cache": {"enabled": V48140_PAGE_CACHE_ENABLED, "ttl_seconds": V48140_PAGE_CACHE_TTL},
-            "sqlite": {
-                "cache_mib": V48140_SQLITE_CACHE_MIB,
-                "mmap_mib": V48140_SQLITE_MMAP_MIB,
-                "db_bytes": page_count * page_size,
-                "wal_bytes": os.path.getsize(wal_path) if os.path.exists(wal_path) else 0,
-            },
-            "materialized": {"vm_disk_summaries": summary_vms, "node_mount_summaries": summary_mounts},
-        })
-    finally:
-        conn.close()
+    pass  # superseded route body; final handler is bound later
 
-# v48.14.0 follow-up: SQL-paginated Storage Node cards and exact session keys.
 def _v48140_node_group_cards_fast(conn, values, start_ts):
     sort_map = {
         "node":"g.node COLLATE NOCASE", "size":"g.size", "used":"g.used",
@@ -884,9 +735,7 @@ def _v48140_node_group_cards_fast(conn, values, start_ts):
     sort_bar = _v48137_sort_bar(values, [("W IOPS","writeiops"),("WRITE","write"),("R IOPS","readiops"),("READ","read"),("UTIL","util"),("USED","used"),("SIZE","size"),("%","usepct"),("NODE","node")])
     return f'''{V48139_UI_CSS}<div class="card storage-table-card"><div class="table-title-row"><div><h3>Storage Node</h3><div class="table-hint">One node card per node. SQL pagination loads only filesystems for the visible page.</div></div>{sort_bar}</div><div class="storage-card-list-v48139">{"".join(cards)}</div>{_storage_pager(values,total)}</div>'''
 
-
 _v48137_storage_node_group_cards = _v48140_node_group_cards_fast
-
 
 # Rebind cache wrappers with the actual dashboard session identity key.
 def _v48140_rebind_cached_endpoint(endpoint_name, ttl=None):
@@ -918,7 +767,6 @@ def _v48140_rebind_cached_endpoint(endpoint_name, ttl=None):
     wrapper._v48140_base = base
     app.view_functions[endpoint_name] = wrapper
 
-
 for _endpoint in ("index", "top_page", "top_node_page", "vm_abuse_page", "storage_io_page", "node_page", "vm_page"):
     _current = app.view_functions.get(_endpoint)
     if _current is not None:
@@ -929,7 +777,6 @@ for _endpoint in ("index", "top_page", "top_node_page", "vm_abuse_page", "storag
             # portable, so keep it and simply accept the broader cache identity.
             continue
         _v48140_rebind_cached_endpoint(_endpoint, V48140_PAGE_CACHE_TTL)
-
 
 # Correct the performance endpoint authentication to the app's real session keys.
 def api_v1_performance_v48140():
@@ -964,7 +811,6 @@ def api_v1_performance_v48140():
     finally:
         conn.close()
 
-
 app.view_functions["api_v1_performance_v48140"] = api_v1_performance_v48140
 
 # Keep materialized summaries self-healing for old databases, manual imports and
@@ -994,9 +840,7 @@ def _v48140_reconcile_summaries_if_needed(conn, max_nodes=64):
         _v48140_refresh_node_summaries(conn, node)
     return len(nodes)
 
-
 _v48133_disk_totals_for_pairs_v48140_fast = _v48133_disk_totals_for_pairs
-
 
 def _v48133_disk_totals_for_pairs(pairs):
     conn = db()
@@ -1007,28 +851,21 @@ def _v48133_disk_totals_for_pairs(pairs):
         conn.close()
     return _v48133_disk_totals_for_pairs_v48140_fast(pairs)
 
-
 _v48133_storage_disk_groups_v48140_fast = _v48133_storage_disk_groups
-
 
 def _v48133_storage_disk_groups(conn, values, start_ts):
     _v48140_reconcile_summaries_if_needed(conn)
     return _v48133_storage_disk_groups_v48140_fast(conn, values, start_ts)
 
-
 _v48140_node_group_cards_fast_base = _v48140_node_group_cards_fast
-
 
 def _v48140_node_group_cards_fast(conn, values, start_ts):
     _v48140_reconcile_summaries_if_needed(conn)
     return _v48140_node_group_cards_fast_base(conn, values, start_ts)
 
-
 _v48137_storage_node_group_cards = _v48140_node_group_cards_fast
 
-
 _v48139_current_rows_v48140_summary = _v48139_current_rows
-
 
 def _v48139_current_rows(values):
     conn = db()
@@ -1040,5 +877,3 @@ def _v48139_current_rows(values):
         conn.close()
     return _v48139_current_rows_v48140_summary(values)
 
-
-# ---------------------------------------------------------------------------

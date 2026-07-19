@@ -5,7 +5,7 @@ production source manifest never references a nested archive or embedded old
 release.
 
 1. Download and extract:
-   `virtinfra-monitor-50.5.9-prod-r5-node-groups-hotfix-additive-rollback.zip`
+   the previously validated release archive
 2. Enter the extracted rollback directory.
 3. Run:
 

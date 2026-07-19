@@ -367,8 +367,6 @@ def get_node_rows(period, q="", sort_by="node", order="asc", target_ts=None):
     selected_display = max(selected_buckets) if selected_buckets else requested
     return rows, selected_display, now
 
-
-
 def query_node_bridge(node, period, bridge, q="", limit=1000, sort_by="total", order="desc", vm_status="active"):
     """Return one exact network snapshot joined to the nearest VM perf snapshot.
 
@@ -558,29 +556,10 @@ def get_node_overview(node, period, q="", vm_status="active"):
     finally:
         conn.close()
 
-def node_sort_header(label, key, period, q, current_sort, current_order, vm_status="active"):
-    current_sort = clean_node_sort(current_sort)
-    current_order = clean_sort_order(current_order)
-    default_order = "asc" if key == "node" else "desc"
-    next_order = reverse_order(current_order) if current_sort == key else default_order
-    arrow = ""
-    if current_sort == key:
-        arrow = " ↓" if current_order == "desc" else " ↑"
-    href = url_for(
-        "index",
-        period=period,
-        q=q,
-        sort=key,
-        order=next_order,
-    )
-    return f'<a class="sort-link" href="{escape(href, quote=True)}">{escape(label)}{arrow}</a>'
-
-
 def compact_ipv4(value):
     """Return an IPv4 address without CIDR prefix for compact dashboard display."""
     value = str(value or "").strip()
     return value.split("/", 1)[0] if value else ""
-
 
 V5054_DASHBOARD_CSS = r'''
 <style id="v5054-dashboard-column-alignment">
@@ -596,7 +575,6 @@ V5054_DASHBOARD_CSS = r'''
 @media(max-width:1500px){.node-dashboard-table{min-width:1880px}.node-dashboard-table .dashboard-interface-col,.node-dashboard-table .dashboard-interface-cell{width:190px;min-width:190px;max-width:190px}}
 </style>
 '''
-
 
 def dashboard_load_html(load1, load5, load15, cpu_count, host_present=True):
     """Render a fixed-width Load 1/5/15 pill for stable dashboard alignment."""
@@ -625,7 +603,6 @@ def dashboard_load_html(load1, load5, load15, cpu_count, host_present=True):
         f'title="Load1 {load_pct:.1f}% of {cores} CPU cores; green &lt;60%, orange 60-&lt;90%, red ≥90%">'
         f'{values}</span>'
     )
-
 
 def node_table(rows, sort_by="node", order="asc"):
     period = clean_period(request.args.get("period", "5m"))
@@ -743,121 +720,6 @@ def node_table(rows, sort_by="node", order="asc"):
     </div>
     """
 
-
-
-def sort_header(label, key, node, period, q, current_sort, current_order, vm_status="active"):
-    current_sort = clean_interface_sort(current_sort)
-    current_order = clean_sort_order(current_order)
-    next_order = reverse_order(current_order) if current_sort == key else "desc"
-    arrow = ""
-    if current_sort == key:
-        arrow = " ↓" if current_order == "desc" else " ↑"
-    net_mode = clean_node_net_mode(request.args.get("net", "both"))
-    href = url_for(
-        "node_page",
-        node=node,
-        period=period,
-        q=q,
-        sort=key,
-        order=next_order,
-        net=net_mode,
-    )
-    return f'<a class="sort-link" href="{escape(href, quote=True)}">{escape(label)}{arrow}</a>'
-
-
-def interface_table(title, bridge, node, rows, period, q="", sort_by="total", order="desc", vm_status="active"):
-    body = ""
-    for (
-        iface, vm_uuid, rx, tx, total, rx_packets, tx_packets, packets, drops, errors,
-        avg_mbps, peak_mbps, avg_pps, peak_pps,
-        sample_count, sample_expected, sample_max_gap_seconds, seconds_over_pps, seconds_over_mbps, sample_quality_rank,
-        cpu_percent, vcpu_current, core_cpu_percent, ram_rss_kib, ram_current_kib,
-        disk_read_bps, disk_write_bps, row_vm_status, last_push, vm_last_seen, interval_seconds,
-    ) in rows:
-        _row_at = (request.args.get("at") or "").strip()
-        href = url_for("vm_page", node=node, vm_uuid=vm_uuid, bridge=bridge, iface=iface, period=period, **({"at": _row_at} if _row_at else {}))
-        href_e = escape(href, quote=True)
-        live = vm_live_status(vm_last_seen)
-        row_status = clean_vm_status(row_vm_status)
-        row_cls = "clickable stale-row" if (live == "stale" or row_status != "active") else "clickable"
-        state_html = vm_status_badge(row_status, live)
-        vm_uuid_e = escape(vm_uuid)
-        quality = network_quality_from_rank(sample_quality_rank)
-        sample_html = network_sample_badge(quality, sample_count, sample_expected, sample_max_gap_seconds)
-        ram_pct = (float(ram_rss_kib or 0) * 100.0 / float(ram_current_kib or 1)) if ram_current_kib else 0.0
-        ram_html = fmt_ram_pair(ram_rss_kib, ram_current_kib)
-        if ram_current_kib:
-            ram_html += f'<small class="metric-subline">{ram_pct:.1f}% RSS</small>'
-        body += f"""
-        <tr class="{row_cls}" onclick="if (!event.target.closest('a, button, input, select, textarea, label, form')) window.location='{href_e}'">
-            <td>{state_html}</td>
-            <td class="mono"><a href="{href_e}"><b>{escape(iface)}</b></a></td>
-            <td class="mono"><span class="uuid-cell"><a href="{href_e}" title="{vm_uuid_e}">{vm_uuid_e}</a><button type="button" class="copy-btn" data-copy="{vm_uuid_e}" title="Copy UUID">⧉</button></span></td>
-            <td class="num">{human(rx)}</td>
-            <td class="num">{human(tx)}</td>
-            <td class="num"><b>{human(total)}</b></td>
-            <td class="num">{float(avg_mbps or 0):.2f}</td>
-            <td class="num"><b>{float(peak_mbps or 0):.2f}</b></td>
-            <td class="num">{fmt_pps_value(avg_pps)}</td>
-            <td class="num"><b>{fmt_pps_value(peak_pps)}</b></td>
-            <td class="num sample-cell">{sample_html}<small class="metric-subline">{int(seconds_over_pps or 0)}s PPS · {int(seconds_over_mbps or 0)}s Mbps</small></td>
-            <td class="num"><b>{fmt_vm_cpu(cpu_percent, vcpu_current)}</b><small class="metric-subline">{float(cpu_percent or 0):.1f}% full</small></td>
-            <td class="num">{int(vcpu_current or 0)}</td>
-            <td class="num ram-cell">{ram_html}</td>
-            <td class="num">{human_rate(disk_read_bps)}</td>
-            <td class="num">{human_rate(disk_write_bps)}</td>
-            <td class="num">{int(drops or 0)}</td>
-            <td class="num">{int(errors or 0)}</td>
-        </tr>"""
-    if not body:
-        body = '<tr><td colspan="18" class="empty">No data in this selected snapshot</td></tr>'
-
-    hs = {
-        "rx": sort_header("RX", "rx", node, period, q, sort_by, order, vm_status),
-        "tx": sort_header("TX", "tx", node, period, q, sort_by, order, vm_status),
-        "total": sort_header("TOTAL", "total", node, period, q, sort_by, order, vm_status),
-        "mbps": sort_header("AVG Mbps", "mbps", node, period, q, sort_by, order, vm_status),
-        "peakmbps": sort_header("PEAK Mbps", "peakmbps", node, period, q, sort_by, order, vm_status),
-        "pps": sort_header("AVG PPS", "pps", node, period, q, sort_by, order, vm_status),
-        "peakpps": sort_header("PEAK PPS", "peakpps", node, period, q, sort_by, order, vm_status),
-        "sample": sort_header("SAMPLE", "sample", node, period, q, sort_by, order, vm_status),
-        "cpu": sort_header("CPU Core%", "cpu", node, period, q, sort_by, order, vm_status),
-        "vcpu": sort_header("vCPU", "vcpu", node, period, q, sort_by, order, vm_status),
-        "ram": sort_header("RAM RSS / Assigned", "ram", node, period, q, sort_by, order, vm_status),
-        "diskr": sort_header("DISK R/s", "diskr", node, period, q, sort_by, order, vm_status),
-        "diskw": sort_header("DISK W/s", "diskw", node, period, q, sort_by, order, vm_status),
-        "drops": sort_header("DROPS", "drops", node, period, q, sort_by, order, vm_status),
-        "errors": sort_header("ERR", "errors", node, period, q, sort_by, order, vm_status),
-    }
-    return f"""
-    <div class="card vm-table-card">
-        <div class="table-title-row">
-            <h3>{escape(title)}</h3>
-            <div class="count-badges"><span>VM rows <b>{len(rows)}</b></span><span>Snapshot <b>exact</b></span></div>
-        </div>
-        <div class="table-wrap">
-        <table class="table-vm">
-            <colgroup>
-                <col class="col-state"><col class="col-iface"><col class="col-uuid">
-                <col class="col-rx"><col class="col-tx"><col class="col-total">
-                <col class="col-mbps"><col class="col-peakmbps"><col class="col-pps"><col class="col-peakpps">
-                <col class="col-sample"><col class="col-cpu"><col class="col-vcpu"><col class="col-ram">
-                <col class="col-diskr"><col class="col-diskw"><col class="col-drops"><col class="col-errors">
-            </colgroup>
-            <thead><tr>
-                <th>STATE</th><th>INTERFACE</th><th>VM UUID</th>
-                <th class="num-head">{hs['rx']}</th><th class="num-head">{hs['tx']}</th><th class="num-head">{hs['total']}</th>
-                <th class="num-head">{hs['mbps']}</th><th class="num-head">{hs['peakmbps']}</th>
-                <th class="num-head">{hs['pps']}</th><th class="num-head">{hs['peakpps']}</th><th class="num-head">{hs['sample']}</th>
-                <th class="num-head">{hs['cpu']}</th><th class="num-head">{hs['vcpu']}</th><th class="num-head">{hs['ram']}</th>
-                <th class="num-head">{hs['diskr']}</th><th class="num-head">{hs['diskw']}</th><th class="num-head">{hs['drops']}</th><th class="num-head">{hs['errors']}</th>
-            </tr></thead>
-            <tbody>{body}</tbody>
-        </table>
-        </div>
-        <div class="table-hint">CPU Core% uses 100% per fully used vCPU. The smaller “full” value is utilization across all assigned vCPUs. RAM is RSS / assigned memory.</div>
-    </div>"""
-
 def get_node_physical_nic_period(node, period):
     """Return physical-NIC snapshot plus current br0/br1 addresses."""
     period = clean_period(period)
@@ -972,7 +834,6 @@ def get_node_physical_nic_period(node, period):
     finally:
         conn.close()
 
-
 def node_nic_badges(node, period):
     data = get_node_physical_nic_period(node, period)
 
@@ -1006,7 +867,6 @@ def node_nic_badges(node, period):
 
     return f'<div class="nic-map">{badge("public", PUBLIC_BRIDGE)}{badge("private", PRIVATE_BRIDGE)}</div>'
 
-
 def overview_cards(row, node, period):
     (vm_count, iface_count, pub_rx, pub_tx, pub_total, pri_rx, pri_tx, pri_total,
      node_rx, node_tx, node_total, node_packets, node_drops, node_errors,
@@ -1037,5 +897,4 @@ def overview_cards(row, node, period):
         <div class="table-hint">Status uses the newest heartbeat. Counters and rates use one retained real push only.</div>
     </div>
     """
-
 

@@ -1,9 +1,6 @@
-# v50.5.9 r3 UI alignment and overflow hotfix
-# ---------------------------------------------------------------------------
 # Presentation-only layer. It preserves routes, query parameters, payloads,
 # database statements, sort/filter behavior, refresh cadence and Agent flow.
 V5059R3_RELEASE = "50.5.9-prod-r4-dead-code-cleanup"
-
 
 # One appearance selector contains the three core modes plus every configured
 # saved theme. Existing localStorage keys stay compatible with older releases.
@@ -32,7 +29,6 @@ def _v5049_theme_selector_html(settings=None):
         </select>
       </label>
     </div>''' % saved_group
-
 
 def _v5049_runtime_theme_script(settings=None):
     payload = json.dumps(_v5049_theme_client_payload(settings), separators=(",", ":"), sort_keys=True)
@@ -83,13 +79,11 @@ def _v5049_runtime_theme_script(settings=None):
 </script>
 '''
 
-
 # Add fixed column definitions to the already-rendered Consumption tables.
 # The table body, links, sort keys and values are delegated byte-for-byte to
 # the existing implementation.
 _v5059r3_vm_consumption_table_base = _v5058c_vm_table
 _v5059r3_node_consumption_table_base = _v5058c_node_table
-
 
 def _v5058c_vm_table(rows, common, sort_by, order):
     html = _v5059r3_vm_consumption_table_base(rows, common, sort_by, order)
@@ -105,7 +99,6 @@ def _v5058c_vm_table(rows, common, sort_by, order):
         1,
     )
 
-
 def _v5058c_node_table(rows, common, sort_by, order):
     html = _v5059r3_node_consumption_table_base(rows, common, sort_by, order)
     return html.replace(
@@ -120,19 +113,16 @@ def _v5058c_node_table(rows, common, sort_by, order):
         1,
     )
 
-
 # Node Health was the last operational list without an internal scroll frame.
 # Only the returned markup is wrapped; the original renderer and its data are
 # untouched.
 _v5059r3_node_health_table_base = node_health_table
-
 
 def node_health_table(rows, q="", sort_by="status", order="asc"):
     html = _v5059r3_node_health_table_base(rows, q=q, sort_by=sort_by, order=order)
     html = html.replace('<table>', '<div class="table-wrap node-health-table-wrap"><table class="node-health-table">', 1)
     html = html.replace('</table>', '</table></div>', 1)
     return html
-
 
 V5059R3_UI_CSS = r'''
 <style id="v5059r3-ui-alignment-overflow-hotfix">
@@ -327,9 +317,7 @@ body.endpoint-node-health-page .node-health-table th:nth-child(8),body.endpoint-
 </style>
 '''
 
-
 _page_v5059r3_base = page
-
 
 def page(title, content):
     response = _page_v5059r3_base(title, content)
@@ -341,4 +329,3 @@ def page(title, content):
         app.logger.exception("Could not apply v50.5.9 r3 UI alignment layer")
     return response
 
-# ---------------------------------------------------------------------------

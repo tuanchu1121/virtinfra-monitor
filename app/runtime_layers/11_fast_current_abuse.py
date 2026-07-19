@@ -1,5 +1,3 @@
-# v48.7.0 fast current cache and sustained abuse state
-# ---------------------------------------------------------------------------
 
 def _upsert_internal(conn, table, key_columns, row):
     """Small internal UPSERT helper. Table/column names are hard-coded by this app."""
@@ -13,7 +11,6 @@ def _upsert_internal(conn, table, key_columns, row):
     )
     conn.execute(sql, [row[c] for c in columns])
 
-
 def _fast_cpu_values(vm_item):
     vcpu = max(0, safe_int(vm_item.get("vcpu_current"), 0))
     if vm_item.get("cpu_normalized_percent") is not None:
@@ -23,7 +20,6 @@ def _fast_cpu_values(vm_item):
         full = min(100.0, raw / max(vcpu, 1)) if raw > 100.0 else min(100.0, raw)
     core = max(0.0, safe_float(vm_item.get("cpu_core_percent"), full * max(vcpu, 1)))
     return full, core, vcpu
-
 
 def _empty_fast_vm(node, vm_uuid, data_time, interval_seconds):
     return {
@@ -49,7 +45,6 @@ def _empty_fast_vm(node, vm_uuid, data_time, interval_seconds):
         "disk_read_bps": 0.0, "disk_write_bps": 0.0,
         "disk_read_iops": 0.0, "disk_write_iops": 0.0,
     }
-
 
 def refresh_fast_current_state(conn, node, data_time, interval_seconds, interfaces, vms, node_host, inventory_complete=False):
     """Update small current tables in O(VM + interface) during the existing push.
@@ -314,7 +309,6 @@ def refresh_fast_current_state(conn, node, data_time, interval_seconds, interfac
         conn.execute("DELETE FROM vm_current_fast WHERE node=? AND last_seen<?", (node, data_time))
         conn.execute("DELETE FROM vm_abuse_state WHERE node=? AND last_seen<?", (node, data_time))
 
-
 def get_vm_directional_current(node, vm_uuid):
     conn = db()
     try:
@@ -336,13 +330,11 @@ def get_vm_directional_current(node, vm_uuid):
     finally:
         conn.close()
 
-
 # Keep historical code for period links older than current 5m.
 _get_top_vm_rows_history = get_top_vm_rows
 _query_node_bridge_history = query_node_bridge
 _get_node_rows_history = get_node_rows
 _get_vm_latest_metric_history = get_vm_latest_metric
-
 
 def get_vm_latest_metric(node, vm_uuid):
     conn = db()
@@ -360,7 +352,6 @@ def get_vm_latest_metric(node, vm_uuid):
         return row if row else _get_vm_latest_metric_history(node, vm_uuid)
     finally:
         conn.close()
-
 
 def query_node_bridge(node, period, bridge, q="", limit=1000, sort_by="total", order="desc", vm_status="active"):
     if clean_period(period) != "5m":
@@ -411,7 +402,6 @@ def query_node_bridge(node, period, bridge, q="", limit=1000, sort_by="total", o
         return rows, latest, latest
     finally:
         conn.close()
-
 
 def get_top_vm_rows(period, q="", sort_by="total", order="desc", scope="all", limit=100):
     if clean_period(period) != "5m":
@@ -480,7 +470,6 @@ def get_top_vm_rows(period, q="", sort_by="total", order="desc", scope="all", li
     finally:
         conn.close()
 
-
 def get_node_rows(period, q="", sort_by="node", order="asc", target_ts=None):
     if target_ts is not None:
         return _get_node_rows_history(period, q=q, sort_by=sort_by, order=order, target_ts=target_ts)
@@ -538,7 +527,6 @@ def get_node_rows(period, q="", sort_by="node", order="asc", target_ts=None):
     finally:
         conn.close()
 
-
 def _abuse_reason_fast(flags, row):
     html = []
     if "NETWORK_RX_PPS_5M" in flags:
@@ -550,7 +538,6 @@ def _abuse_reason_fast(flags, row):
     if "DISK_15M" in flags:
         html.append(_abuse_reason("DISK 15m", human_rate(row["disk_read_bps"] + row["disk_write_bps"])))
     return "".join(html)
-
 
 def vm_abuse_page_fast():
     q = (request.args.get("q") or "").strip()
@@ -664,10 +651,8 @@ def vm_abuse_page_fast():
     """
     return page("VM Abuse", content)
 
-
 # Replace old view function while keeping the same URL rule and endpoint.
 app.view_functions["vm_abuse_page"] = vm_abuse_page_fast
-
 
 @app.route("/summary")
 def summary():
@@ -684,8 +669,3 @@ def summary():
         data.append({"node":node,"status":state,"live_last_seen":live_seen,"live_last_seen_vn":fmt_full(live_seen),"snapshot":snapshot,"snapshot_vn":fmt_full(snapshot),"resolution":tier,"vm_count":vm_count or 0,"interface_count":iface_count or 0,"load1":load1 or 0,"load5":load5 or 0,"load15":load15 or 0,"uptime_seconds":uptime or 0,"cpu_percent":cpu_percent or 0,"ram_percent":ram_percent or 0,"public_bytes":public_total or 0,"private_bytes":private_total or 0,"total_bytes":node_total or 0,"drops":drops or 0,"errors":errors or 0,"source":source,"public_ipv4":public_ipv4 or "","private_ipv4":private_ipv4 or ""})
     return jsonify({"updated":fmt_full(end),"timezone":display_timezone_name(),"period":period,"requested_snapshot":start,"requested_snapshot_vn":fmt_full(start),"nodes":data})
 
-
-
-
-
-# ---------------------------------------------------------------------------

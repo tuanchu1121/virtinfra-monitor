@@ -17,7 +17,7 @@ MODULE = ROOT / "app" / "node_groups.py"
 MIGRATION = ROOT / "postgres" / "sql" / "011_node_groups.sql"
 R6_MIGRATION = ROOT / "postgres" / "sql" / "012_node_groups_r6_safety.sql"
 RUNTIME_TOOL = ROOT / "tools" / "node-groups-runtime-validation.py"
-EXPECTED_RELEASE = "50.5.9-prod-r8-safe-dead-code-prune"
+EXPECTED_RELEASE = "50.5.9-prod-r9-safe-runtime-history-prune"
 
 
 @pytest.fixture(scope="module")
@@ -41,12 +41,9 @@ def runtime_result(tmp_path_factory):
 
 
 def _manifest_entries() -> dict[str, str]:
-    entries = {}
-    for raw in (ROOT / "audit/node-groups/BASELINE_SHA256SUMS").read_text(encoding="utf-8").splitlines():
-        if raw.strip():
-            digest, name = raw.split(None, 1)
-            entries[name.lstrip("*./")] = digest
-    return entries
+    return json.loads(
+        (ROOT / "tests/contracts/node_groups_sql_hashes.json").read_text(encoding="utf-8")
+    )
 
 
 def _route_key(item):
@@ -58,11 +55,9 @@ def test_release_identity():
     assert f'RELEASE="{EXPECTED_RELEASE}"' in (ROOT / "deploy/postgres/install-postgres-native.sh").read_text(encoding="utf-8")
 
 
-def test_r6_changes_only_the_effective_r5_loader_and_required_baseline_sections():
+def test_node_groups_loader_and_required_runtime_sections_are_present():
     data = read_app_source()
-    marker = "# VirtInfra Monitor 50.5.9 prod-r5 - additive Node Groups hotfix"
-    assert data.count(marker) == 1
-    connector = data[data.index(marker):]
+    connector = (ROOT / "app/runtime_layers/43_node_groups_loader.py").read_text(encoding="utf-8")
     assert "class _NodeGroupsModuleProxy:" in connector
     assert "_node_groups_module = _node_groups_sys.modules.get(__name__)" in connector
     assert "_node_groups_hotfix.install(_node_groups_module)" in connector
@@ -139,7 +134,7 @@ def test_runtime_role_crud_assignment_inheritance_and_filters(runtime_result):
 
 def test_route_map_preserves_baseline_and_adds_only_node_group_routes(runtime_result):
     _result, current = runtime_result
-    baseline = json.loads((ROOT / "audit/node-groups/BASELINE_ROUTES.json").read_text(encoding="utf-8"))
+    baseline = json.loads((ROOT / "tests/contracts/node_groups_baseline_routes.json").read_text(encoding="utf-8"))
     current_counter = Counter(_route_key(item) for item in current)
     baseline_counter = Counter(_route_key(item) for item in baseline)
     assert not (baseline_counter - current_counter)
@@ -156,27 +151,27 @@ def test_route_map_preserves_baseline_and_adds_only_node_group_routes(runtime_re
 
 
 def test_ui_regression_contract_passes():
-    report = json.loads((ROOT / "audit/node-groups/UI_REGRESSION.json").read_text(encoding="utf-8"))
+    report = json.loads(
+        (ROOT / "tests/contracts/node_groups_ui_summary.json").read_text(encoding="utf-8")
+    )["source_ui"]
     assert set(report) == {
         "admin-maintenance", "admin-node-groups", "admin-overview", "admin-nodes",
         "admin-vms", "dashboard", "top-vm", "node-health", "storage-io",
         "consumption", "vm-abuse",
     }
-    assert all(page["passed"] is True for page in report.values())
+    assert all(value is True for value in report.values())
 
 
 def test_browser_ui_regression_passes_desktop_tablet_and_mobile():
-    report = json.loads((ROOT / "audit/node-groups/UI_BROWSER_REGRESSION.json").read_text(encoding="utf-8"))
+    report = json.loads(
+        (ROOT / "tests/contracts/node_groups_ui_summary.json").read_text(encoding="utf-8")
+    )["browser_ui"]
     assert set(report) == {
         "admin-maintenance", "admin-node-groups", "admin-overview", "admin-nodes",
         "admin-vms", "dashboard", "node-groups", "top-vm", "node-health",
         "storage-io", "consumption", "vm-abuse",
     }
-    assert all(
-        viewport["passed"] is True
-        for page in report.values()
-        for viewport in page.values()
-    )
+    assert all(value is True for page in report.values() for value in page.values())
 
 
 def test_local_flag_icons_are_vendored_without_runtime_network_dependency():

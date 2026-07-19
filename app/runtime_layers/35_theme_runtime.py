@@ -1,5 +1,3 @@
-# VirtInfra Monitor v50.4.9 professional preset suite + one simple custom theme
-# ---------------------------------------------------------------------------
 # Auto / Light / Dark remain immutable core choices. Administrators only
 # choose which VirtInfra presets are visible and may configure one simple
 # Custom theme. Presets carry a complete professional visual system including
@@ -85,13 +83,11 @@ V5049_LEGACY_PRESET_MAP = {
     "noc-high-contrast": "noc-vision",
 }
 
-
 def _v5049_valid_hex(value, fallback):
     value = str(value or "").strip().lower()
     if len(value) == 7 and value.startswith("#") and all(ch in "0123456789abcdef" for ch in value[1:]):
         return value
     return fallback
-
 
 def _v5049_bool(value, default=False):
     if isinstance(value, bool):
@@ -99,7 +95,6 @@ def _v5049_bool(value, default=False):
     if value is None:
         return default
     return str(value).strip().lower() in {"1", "true", "yes", "on", "enabled"}
-
 
 def _v5049_default_custom_theme():
     return {
@@ -115,7 +110,6 @@ def _v5049_default_custom_theme():
         "tx": "#fb923c",
     }
 
-
 def _v5049_default_theme_settings():
     return {
         "version": 4,
@@ -123,7 +117,6 @@ def _v5049_default_theme_settings():
         "custom_enabled": False,
         "custom": _v5049_default_custom_theme(),
     }
-
 
 def _v5049_normalize_custom_theme(raw):
     fallback = _v5049_default_custom_theme()
@@ -139,7 +132,6 @@ def _v5049_normalize_custom_theme(raw):
     for key in V5049_THEME_COLOR_FIELDS:
         theme[key] = _v5049_valid_hex(raw.get(key), fallback[key])
     return theme
-
 
 def _v5049_migrate_legacy_settings(raw):
     raw = raw if isinstance(raw, dict) else {}
@@ -157,7 +149,6 @@ def _v5049_migrate_legacy_settings(raw):
         "custom": _v5049_normalize_custom_theme(raw.get("custom")),
     }
 
-
 def _v5049_normalize_theme_settings(raw):
     raw = raw if isinstance(raw, dict) else {}
     enabled = []
@@ -172,7 +163,6 @@ def _v5049_normalize_theme_settings(raw):
         "custom_enabled": _v5049_bool(raw.get("custom_enabled"), False),
         "custom": _v5049_normalize_custom_theme(raw.get("custom")),
     }
-
 
 def _v5049_theme_settings():
     raw = get_admin_setting(V5049_THEME_SETTING_KEY, "")
@@ -191,13 +181,11 @@ def _v5049_theme_settings():
             app.logger.warning("Could not migrate legacy theme settings; using defaults")
     return _v5049_default_theme_settings()
 
-
 def _v5049_save_theme_settings(settings):
     normalized = _v5049_normalize_theme_settings(settings)
     set_admin_setting(V5049_THEME_SETTING_KEY, json.dumps(normalized, separators=(",", ":"), sort_keys=True))
     _v48140_bump_cache_generation()
     return normalized
-
 
 def _v5049_available_themes(settings=None):
     settings = settings or _v5049_theme_settings()
@@ -226,7 +214,6 @@ def _v5049_available_themes(settings=None):
         })
         themes.append(custom)
     return themes
-
 
 def _v5049_theme_css(settings=None):
     blocks = []
@@ -312,51 +299,13 @@ def _v5049_theme_css(settings=None):
 """
     return controls + "<style>" + "\n".join(blocks) + "</style>"
 
-
-def _v5049_theme_selector_html(settings=None):
-    options = ['<option value="">More themes</option>']
-    for theme in _v5049_available_themes(settings):
-        options.append('<option value="%s">%s</option>' % (escape(theme["id"], quote=True), escape(theme["name"])))
-    return '''<div class="appearance-controls">
-                <div class="theme-switch" role="group" aria-label="Theme mode">
-                    <button type="button" data-theme-mode="auto">Auto</button>
-                    <button type="button" data-theme-mode="dark">Dark</button>
-                    <button type="button" data-theme-mode="light">Light</button>
-                </div>
-                <label class="simple-theme-picker"><span>Theme</span><select id="simple-theme-select" aria-label="Additional theme">%s</select></label>
-            </div>''' % "".join(options)
-
-
 def _v5049_theme_client_payload(settings=None):
     return {theme["id"]: theme["base_mode"] for theme in _v5049_available_themes(settings)}
-
 
 def _v5049_early_theme_script(settings=None):
     payload = json.dumps(_v5049_theme_client_payload(settings), separators=(",", ":"), sort_keys=True)
     legacy_map = json.dumps(V5049_LEGACY_PRESET_MAP, separators=(",", ":"), sort_keys=True)
     return f'''<script>(function(){{var themes={payload},legacy={legacy_map},id="";try{{id=localStorage.getItem("{V5049_THEME_SELECTION_KEY}")||"";if(!id){{var old=localStorage.getItem("{V5049_LEGACY_SELECTION_KEY}")||"";id=legacy[old]||old;if(id)localStorage.setItem("{V5049_THEME_SELECTION_KEY}",id);localStorage.removeItem("{V5049_LEGACY_SELECTION_KEY}")}}}}catch(e){{}}if(themes[id]){{document.documentElement.setAttribute("data-custom-theme",id);document.documentElement.setAttribute("data-theme",themes[id]);document.documentElement.setAttribute("data-theme-mode","custom")}}else if(id){{try{{localStorage.removeItem("{V5049_THEME_SELECTION_KEY}")}}catch(e){{}}}}}})();</script>\n'''
-
-
-def _v5049_runtime_theme_script(settings=None):
-    payload = json.dumps(_v5049_theme_client_payload(settings), separators=(",", ":"), sort_keys=True)
-    return f'''
-<script>
-(function(){{
-  var themes={payload};
-  var key="{V5049_THEME_SELECTION_KEY}";
-  var select=document.getElementById("simple-theme-select");
-  function read(){{try{{return localStorage.getItem(key)||""}}catch(e){{return""}}}}
-  function write(id){{try{{if(id)localStorage.setItem(key,id);else localStorage.removeItem(key)}}catch(e){{}}}}
-  function useCore(){{document.documentElement.removeAttribute("data-custom-theme");if(typeof applyTheme==="function")applyTheme(typeof readThemeMode==="function"?readThemeMode():"auto",false);if(select)select.value=""}}
-  function useCustom(id,persist){{if(!themes[id]){{if(persist)write("");useCore();return}}if(persist)write(id);document.documentElement.setAttribute("data-custom-theme",id);document.documentElement.setAttribute("data-theme",themes[id]);document.documentElement.setAttribute("data-theme-mode","custom");document.querySelectorAll('.theme-switch button[data-theme-mode]').forEach(function(btn){{btn.classList.remove("active")}});if(select)select.value=id}}
-  if(select)select.addEventListener("change",function(){{if(this.value)useCustom(this.value,true);else{{write("");useCore()}}}});
-  document.addEventListener("click",function(ev){{var core=ev.target.closest('.theme-switch button[data-theme-mode]');if(core){{write("");document.documentElement.removeAttribute("data-custom-theme");if(select)select.value=""}}}},true);
-  window.addEventListener("storage",function(ev){{if(ev.key===key){{var id=read();if(id)useCustom(id,false);else useCore()}}}});
-  var current=read();if(current)useCustom(current,false);else useCore();
-}})();
-</script>
-'''
-
 
 def _v5049_admin_theme_content(settings, message="", error=""):
     preset_cards = []
@@ -413,7 +362,6 @@ def _v5049_admin_theme_content(settings, message="", error=""):
       <input type="hidden" name="csrf_token" value="{escape(csrf_token(), quote=True)}"><input type="hidden" name="action" value="reset"><button class="btn-danger" type="submit">Reset theme settings</button>
     </form>
     '''
-
 
 @app.route("/admin/theme", methods=["GET", "POST"])
 def admin_theme_manager():
@@ -474,9 +422,7 @@ def admin_theme_manager():
     '''
     return page("Admin · Themes", shell)
 
-
 _v5049_admin_nav_base = _v490_admin_nav
-
 
 def _v490_admin_nav(active):
     html = _v5049_admin_nav_base(active)
@@ -486,9 +432,7 @@ def _v490_admin_nav(active):
     )
     return html.replace("</nav>", link + "</nav>", 1)
 
-
 _v5049_admin_overview_base = _v490_admin_overview
-
 
 def _v490_admin_overview(stats):
     base = _v5049_admin_overview_base(stats)
@@ -502,9 +446,7 @@ def _v490_admin_overview(stats):
     '''
     return base + card
 
-
 _page_v5049_theme_base = page
-
 
 def page(title, content):
     response = _page_v5049_theme_base(title, content)
@@ -527,5 +469,3 @@ def page(title, content):
         app.logger.exception("Could not apply v50.4.9 theme settings")
     return response
 
-
-# ---------------------------------------------------------------------------

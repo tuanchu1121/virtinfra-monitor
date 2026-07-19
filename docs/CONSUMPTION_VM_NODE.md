@@ -1,6 +1,6 @@
 # Consumption VM/Node
 
-Release: `50.5.9-prod-r3-ui-alignment-overflow-hotfix`
+Release: `50.5.9-prod-r9-safe-runtime-history-prune`
 
 ## Scope
 

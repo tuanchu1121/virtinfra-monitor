@@ -1,5 +1,3 @@
-# v48.8.3 admin-only abuse deletion, richer disk policy, readable FIFO queue
-# ---------------------------------------------------------------------------
 
 ABUSE_SETTING_DEFAULTS.update({
     "abuse_disk_read_bps": "0",
@@ -7,7 +5,6 @@ ABUSE_SETTING_DEFAULTS.update({
 })
 ABUSE_DISK_READ_BPS = 0.0
 ABUSE_DISK_WRITE_BPS = 0.0
-
 
 def get_abuse_settings(conn=None):
     own = conn is None
@@ -44,7 +41,6 @@ def get_abuse_settings(conn=None):
         if own:
             conn.close()
 
-
 def _apply_abuse_settings_to_runtime(cfg):
     global ABUSE_NETWORK_PPS, ABUSE_NETWORK_REQUIRED_SECONDS
     global ABUSE_CPU_FULL_PERCENT, ABUSE_CPU_REQUIRED_SECONDS
@@ -67,9 +63,6 @@ def _apply_abuse_settings_to_runtime(cfg):
         ABUSE_DISK_IOPS = 0.0
         ABUSE_DISK_REQUIRED_SECONDS = 10**9
 
-
-
-
 def _disk_policy_text(cfg):
     rules = []
     if cfg.get("disk_read_bps", 0) > 0:
@@ -82,21 +75,6 @@ def _disk_policy_text(cfg):
         rules.append(f"total ≥ {cfg['disk_iops']:,.0f} IOPS")
     return " or ".join(rules) if rules else "no disk threshold enabled"
 
-
-def _abuse_flag_labels(flags, cfg):
-    result = []
-    values = {x for x in str(flags or "").split(",") if x}
-    if "NETWORK_RX_PPS_5M" in values:
-        result.append(f"RX PPS ≥ {cfg['network_pps']:,.0f}")
-    if "NETWORK_TX_PPS_5M" in values:
-        result.append(f"TX PPS ≥ {cfg['network_pps']:,.0f}")
-    if "CPU_30M" in values:
-        result.append(f"CPU ≥ {cfg['cpu_full_percent']:.1f}%")
-    if "DISK_15M" in values:
-        result.append("Disk: " + _disk_policy_text(cfg))
-    return result or ["-"]
-
-
 def _abuse_admin_counts():
     conn = db()
     try:
@@ -107,62 +85,6 @@ def _abuse_admin_counts():
         return current, total, started, recovered
     finally:
         conn.close()
-
-
-def abuse_settings_admin_card():
-    cfg = get_abuse_settings()
-    msg = (request.args.get("abusemsg") or "").strip()[:700]
-    current, total, started, recovered = _abuse_admin_counts()
-    return f"""{_abuse_page_style()}
-    <style>
-      .abuse-setting-box .setting-help{{font-size:11px;color:#6b7280;font-weight:500;line-height:1.45}}
-      .abuse-admin-actions{{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}}
-      .abuse-policy-summary{{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:8px;margin:12px 0}}
-      .abuse-policy-summary>div{{border:1px solid #e5e7eb;border-radius:9px;padding:10px;background:#fff}}
-      .abuse-policy-summary small{{display:block;color:#6b7280}}
-      html[data-theme=dark] .abuse-policy-summary>div{{background:#111827;border-color:#334155}}
-      @media(max-width:800px){{.abuse-policy-summary{{grid-template-columns:repeat(2,minmax(120px,1fr))}}}}
-    </style>
-    <div class="card" id="abuse-policy-admin">
-      <div class="table-title-row"><h3>VM Abuse Management</h3><div class="count-badges"><span>Policy <b>dynamic</b></span><span>Restart <b>not required</b></span><span>Agent <b>payload unchanged</b></span></div></div>
-      {f'<div class="success-box">{escape(msg)}</div>' if msg else ''}
-      <div class="admin-note"><b>Only Admin can delete abuse logs.</b> Viewer users can inspect Current Abuse and History, but no Clear button is rendered there. CPU and disk policy changes apply on the monitor immediately. The network PPS threshold is returned to Agent v10 on the next push, while the agent keeps sending the same metric payload.</div>
-      <div class="abuse-policy-summary"><div><small>Current abuse</small><b>{current}</b></div><div><small>Saved events</small><b>{total}</b></div><div><small>Started</small><b>{started}</b></div><div><small>Recovered</small><b>{recovered}</b></div></div>
-      <form method="post" action="{url_for('admin_abuse_settings')}">
-        <input type="hidden" name="csrf_token" value="{escape(csrf_token(),quote=True)}"><input type="hidden" name="action" value="save">
-        <div class="abuse-settings-grid">
-          <div class="abuse-setting-box">
-            <h4>Network PPS</h4>
-            <label class="enable-line"><input type="checkbox" name="network_enabled" {'checked' if cfg['network_enabled'] else ''}> Enable network abuse</label>
-            <label>RX or TX PPS threshold<input type="number" name="network_pps" min="1000" max="100000000" step="1000" value="{cfg['network_pps']:.0f}"></label>
-            <div class="setting-help">A VM matches when either receive PPS or send PPS stays above this threshold.</div>
-            <label>Required seconds in each 5-minute window<input type="number" name="network_required_seconds" min="15" max="300" step="15" value="{cfg['network_required_seconds']}"></label>
-          </div>
-          <div class="abuse-setting-box">
-            <h4>CPU</h4>
-            <label class="enable-line"><input type="checkbox" name="cpu_enabled" {'checked' if cfg['cpu_enabled'] else ''}> Enable CPU abuse</label>
-            <label>CPU Full % of assigned vCPU<input type="number" name="cpu_full_percent" min="1" max="100" step="0.1" value="{cfg['cpu_full_percent']:.1f}"></label>
-            <div class="setting-help">CPU Full% is normalized by assigned vCPU. Example: 360 Core% on 4 vCPU equals 90 Full%.</div>
-            <label>Required consecutive minutes<input type="number" name="cpu_required_minutes" min="5" max="1440" step="5" value="{cfg['cpu_required_seconds']//60}"></label>
-          </div>
-          <div class="abuse-setting-box">
-            <h4>Disk I/O</h4>
-            <label class="enable-line"><input type="checkbox" name="disk_enabled" {'checked' if cfg['disk_enabled'] else ''}> Enable disk abuse</label>
-            <label>Read threshold MiB/s <small>(0 = disabled)</small><input type="number" name="disk_read_mibps" min="0" max="100000" step="1" value="{cfg['disk_read_bps']/1024/1024:.0f}"></label>
-            <label>Write threshold MiB/s <small>(0 = disabled)</small><input type="number" name="disk_write_mibps" min="0" max="100000" step="1" value="{cfg['disk_write_bps']/1024/1024:.0f}"></label>
-            <label>Total read + write MiB/s <small>(0 = disabled)</small><input type="number" name="disk_mibps" min="0" max="100000" step="1" value="{cfg['disk_bps']/1024/1024:.0f}"></label>
-            <label>Total read + write IOPS <small>(0 = disabled)</small><input type="number" name="disk_iops" min="0" max="10000000" step="100" value="{cfg['disk_iops']:.0f}"></label>
-            <div class="setting-help">Disk uses OR logic between every non-zero threshold above.</div>
-            <label>Required consecutive minutes<input type="number" name="disk_required_minutes" min="5" max="1440" step="5" value="{cfg['disk_required_seconds']//60}"></label>
-          </div>
-        </div>
-        <div class="abuse-admin-actions"><button type="submit">Save Abuse Policy</button><a class="btn" href="{url_for('admin_abuse_page')}">Manage Abuse History</a><a class="btn" href="{url_for('vm_abuse_page')}">Open Viewer Page</a></div>
-      </form>
-      <form method="post" action="{url_for('admin_abuse_settings')}" onsubmit="return confirm('Reset all abuse thresholds to defaults?')" style="margin-top:8px">
-        <input type="hidden" name="csrf_token" value="{escape(csrf_token(),quote=True)}"><input type="hidden" name="action" value="reset"><button class="btn" type="submit">Reset defaults</button>
-      </form>
-    </div>"""
-
 
 def admin_abuse_settings_v483():
     deny = require_admin()
@@ -218,33 +140,7 @@ def admin_abuse_settings_v483():
     msg = "Abuse policy saved. CPU and disk are effective immediately. Agent v10 receives the network PPS threshold in its next push response; allow one complete 5-minute sample window for a clean network decision."
     return redirect(url_for("admin_abuse_page", msg=msg))
 
-
 app.view_functions["admin_abuse_settings"] = admin_abuse_settings_v483
-
-
-def _merge_event_abuse_cfg(current_cfg, event_cfg):
-    merged = dict(current_cfg)
-    if not isinstance(event_cfg, dict):
-        event_cfg = {}
-    merged.update({k: v for k, v in event_cfg.items() if k in merged})
-    # Older event rows did not store separate read/write thresholds. Keep them
-    # disabled for historical display instead of borrowing today's policy.
-    if "disk_read_bps" not in event_cfg:
-        merged["disk_read_bps"] = 0.0
-    if "disk_write_bps" not in event_cfg:
-        merged["disk_write_bps"] = 0.0
-    return merged
-
-
-def _public_abuse_policy(cfg):
-    return f"""
-      <div class="abuse-policy">
-        <div><b>Network {'ON' if cfg['network_enabled'] else 'OFF'}</b><small>RX or TX ≥ {cfg['network_pps']:,.0f} PPS for {cfg['network_required_seconds']}s in a 5-minute sample window.</small></div>
-        <div><b>CPU {'ON' if cfg['cpu_enabled'] else 'OFF'}</b><small>CPU Full ≥ {cfg['cpu_full_percent']:.1f}% for {cfg['cpu_required_seconds']//60} consecutive minutes.</small></div>
-        <div><b>Disk {'ON' if cfg['disk_enabled'] else 'OFF'}</b><small>{escape(_disk_policy_text(cfg))} for {cfg['disk_required_seconds']//60} consecutive minutes.</small></div>
-      </div>
-    """
-
 
 def vm_abuse_page_v483():
     tab = (request.args.get("tab") or "current").strip().lower()
@@ -319,9 +215,7 @@ def vm_abuse_page_v483():
     content = f"""{_abuse_page_style()}<div class="card top-card"><div class="overview-head"><h3>VM Abuse</h3><div class="overview-meta"><span>Current query <b>bounded state table</b></span><span>History retention <b>7 days</b></span><span>Delete <b>Admin only</b></span></div></div>{tabs}{_public_abuse_policy(cfg)}{search}</div>{table}"""
     return page("VM Abuse", content)
 
-
 app.view_functions["vm_abuse_page"] = vm_abuse_page_v483
-
 
 def _admin_abuse_sort_link(label, key, q, event_type, current_sort, current_order, per_page):
     next_order = reverse_order(current_order) if current_sort == key else "desc"
@@ -330,7 +224,6 @@ def _admin_abuse_sort_link(label, key, q, event_type, current_sort, current_orde
         arrow = " ↓" if current_order == "desc" else " ↑"
     href = url_for("admin_abuse_page", q=q or None, event_type=event_type or None, sort=key, order=next_order, per_page=per_page)
     return f'<a class="sort-link" href="{escape(href,quote=True)}">{escape(label)}{arrow}</a>'
-
 
 def _admin_abuse_history_query(q, event_type, sort_by, order, page_no, per_page):
     allowed = {
@@ -368,7 +261,6 @@ def _admin_abuse_history_query(q, event_type, sort_by, order, page_no, per_page)
         return rows, total, page_no, max_page, sort_by, order
     finally:
         conn.close()
-
 
 @app.route("/admin/abuse", endpoint="admin_abuse_page")
 def admin_abuse_page_v483():
@@ -436,7 +328,6 @@ def admin_abuse_page_v483():
     """
     return page("Abuse Management", content)
 
-
 def clear_abuse_events_v483():
     deny = require_admin()
     if deny:
@@ -479,9 +370,7 @@ def clear_abuse_events_v483():
     log_account_event("abuse_history_cleared", username=actor, realm="admin", role="admin", detail=f"mode={mode};deleted={deleted};q={q};event_type={event_type}"[:700])
     return redirect(url_for("admin_abuse_page", msg=f"Deleted {deleted} abuse history record(s)."))
 
-
 app.view_functions["clear_abuse_events"] = clear_abuse_events_v483
-
 
 def _maintenance_action_label(action):
     return {
@@ -490,7 +379,6 @@ def _maintenance_action_label(action):
         "clear_monitoring_data":"Clear monitoring data", "reset_app_data":"Reset all app data + queue", "purge_nodes":"Purge node",
         "purge_node_vms":"Purge all VM on node", "purge_vms":"Purge VM",
     }.get(str(action or ""), str(action or "-").replace("_", " ").title())
-
 
 def _maintenance_target_summary(action, raw_parameters):
     try:
@@ -512,7 +400,6 @@ def _maintenance_target_summary(action, raw_parameters):
         return "All operational data, logs and maintenance queue" + (" + VACUUM" if params.get("compact") else "")
     return "Database maintenance"
 
-
 def _maintenance_elapsed(started_at, finished_at, created_at, status):
     now = now_ts()
     if status == "queued":
@@ -531,7 +418,6 @@ def _maintenance_elapsed(started_at, finished_at, created_at, status):
     else:
         value = f"{seconds//3600}h {(seconds%3600)//60}m"
     return prefix + value
-
 
 def _maintenance_friendly_message(action, status, message):
     raw = str(message or "").strip()
@@ -559,7 +445,6 @@ def _maintenance_friendly_message(action, status, message):
         except Exception:
             return "Completed successfully"
     return raw[:240] or "Job failed"
-
 
 def database_maintenance_card(message="", error=""):
     s = get_database_maintenance_stats()
@@ -623,13 +508,11 @@ def database_maintenance_card(message="", error=""):
     </div>{auto_script}
     """
 
-
 # Apply the latest persisted policy once for this worker.
 try:
     _apply_abuse_settings_to_runtime(get_abuse_settings())
 except Exception:
     app.logger.exception("Could not initialize v48.8.3 abuse settings")
-
 
 # Do NOT scan the whole historical usage table on normal startup.
 # Large history tables can make blocking backfills look like a hang. Inventory is updated
@@ -641,7 +524,3 @@ if BACKFILL_INVENTORY_ON_START and os.environ.get("BW_MAINTENANCE_IMPORT", "0") 
 if os.environ.get("BW_MAINTENANCE_IMPORT", "0") != "1":
     auto_cleanup_inventory()
 
-
-
-
-# ---------------------------------------------------------------------------

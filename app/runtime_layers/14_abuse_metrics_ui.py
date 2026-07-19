@@ -1,5 +1,3 @@
-# v48.8.4 AVG Mbps abuse, custom snapshot across metric pages, physical SRC
-# ---------------------------------------------------------------------------
 
 # New dynamic policy keys. Existing PostgreSQL schemas are upgraded in-place below.
 ABUSE_SETTING_DEFAULTS.update({
@@ -10,7 +8,6 @@ ABUSE_SETTING_DEFAULTS.update({
 
 ABUSE_NETWORK_AVG_MBPS = 800.0
 ABUSE_NETWORK_MBPS_REQUIRED_SECONDS = 300
-
 
 def _v484_migrate_schema():
     conn = db()
@@ -39,9 +36,7 @@ def _v484_migrate_schema():
     finally:
         conn.close()
 
-
 _v484_migrate_schema()
-
 
 def get_abuse_settings(conn=None):
     own = conn is None
@@ -81,7 +76,6 @@ def get_abuse_settings(conn=None):
         if own:
             conn.close()
 
-
 def _apply_abuse_settings_to_runtime(cfg):
     global ABUSE_NETWORK_PPS, ABUSE_NETWORK_REQUIRED_SECONDS
     global ABUSE_NETWORK_AVG_MBPS, ABUSE_NETWORK_MBPS_REQUIRED_SECONDS
@@ -109,9 +103,6 @@ def _apply_abuse_settings_to_runtime(cfg):
         ABUSE_DISK_IOPS = 0.0
         ABUSE_DISK_REQUIRED_SECONDS = 10**9
 
-
-
-
 def _abuse_state_map(conn, node):
     rows = conn.execute("""
         SELECT node,vm_uuid,last_seen,is_abuse,abuse_since,abuse_flags,severity,
@@ -136,32 +127,8 @@ def _abuse_state_map(conn, node):
     ]
     return {str(r[1]): dict(zip(keys, r)) for r in rows}
 
-
-
-
-def _abuse_flag_labels(flags, cfg):
-    result = []
-    values = {x for x in str(flags or "").split(",") if x}
-    if "NETWORK_RX_PPS_5M" in values:
-        result.append(f"RX PPS ≥ {cfg['network_pps']:,.0f}")
-    if "NETWORK_TX_PPS_5M" in values:
-        result.append(f"TX PPS ≥ {cfg['network_pps']:,.0f}")
-    if "NETWORK_RX_AVG_MBPS" in values:
-        result.append(f"RX AVG ≥ {cfg['network_avg_mbps']:,.0f} Mbps")
-    if "NETWORK_TX_AVG_MBPS" in values:
-        result.append(f"TX AVG ≥ {cfg['network_avg_mbps']:,.0f} Mbps")
-    if "CPU_30M" in values:
-        result.append(f"CPU ≥ {cfg['cpu_full_percent']:.1f}%")
-    if "DISK_15M" in values:
-        result.append("Disk: " + _disk_policy_text(cfg))
-    return result or ["-"]
-
-
 # Use the original bounded current-state writer directly, then add the dynamic
 # AVG Mbps streak before creating event records. This avoids scanning history.
-
-
-
 
 def admin_abuse_settings_v484():
     deny = require_admin()
@@ -224,13 +191,9 @@ def admin_abuse_settings_v484():
     msg = "Abuse policy saved. AVG Mbps, CPU and Disk apply immediately on the monitor. Agent v10 receives a changed PPS threshold on its next push."
     return redirect(url_for("admin_abuse_page", msg=msg))
 
-
 app.view_functions["admin_abuse_settings"] = admin_abuse_settings_v484
 
-
-# ---------------------------------------------------------------------------
 # Fast current Abuse viewer with directional AVG Mbps and sortable columns.
-# ---------------------------------------------------------------------------
 
 def _current_abuse_query_v484(q, sort_by, order, limit):
     allowed = {
@@ -279,7 +242,6 @@ def _current_abuse_query_v484(q, sort_by, order, limit):
         return rows, int(total or 0), tuple(int(x or 0) for x in (counts or (0,0,0,0))), sort_by, order
     finally:
         conn.close()
-
 
 def vm_abuse_page_v484():
     tab = (request.args.get("tab") or "current").strip().lower()
@@ -346,14 +308,10 @@ def vm_abuse_page_v484():
     content = f"""{_abuse_page_style()}<div class="card top-card"><div class="overview-head"><h3>VM Abuse</h3><div class="overview-meta"><span>Current query <b>bounded state table</b></span><span>History retention <b>7 days</b></span><span>Delete <b>Admin only</b></span></div></div>{tabs}{policy}{search}</div>{table}"""
     return page("VM Abuse",content)
 
-
 app.view_functions["vm_abuse_page"] = vm_abuse_page_v484
 
-
-# ---------------------------------------------------------------------------
 # Custom snapshot helpers. The same `at` parameter now anchors Dashboard,
 # Top Node, Top VM, Node detail and VM detail.
-# ---------------------------------------------------------------------------
 
 _range_for_period_v483 = range_for_period
 _resolve_snapshot_bucket_v483 = resolve_snapshot_bucket
@@ -368,13 +326,11 @@ _vm_period_links_v483 = vm_period_links
 _top_node_page_v483 = top_node_page
 _top_page_v483 = top_page
 
-
 def _request_target_ts():
     try:
         return _parse_datetime_local(request.args.get("at"))
     except RuntimeError:
         return None
-
 
 def range_for_period(period):
     target = _request_target_ts()
@@ -382,7 +338,6 @@ def range_for_period(period):
         return _range_for_period_v483(period)
     end = int(target)
     return end - period_seconds(clean_period(period)), end
-
 
 def resolve_snapshot_bucket(conn, period, node=None):
     target = _request_target_ts()
@@ -411,7 +366,6 @@ def resolve_snapshot_bucket(conn, period, node=None):
         return 0, latest
     return selected, latest
 
-
 def _custom_snapshot_control(endpoint, target_ts=None, title="Custom Snapshot Time", **params):
     target_ts = target_ts if target_ts is not None else _request_target_ts()
     hidden = []
@@ -433,11 +387,9 @@ def _custom_snapshot_control(endpoint, target_ts=None, title="Custom Snapshot Ti
       <div class="table-hint">Snapshot tables use the nearest retained real push at or before this time. Charts on Node and VM pages use the selected period ending at this time.</div>
     </div>"""
 
-
 def dashboard_custom_time_card(target_ts, q="", sort_by="node", sort_order="asc"):
     # range_card below now renders the shared picker, avoiding two identical cards.
     return ""
-
 
 def range_card(period, start, end, q="", endpoint="index", node=None, vm_status="active", net="both"):
     base = _range_card_v483(period,start,end,q=q,endpoint=endpoint,node=node,vm_status=vm_status,net=net)
@@ -447,7 +399,6 @@ def range_card(period, start, end, q="", endpoint="index", node=None, vm_status=
     if endpoint == "node_page":
         params.update({"node":node,"net":net})
     return base + _custom_snapshot_control(endpoint, _request_target_ts(), **params)
-
 
 def get_node_rows(period, q="", sort_by="node", order="asc", target_ts=None):
     if target_ts is None:
@@ -592,18 +543,15 @@ def get_node_rows(period, q="", sort_by="node", order="asc", target_ts=None):
     finally:
         conn.close()
 
-
 def query_node_bridge(node, period, bridge, q="", limit=1000, sort_by="total", order="desc", vm_status="active"):
     if _request_target_ts() is not None:
         return _query_node_bridge_history(node,period,bridge,q=q,limit=limit,sort_by=sort_by,order=order,vm_status=vm_status)
     return _query_node_bridge_v483(node,period,bridge,q=q,limit=limit,sort_by=sort_by,order=order,vm_status=vm_status)
 
-
 def get_top_vm_rows(period, q="", sort_by="total", order="desc", scope="all", limit=100):
     if _request_target_ts() is not None:
         return _get_top_vm_rows_history(period,q=q,sort_by=sort_by,order=order,scope=scope,limit=limit)
     return _get_top_vm_rows_v483(period,q=q,sort_by=sort_by,order=order,scope=scope,limit=limit)
-
 
 def _v5054_vm_snapshot_overview(node, vm_uuid, period, bridge="", iface=""):
     """Build one coherent VM overview from one exact retained push bucket.
@@ -748,7 +696,6 @@ def _v5054_vm_snapshot_overview(node, vm_uuid, period, bridge="", iface=""):
     finally:
         conn.close()
 
-
 def _historical_vm_latest_metric(node, vm_uuid, target_ts):
     """Compatibility wrapper retained for custom-time callers."""
     return _v5054_vm_snapshot_overview(
@@ -758,7 +705,6 @@ def _historical_vm_latest_metric(node, vm_uuid, target_ts):
         bridge=(request.args.get("bridge") or "").strip(),
         iface=(request.args.get("iface") or "").strip(),
     )
-
 
 def _v5054_vm_snapshot_metric_tuple(snapshot):
     if not snapshot:
@@ -781,7 +727,6 @@ def _v5054_vm_snapshot_metric_tuple(snapshot):
         snapshot["disk_read_bps"], snapshot["disk_write_bps"],
     )
 
-
 def get_vm_latest_metric(node, vm_uuid):
     period = clean_period(request.args.get("period", "5m"))
     snapshot = _v5054_vm_snapshot_overview(
@@ -797,14 +742,11 @@ def get_vm_latest_metric(node, vm_uuid):
         return _get_vm_latest_metric_v483(node, vm_uuid)
     return None
 
-
 def get_vm_directional_current(node, vm_uuid):
     period = clean_period(request.args.get("period", "5m"))
     if _request_target_ts() is not None or period != "5m":
         return {}
     return _get_vm_directional_current_v483(node, vm_uuid)
-
-
 
 def top_node_page_v484():
     period=clean_period(request.args.get("period","1h")); q=(request.args.get("q") or "").strip()
@@ -818,7 +760,6 @@ def top_node_page_v484():
     {_custom_snapshot_control('top_node_page',at,period=period,q=q or None,sort=sort_by,order=sort_order,limit=limit)}
     {top_node_table(rows,period,q,sort_by,sort_order,limit)}"""
     return page("Top Node",content)
-
 
 def top_page_v484():
     period=clean_period(request.args.get("period","5m")); q=(request.args.get("q") or "").strip(); sort_by=clean_top_sort(request.args.get("sort","total")); sort_order=clean_sort_order(request.args.get("order","desc")); scope=clean_top_scope(request.args.get("scope","all")); limit=max(10,min(1000,safe_int(request.args.get("limit"),100)))
@@ -841,10 +782,8 @@ def top_page_v484():
     {top_vm_table(rows,period,q,sort_by,sort_order,scope,limit)}"""
     return page("Top VM",content)
 
-
 app.view_functions["top_node_page"] = top_node_page_v484
 app.view_functions["top_page"] = top_page_v484
-
 
 # Preserve the custom timestamp while sorting on pages that use shared headers.
 def node_sort_header(label,key,period,q,current_sort,current_order,vm_status="active"):
@@ -854,13 +793,11 @@ def node_sort_header(label,key,period,q,current_sort,current_order,vm_status="ac
     if at: kwargs["at"]=at
     return f'<a class="sort-link" href="{escape(url_for("index",**kwargs),quote=True)}">{escape(label)}{arrow}</a>'
 
-
 def sort_header(label,key,node,period,q,current_sort,current_order,vm_status="active"):
     current_sort=clean_interface_sort(current_sort); current_order=clean_sort_order(current_order); next_order=reverse_order(current_order) if current_sort==key else "desc"; arrow=" ↓" if current_sort==key and current_order=="desc" else (" ↑" if current_sort==key else "")
     kwargs={"node":node,"period":period,"q":q,"sort":key,"order":next_order,"net":clean_node_net_mode(request.args.get("net","both"))}; at=request.args.get("at");
     if at: kwargs["at"]=at
     return f'<a class="sort-link" href="{escape(url_for("node_page",**kwargs),quote=True)}">{escape(label)}{arrow}</a>'
-
 
 def top_sort_header(label,key,period,q,current_sort,current_order,scope,limit):
     current_sort=clean_top_sort(current_sort); current_order=clean_sort_order(current_order); next_order=reverse_order(current_order) if current_sort==key else "desc"; arrow=" ↓" if current_sort==key and current_order=="desc" else (" ↑" if current_sort==key else "")
@@ -868,13 +805,11 @@ def top_sort_header(label,key,period,q,current_sort,current_order,scope,limit):
     if at: kwargs["at"]=at
     return f'<a class="sort-link" href="{escape(url_for("top_page",**kwargs),quote=True)}">{escape(label)}{arrow}</a>'
 
-
 def top_node_sort_header(label,key,period,q,current_sort,current_order,limit):
     current_sort=clean_top_node_sort(current_sort); current_order=clean_sort_order(current_order); default_order="asc" if key=="node" else "desc"; next_order=reverse_order(current_order) if current_sort==key else default_order; arrow=" ↓" if current_sort==key and current_order=="desc" else (" ↑" if current_sort==key else "")
     kwargs={"period":period,"q":q,"sort":key,"order":next_order,"limit":limit}; at=request.args.get("at");
     if at: kwargs["at"]=at
     return f'<a class="sort-link" href="{escape(url_for("top_node_page",**kwargs),quote=True)}">{escape(label)}{arrow}</a>'
-
 
 # Apply latest policy in this worker after the v48.8.4 overrides are defined.
 try:
@@ -882,32 +817,11 @@ try:
 except Exception:
     app.logger.exception("Could not initialize v48.8.4 abuse settings")
 
-
-# v48.8.4 final UI polish: show both network abuse families and keep the
 # selected custom timestamp while switching periods/scopes.
-def _public_abuse_policy(cfg):
-    pps_line = (
-        f"RX or TX ≥ {cfg['network_pps']:,.0f} PPS for {cfg['network_required_seconds']}s in one 5-minute sampler window"
-        if cfg['network_enabled'] else "Directional PPS rule disabled"
-    )
-    mbps_line = (
-        f"RX or TX AVG ≥ {cfg['network_avg_mbps']:,.1f} Mbps for {cfg['network_mbps_required_seconds']//60} consecutive minutes"
-        if cfg['network_mbps_enabled'] and cfg['network_avg_mbps'] > 0 else "Directional AVG Mbps rule disabled"
-    )
-    return f"""
-      <div class="abuse-policy" style="grid-template-columns:repeat(4,minmax(210px,1fr))">
-        <div><b>Network PPS {'ON' if cfg['network_enabled'] else 'OFF'}</b><small>{escape(pps_line)}.</small></div>
-        <div><b>Network AVG Mbps {'ON' if cfg['network_mbps_enabled'] and cfg['network_avg_mbps'] > 0 else 'OFF'}</b><small>{escape(mbps_line)}.</small></div>
-        <div><b>CPU {'ON' if cfg['cpu_enabled'] else 'OFF'}</b><small>CPU Full ≥ {cfg['cpu_full_percent']:.1f}% for {cfg['cpu_required_seconds']//60} consecutive minutes.</small></div>
-        <div><b>Disk {'ON' if cfg['disk_enabled'] else 'OFF'}</b><small>{escape(_disk_policy_text(cfg))} for {cfg['disk_required_seconds']//60} consecutive minutes.</small></div>
-      </div>
-    """
-
 
 def _at_param():
     value = (request.args.get("at") or "").strip()
     return value or None
-
 
 def period_links(current, endpoint="index", node=None, q="", vm_status="active", net="both"):
     links = []
@@ -927,7 +841,6 @@ def period_links(current, endpoint="index", node=None, q="", vm_status="active",
         links.append(f'<a class="{cls}" href="{escape(href,quote=True)}">{escape(period_label(period))}</a>')
     return "".join(links)
 
-
 def top_node_period_links(current, q="", sort_by="cpu", order="desc", limit=100):
     links = []
     at = _at_param()
@@ -939,7 +852,6 @@ def top_node_period_links(current, q="", sort_by="cpu", order="desc", limit=100)
         cls = "active" if period == current else ""
         links.append(f'<a class="{cls}" href="{escape(href,quote=True)}">{escape(period_label(period))}</a>')
     return "".join(links)
-
 
 def top_period_links(current, q="", sort_by="total", order="desc", scope="all", limit=100):
     links = []
@@ -953,7 +865,6 @@ def top_period_links(current, q="", sort_by="total", order="desc", scope="all", 
         links.append(f'<a class="{cls}" href="{escape(href,quote=True)}">{escape(period_label(period))}</a>')
     return "".join(links)
 
-
 def top_scope_links(period, q, sort_by, order, scope, limit):
     items = []
     at = _at_param()
@@ -965,7 +876,6 @@ def top_scope_links(period, q, sort_by, order, scope, limit):
         cls = "active" if scope == s else ""
         items.append(f'<a class="{cls}" href="{escape(href,quote=True)}">{escape(label)}</a>')
     return "".join(items)
-
 
 def vm_period_links(current, node, vm_uuid, bridge, iface):
     links = []
@@ -984,5 +894,3 @@ def vm_period_links(current, node, vm_uuid, bridge, iface):
       <label>Custom end time<input type="datetime-local" name="at" value="{escape(_datetime_local_value(at_ts),quote=True)}" required></label><button type="submit">Open time</button>{f'<a class="clear" href="{escape(url_for("vm_page",**live_params),quote=True)}">Use live</a>' if at_ts else ''}</form>"""
     return "".join(links) + compact
 
-
-# ---------------------------------------------------------------------------

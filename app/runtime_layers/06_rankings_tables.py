@@ -1,12 +1,7 @@
-def clean_top_sort(sort_by):
-    allowed = {"total", "rx", "tx", "public", "private", "mbps", "peakmbps", "pps", "peakpps", "sample", "drops", "errors", "cpu", "cpufull", "vcpu", "ram", "diskr", "diskw", "last_push", "node", "vm"}
-    return sort_by if sort_by in allowed else "total"
-
 
 def clean_top_scope(scope):
     allowed = {"all", "public", "private"}
     return scope if scope in allowed else "all"
-
 
 def clean_abuse_sort(sort_by):
     allowed = {
@@ -16,7 +11,6 @@ def clean_abuse_sort(sort_by):
     }
     return sort_by if sort_by in allowed else "severity"
 
-
 def clean_top_node_sort(sort_by):
     allowed = {
         "node", "last_seen", "snapshot", "vm", "load", "uptime", "cpu", "ram",
@@ -25,61 +19,21 @@ def clean_top_node_sort(sort_by):
     }
     return sort_by if sort_by in allowed else "cpu"
 
-
-
 def expected_samples_for_period(period):
     return max(1, int(math.ceil(period_seconds(period) / float(CACHE_BUCKET_SECONDS))))
-
 
 def fmt_optional_percent(value, has_data=True):
     return fmt_percent(value) if has_data else "-"
 
-
 def fmt_optional_rate(value, has_data=True):
     return human_rate(value) if has_data else "-"
-
 
 def fmt_optional_human(value, has_data=True):
     return human(value) if has_data else "-"
 
-
-def top_node_period_links(current, q="", sort_by="cpu", order="desc", limit=100):
-    links = []
-    for period in PERIODS:
-        href = url_for(
-            "top_node_page",
-            period=period,
-            q=q,
-            sort=sort_by,
-            order=order,
-            limit=limit,
-        )
-        cls = "active" if period == current else ""
-        links.append(f'<a class="{cls}" href="{escape(href, quote=True)}">{escape(period_label(period))}</a>')
-    return "".join(links)
-
-
-def top_period_links(current, q="", sort_by="total", order="desc", scope="all", limit=100):
-    links = []
-    for period in PERIODS:
-        href = url_for(
-            "top_page",
-            period=period,
-            q=q,
-            sort=sort_by,
-            order=order,
-            scope=scope,
-            limit=limit,
-        )
-        cls = "active" if period == current else ""
-        links.append(f'<a class="{cls}" href="{escape(href, quote=True)}">{escape(period_label(period))}</a>')
-    return "".join(links)
-
-
 def clean_node_health_sort(sort_by):
     allowed = {"node", "status", "last_push", "age", "missed", "vm", "interfaces", "total"}
     return sort_by if sort_by in allowed else "status"
-
 
 def node_health_sort_header(label, key, q, current_sort, current_order):
     current_sort = clean_node_health_sort(current_sort)
@@ -105,7 +59,6 @@ def node_health_sort_header(label, key, q, current_sort, current_order):
         order=next_order,
     )
     return f'<a class="sort-link" href="{escape(href, quote=True)}">{escape(label)}{arrow}</a>'
-
 
 def get_node_health_rows(q="", sort_by="status", order="asc"):
     """Fast Node Health read.
@@ -386,7 +339,6 @@ def node_health_summary(rows):
             down += 1
     return total, healthy, warning, down
 
-
 def node_health_table(rows, q="", sort_by="status", order="asc"):
     body = ""
     now = now_ts()
@@ -488,36 +440,6 @@ def node_health_table(rows, q="", sort_by="status", order="asc"):
     </div>
     """
 
-def top_scope_links(period, q, sort_by, order, scope, limit):
-    items = []
-    for s, label in (("all", "All"), ("public", "Public only"), ("private", "Private only")):
-        href = url_for("top_page", period=period, q=q, sort=sort_by, order=order, scope=s, limit=limit)
-        cls = "active" if scope == s else ""
-        items.append(f'<a class="{cls}" href="{escape(href, quote=True)}">{escape(label)}</a>')
-    return "".join(items)
-
-
-def top_sort_header(label, key, period, q, current_sort, current_order, scope, limit):
-    current_sort = clean_top_sort(current_sort)
-    current_order = clean_sort_order(current_order)
-    default_order = "asc" if key in ("node", "vm") else "desc"
-    next_order = reverse_order(current_order) if current_sort == key else default_order
-    arrow = ""
-    if current_sort == key:
-        arrow = " ↓" if current_order == "desc" else " ↑"
-    href = url_for(
-        "top_page",
-        period=period,
-        q=q,
-        sort=key,
-        order=next_order,
-        scope=scope,
-        limit=limit,
-    )
-    return f'<a class="sort-link" href="{escape(href, quote=True)}">{escape(label)}{arrow}</a>'
-
-
-
 def get_top_vm_rows(period, q="", sort_by="total", order="desc", scope="all", limit=100):
     auto_cleanup_inventory(); sort_by=clean_top_sort(sort_by); order=clean_sort_order(order); scope=clean_top_scope(scope); limit=max(10,min(1000,safe_int(limit,100)))
     conn=db()
@@ -562,101 +484,6 @@ def get_top_vm_rows(period, q="", sort_by="total", order="desc", scope="all", li
         return rows,selected_bucket,latest_bucket,limit
     finally:conn.close()
 
-
-
-def top_vm_table(rows, period, q, sort_by, order, scope, limit):
-    body = ""
-    rank = 1
-    for (
-        node, vm_uuid, iface_count, public_total, private_total, rx, tx, total,
-        packets, drops, errors, avg_mbps, peak_mbps, avg_pps, peak_pps,
-        sample_count, sample_expected, sample_max_gap, seconds_over_pps, seconds_over_mbps,
-        sample_quality_rank, cpu_percent, vcpu_current, core_cpu_percent,
-        ram_rss_kib, ram_current_kib, disk_read_bps, disk_write_bps,
-        last_push, interval_seconds, public_ipv4, private_ipv4,
-    ) in rows:
-        _row_at = (request.args.get("at") or "").strip()
-        href = url_for("node_page", node=node, period=period, q=vm_uuid, **({"at": _row_at} if _row_at else {}))
-        public_ip = compact_ipv4(public_ipv4)
-        ip_lines = f'<small class="node-ipv4" title="Public IPv4">{escape(public_ip)}</small>' if public_ip else ""
-        sample = network_sample_badge(network_quality_from_rank(sample_quality_rank), sample_count, sample_expected, sample_max_gap)
-        ram_pct = (float(ram_rss_kib or 0) * 100.0 / float(ram_current_kib or 1)) if ram_current_kib else 0.0
-        ram_html = fmt_ram_pair(ram_rss_kib, ram_current_kib)
-        if ram_current_kib:
-            ram_html += f'<small class="metric-subline">{ram_pct:.1f}% RSS</small>'
-        body += f"""
-        <tr>
-            <td class="num">{rank}</td>
-            <td class="mono"><div class="node-name-cell"><a href="{escape(href, quote=True)}"><b>{escape(node)}</b></a>{ip_lines}</div></td>
-            <td class="mono"><span class="uuid-cell"><a href="{escape(href, quote=True)}" title="{escape(vm_uuid)}">{escape(vm_uuid)}</a><button type="button" class="copy-btn" data-copy="{escape(vm_uuid)}" title="Copy UUID">⧉</button></span></td>
-            <td class="num">{iface_count or 0}</td>
-            <td class="num">{human(public_total)}</td>
-            <td class="num">{human(private_total)}</td>
-            <td class="num"><b>{human(total)}</b></td>
-            <td class="num">{float(avg_mbps or 0):.2f}</td>
-            <td class="num"><b>{float(peak_mbps or 0):.2f}</b></td>
-            <td class="num">{fmt_pps_value(avg_pps)}</td>
-            <td class="num"><b>{fmt_pps_value(peak_pps)}</b></td>
-            <td class="num sample-cell">{sample}</td>
-            <td class="num"><b>{fmt_vm_cpu(cpu_percent, vcpu_current)}</b><small class="metric-subline">{float(cpu_percent or 0):.1f}% full</small></td>
-            <td class="num">{int(vcpu_current or 0)}</td>
-            <td class="num ram-cell">{ram_html}</td>
-            <td class="num">{human_rate(disk_read_bps)}</td>
-            <td class="num">{human_rate(disk_write_bps)}</td>
-            <td class="num">{fmt_push(last_push)}</td>
-            <td class="num">{int(drops or 0)}</td>
-            <td class="num">{int(errors or 0)}</td>
-        </tr>"""
-        rank += 1
-    if not body:
-        body = '<tr><td colspan="20" class="empty">No VM data at this selected snapshot</td></tr>'
-    h = lambda label, key: top_sort_header(label, key, period, q, sort_by, order, scope, limit)
-    return f"""
-    <div class="card vm-table-card">
-        <div class="table-title-row"><h3>Top VM Across All Nodes</h3><div class="count-badges"><span>Rows <b>{len(rows)}</b></span><span>Scope <b>{escape(scope)}</b></span><span>Mode <b>fast current / exact history</b></span><span>Sort <b>{escape(sort_by)} {escape(order)}</b></span></div></div>
-        <div class="table-wrap">
-        <table class="table-top-vm">
-            <colgroup>
-                <col class="top-rank"><col class="top-node"><col class="top-uuid"><col class="top-ifaces">
-                <col class="top-public"><col class="top-private"><col class="top-total">
-                <col class="top-mbps"><col class="top-peakmbps"><col class="top-pps"><col class="top-peakpps">
-                <col class="top-sample"><col class="top-cpu"><col class="top-vcpu"><col class="top-ram">
-                <col class="top-diskr"><col class="top-diskw"><col class="top-push"><col class="top-drops"><col class="top-errors">
-            </colgroup>
-            <thead><tr>
-                <th>#</th><th>{h('NODE','node')}</th><th>{h('VM UUID','vm')}</th><th>IFACES</th>
-                <th class="num-head">{h('PUBLIC','public')}</th><th class="num-head">{h('PRIVATE','private')}</th><th class="num-head">{h('TOTAL','total')}</th>
-                <th class="num-head">{h('AVG Mbps','mbps')}</th><th class="num-head">{h('PEAK Mbps','peakmbps')}</th>
-                <th class="num-head">{h('AVG PPS','pps')}</th><th class="num-head">{h('PEAK PPS','peakpps')}</th><th class="num-head">{h('SAMPLE','sample')}</th>
-                <th class="num-head">{h('CPU Core%','cpu')}</th><th class="num-head">{h('vCPU','vcpu')}</th><th class="num-head">{h('RAM','ram')}</th>
-                <th class="num-head">{h('DISK R/s','diskr')}</th><th class="num-head">{h('DISK W/s','diskw')}</th><th class="num-head">{h('PUSH','last_push')}</th>
-                <th class="num-head">{h('DROPS','drops')}</th><th class="num-head">{h('ERR','errors')}</th>
-            </tr></thead>
-            <tbody>{body}</tbody>
-        </table>
-        </div>
-        <div class="table-hint">PEAK comes from local sampling on the node. PostgreSQL receives one summary per node every five minutes.</div>
-    </div>"""
-
-def top_node_sort_header(label, key, period, q, current_sort, current_order, limit):
-    current_sort = clean_top_node_sort(current_sort)
-    current_order = clean_sort_order(current_order)
-    default_order = "asc" if key == "node" else "desc"
-    next_order = reverse_order(current_order) if current_sort == key else default_order
-    arrow = ""
-    if current_sort == key:
-        arrow = " ↓" if current_order == "desc" else " ↑"
-    href = url_for(
-        "top_node_page",
-        period=period,
-        q=q,
-        sort=key,
-        order=next_order,
-        limit=limit,
-    )
-    return f'<a class="sort-link" href="{escape(href, quote=True)}">{escape(label)}{arrow}</a>'
-
-
 def get_top_node_rows(period, q="", sort_by="cpu", order="desc", limit=100):
     sort_by = clean_top_node_sort(sort_by)
     order = clean_sort_order(order)
@@ -673,7 +500,6 @@ def get_top_node_rows(period, q="", sort_by="cpu", order="desc", limit=100):
         period, q, sort_by=mapping.get(sort_by, "cpu"), order=order
     )
     return rows[:limit], start, end, limit
-
 
 def top_node_table(rows, period, q, sort_by, order, limit):
     body = ""
@@ -758,5 +584,4 @@ def top_node_table(rows, period, q, sort_by, order, limit):
         <div class="table-hint">No averages or period sums. Each row uses one retained push; status uses the newest heartbeat.</div>
     </div>
     """
-
 

@@ -41,6 +41,8 @@ MONITORING_TABLES: tuple[str, ...] = (
     "agent_health_latest",
     "vm_location_latest",
     "vm_node_presence",
+    "vm_inventory",
+    "node_inventory",
     "vm_migration_events",
     "node_missed_events",
     "push_receipts",
@@ -62,28 +64,16 @@ MONITORING_TABLES: tuple[str, ...] = (
     "retention_runs",
 )
 
-# Inventory and Node Group configuration are preserved by ordinary monitoring
-# cleanup. Purging one node still deletes its current membership through the
-# node_inventory foreign key. Only the explicit Nuclear Reset includes these
-# tables in its destructive allow-list.
-INVENTORY_TABLES: tuple[str, ...] = ("vm_inventory", "node_inventory")
-NODE_GROUP_CONFIGURATION_TABLES: tuple[str, ...] = (
-    "node_group_memberships",
-    "node_group_membership_history",
-    "node_groups",
-)
-
 # A nuclear operational reset preserves dashboard users, Admin settings,
 # schema metadata, the durable maintenance queue and permanent nuclear audit.
-RESET_APP_TABLES: tuple[str, ...] = tuple(dict.fromkeys(
-    NODE_GROUP_CONFIGURATION_TABLES + MONITORING_TABLES + INVENTORY_TABLES + (
-        "abuse_policy_versions",
-        "account_logs",
-        "api_access_logs",
-        "api_key_events",
-        "api_keys",
-    )
-))
+# Destructive tables are an explicit allow-list and never include those records.
+RESET_APP_TABLES: tuple[str, ...] = tuple(dict.fromkeys(MONITORING_TABLES + (
+    "abuse_policy_versions",
+    "account_logs",
+    "api_access_logs",
+    "api_key_events",
+    "api_keys",
+)))
 
 API_LOG_TABLES: tuple[str, ...] = ("api_access_logs", "api_key_events")
 API_DATA_TABLES: tuple[str, ...] = ("api_access_logs", "api_key_events", "api_keys")
@@ -266,118 +256,12 @@ def clear_monitoring_data() -> dict[str, Any]:
         "api_access_logs",
         "maintenance_jobs",
         "bw_meta",
-        "node_inventory",
-        "vm_inventory",
-        "node_groups",
-        "node_group_memberships",
-        "node_group_membership_history",
     ]
     return result
 
 
-def _recreate_ungrouped() -> int:
-    now = int(time.time())
-    conn = dedicated_connection(
-        application_name="virtinfra-maintenance:recreate-ungrouped",
-        statement_timeout_ms=30_000,
-        lock_timeout_ms=15_000,
-    )
-    try:
-        with conn.cursor() as cur:
-            advisory_xact_lock(cur, MAINTENANCE_GLOBAL_LOCK)
-            cur.execute("""
-                INSERT INTO public.node_groups(
-                    name,description,country_code,is_active,is_system,
-                    created_at,updated_at,hidden_at
-                )
-                SELECT 'Ungrouped',
-                       'Default group for nodes without an explicit assignment',
-                       '',1,1,%s,%s,NULL
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM public.node_groups WHERE is_system=1
-                )
-                RETURNING id
-            """, (now, now))
-            row = cur.fetchone()
-            if row:
-                group_id = int(row[0])
-            else:
-                cur.execute("SELECT id FROM public.node_groups WHERE is_system=1 ORDER BY id LIMIT 1")
-                group_id = int(cur.fetchone()[0])
-        conn.commit()
-        return group_id
-    except BaseException:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
-
-
 def reset_app_data() -> dict[str, Any]:
-    """Atomically perform the explicit Nuclear Reset and recreate Ungrouped.
-
-    Ordinary retention/cleanup never calls this function. Node Group rows are
-    included only in this explicit allow-list, and the immutable system group
-    is recreated before the destructive transaction commits.
-    """
-    action = "reset_app_data"
-    started = int(time.time())
-    conn = dedicated_connection(
-        application_name="virtinfra-maintenance:reset-app-data",
-        statement_timeout_ms=0,
-        lock_timeout_ms=120_000,
-    )
-    try:
-        with conn.cursor() as cur:
-            advisory_xact_lock(cur, MAINTENANCE_GLOBAL_LOCK)
-            existing = _existing_public_tables(cur)
-            selected = tuple(name for name in RESET_APP_TABLES if name in existing)
-            missing = tuple(name for name in RESET_APP_TABLES if name not in existing)
-            before = _table_stats(cur, selected)
-            if selected:
-                statement = sql.SQL("TRUNCATE TABLE {} RESTART IDENTITY CASCADE").format(
-                    sql.SQL(", ").join(
-                        sql.SQL("public.{}").format(sql.Identifier(name))
-                        for name in selected
-                    )
-                )
-                cur.execute(statement)
-            now = int(time.time())
-            cur.execute(
-                """
-                INSERT INTO public.node_groups(
-                    name,description,country_code,is_active,is_system,
-                    created_at,updated_at,hidden_at
-                ) VALUES (
-                    'Ungrouped',
-                    'Default group for nodes without an explicit assignment',
-                    '',1,1,%s,%s,NULL
-                )
-                RETURNING id
-                """,
-                (now, now),
-            )
-            ungrouped_group_id = int(cur.fetchone()[0])
-        conn.commit()
-    except BaseException:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
-
-    result = {
-        "engine": "postgresql",
-        "action": action,
-        "tables_truncated": list(selected),
-        "tables_missing": list(missing),
-        "table_count": len(selected),
-        "estimated_rows_removed": sum(item["estimated_rows"] for item in before.values()),
-        "bytes_before": sum(item["bytes_before"] for item in before.values()),
-        "started_at": started,
-        "finished_at": int(time.time()),
-        "method": "TRUNCATE RESTART IDENTITY CASCADE",
-        "ungrouped_group_id": ungrouped_group_id,
-    }
+    result = truncate_tables(RESET_APP_TABLES, action="reset_app_data")
     result["acceptance_epochs"] = set_reset_acceptance_epochs()
     result["preserved"] = [
         "dashboard_users",

@@ -1,49 +1,34 @@
-VirtInfra Monitor 50.5.9-prod-r5-node-groups-hotfix-additive
-TEST RESULTS
+VirtInfra Monitor 50.5.9-prod-r4-dead-code-cleanup
 
-BASELINE
-- SHA256SUMS verification: PASS, 173/173 files
-- Baseline HTML snapshots: 9 pages saved
-- Baseline route map: 75 routes
-- Runtime implementation map: saved
+Baseline checks
+---------------
+Python compile: PASS (exit 0)
+Shell syntax: PASS (exit 0)
+Regression suite: 91 passed, 1 skipped in 42.57s
+Skipped test: live PostgreSQL integration because BW_TEST_DATABASE_URL was not set
 
-STATIC VALIDATION
-- Full preflight (`--use-current-python --skip-live`): PASS, exit 0
-- Python compileall/py_compile: PASS
-- Bash syntax: PASS, 44 scripts
-- Existing script-style source contracts: PASS
-- Full pytest suite without live DSN: 104 passed, 2 skipped in 45.93s, exit 0
-- Existing pytest-style tests by module: 104 passed, all module processes exit 0
-- Node Groups PostgreSQL integration: 1 passed
+Cleanup candidate checks
+------------------------
+Python compile: PASS (exit 0)
+Shell syntax: PASS (exit 0)
+Warnings-as-errors route registration with deterministic test adapter: PASS (exit 0)
+Regression suite before reports: 91 passed, 1 skipped in 42.59s (exit 0)
+Regression suite with reports, rollback assets, and manifest: 91 passed, 1 skipped in 42.93s (exit 0)
+Skipped test: tests/test_v50_postgres_integration.py because BW_TEST_DATABASE_URL was not set
 
-NODE GROUPS RUNTIME VALIDATION
-- Role migration idempotent: PASS
-- Existing super admin preserved: PASS
-- Node Group CRUD: PASS
-- Ungrouped protection: PASS
-- Group with nodes delete block: PASS
-- Bulk assignment: PASS
-- New node to Ungrouped: PASS
-- VM inheritance: PASS
-- Audit events: PASS
-- Filters on requested pages: PASS
-- Group=All delegation: PASS
-- Group=All HTML equivalence: PASS
-- Admin permission boundary: PASS
-- Viewer read-only: PASS
-- Route contract: PASS (75 -> 79, only 4 new POST routes)
+Behavior-equivalence checks
+---------------------------
+Route map: PASS, 75 routes identical
+Route methods and endpoint names: PASS
+Deterministic main-page HTML hashes: PASS
+API status, content type, response length, deterministic hash, and JSON shape: PASS
+app.py function-body AST fingerprint: PASS
+PostgreSQL SQL-tree fingerprint: PASS
+Database migration files: byte-for-byte unchanged
+Agent source: byte-for-byte unchanged by the existing runtime contract test
+Line endings: unchanged
+Cache/build artifacts in final package: none
 
-UI REGRESSION
-- Deterministic structural comparison: PASS, 9/9 baseline pages
-- Chromium desktop/tablet/mobile check: PASS, 10/10 pages
-- New horizontal overflow: none detected
-- Existing CSS blocks: byte-identical
-
-POSTGRESQL
-- 011_node_groups.sql applied idempotently on PostgreSQL 17: PASS
-- Role migration and FK behavior: PASS
-- Existing full TimescaleDB application integration: NOT RUN; TimescaleDB extension unavailable in build container
-
-PRODUCTION
-- Deployment: NOT PERFORMED
-- Service restart: NOT PERFORMED
+Environment limitation
+----------------------
+The sandbox did not provide a disposable PostgreSQL test DSN. The live integration module was collected correctly and skipped with exit code 0. No claim is made that the destructive live schema test ran.

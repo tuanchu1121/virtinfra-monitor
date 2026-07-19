@@ -1,8 +1,0 @@
-install.sh
-preflight.sh
-tools/test-installer-manifest-paths.sh
-MANIFEST_PATH_HOTFIX.md
-DIFF_MANIFEST_FIX.md
-FILES_CHANGED_MANIFEST_FIX.txt
-TEST_RESULTS_MANIFEST_FIX.txt
-SHA256SUMS

@@ -1,6 +1,6 @@
 # Đưa VirtInfra Monitor lên GitHub bằng GitHub Desktop
 
-> Release: `50.5.9-prod-r6-node-groups-admin-bulk-management-retention-safe-maintenance-hotfix`
+> Release: `50.5.9-prod-r4-dead-code-cleanup`
 
 > Dùng cho release `50.5.9-prod-r3-ui-alignment-overflow-hotfix`.
 

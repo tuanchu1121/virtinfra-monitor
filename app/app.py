@@ -7064,6 +7064,7 @@ def dashboard_login():
             <input name="password" type="password" autocomplete="current-password">
             <button type="submit">Login</button>
         </form>
+     <div class="admin-note">default login credentials: Greencloud / Green@1234</div>  
     </div>
     """
     return page("Dashboard Login", content)
@@ -29811,9 +29812,34 @@ _v5030_admin_overview_base = _v490_admin_overview
 
 
 def _v490_admin_overview(stats):
-    # r6: accounting/RETENTION7 controls live only under Maintenance.
-    return _v5030_admin_overview_base(stats)
-
+    base = _v5030_admin_overview_base(stats)
+    try:
+        item = _v5030_bandwidth_admin_stats()
+        token = escape(csrf_token(), quote=True)
+        card = """
+        <div class="card admin-section">
+          <div class="section-head"><div><span class="eyebrow">CONSUMPTION</span><h3>2-hour node accounting storage</h3><p>Direct idempotent ingestion. No monitor-side queue and no per-VM UUID rows.</p></div><a class="btn" href="%s">Open page</a></div>
+          <div class="admin-kpis">
+            <div><small>RETENTION</small><b>7 days</b></div><div><small>ROWS</small><b>%s</b></div><div><small>TABLE + INDEX</small><b>%s</b></div>
+            <div><small>REPORTING VISIBLE NODES</small><b>%s / %s</b></div><div><small>MISSING</small><b>%s</b></div><div><small>LAST RECEIVED</small><b>%s</b></div>
+            <div><small>OLDEST BUCKET</small><b>%s</b></div><div><small>NEWEST BUCKET</small><b>%s</b></div>
+          </div>
+          <div class="bulk-bar">
+            <form method="post" action="%s"><input type="hidden" name="csrf_token" value="%s"><input type="hidden" name="action" value="cleanup"><button type="submit">Run cleanup now</button></form>
+            <form method="post" action="%s" onsubmit="return confirm('Delete all Consumption history?');"><input type="hidden" name="csrf_token" value="%s"><input type="hidden" name="action" value="clear"><input name="confirm_text" placeholder="CLEAR BANDWIDTH HISTORY"><button class="btn-danger" type="submit">Clear history</button></form>
+          </div>
+          <div class="table-hint">Nuclear operational reset clears this table and advances a reset epoch, so old Agent-local retry buckets cannot restore deleted history.</div>
+        </div>
+        """ % (
+            url_for("bandwidth_consumption_page"), f"{item['rows']:,}", human(item["size"]), item["reporting"], item["visible_nodes"], item["missing"],
+            fmt_full(item["last_received"]), fmt_full(item["oldest"]), fmt_full(item["newest"]),
+            url_for("admin_bandwidth_consumption_action"), token,
+            url_for("admin_bandwidth_consumption_action"), token,
+        )
+        return base + card
+    except Exception as exc:
+        app.logger.exception("Consumption Admin card failed")
+        return base + '<div class="card"><h3>Consumption</h3><div class="error-box">%s</div></div>' % escape(str(exc))
 
 
 @app.route("/admin/bandwidth-consumption", methods=["POST"])
@@ -32857,20 +32883,6 @@ def database_maintenance_card(message="", error=""):
         )
     except Exception:
         pass
-    try:
-        item = _v5030_bandwidth_admin_stats()
-        token = escape(csrf_token(), quote=True)
-        accounting = """
-      <div class="card admin-section" id="accounting-storage">
-        <div class="section-head"><div><span class="eyebrow">MAINTENANCE</span><h3>2-hour Node Accounting Storage</h3><p>Direct idempotent ingestion. No monitor-side queue and no per-VM UUID rows.</p></div><a class="btn" href="%s">Open Consumption</a></div>
-        <div class="admin-kpis"><div><small>RETENTION</small><b>7 days</b></div><div><small>ROWS</small><b>%s</b></div><div><small>TABLE + INDEX</small><b>%s</b></div><div><small>REPORTING VISIBLE NODES</small><b>%s / %s</b></div><div><small>MISSING</small><b>%s</b></div><div><small>LAST INGESTION</small><b>%s</b></div><div><small>OLDEST BUCKET</small><b>%s</b></div><div><small>NEWEST BUCKET</small><b>%s</b></div></div>
-        <div class="bulk-bar"><form method="post" action="%s"><input type="hidden" name="csrf_token" value="%s"><input type="hidden" name="action" value="cleanup"><button type="submit">Run RETENTION7 cleanup</button></form><form method="post" action="%s" onsubmit="return confirm('Delete all Consumption history?');"><input type="hidden" name="csrf_token" value="%s"><input type="hidden" name="action" value="clear"><input name="confirm_text" placeholder="CLEAR BANDWIDTH HISTORY"><button class="btn-danger" type="submit">Clear accounting history</button></form></div>
-        <div class="table-hint">These controls only affect node_bandwidth_consumption_2h. Node Groups, memberships and membership history are configuration data and are not part of RETENTION7.</div>
-      </div>
-        """ % (url_for("bandwidth_consumption_page"), f"{item['rows']:,}", human(item["size"]), item["reporting"], item["visible_nodes"], item["missing"], fmt_full(item["last_received"]), fmt_full(item["oldest"]), fmt_full(item["newest"]), url_for("admin_bandwidth_consumption_action"), token, url_for("admin_bandwidth_consumption_action"), token)
-        html += accounting
-    except Exception:
-        app.logger.exception("Could not render accounting maintenance card")
     return html
 
 
@@ -35240,7 +35252,6 @@ _v5058r4_purge_node_data_base = purge_node_data
 
 def purge_node_data(conn, node):
     result = dict(_v5058r4_purge_node_data_base(conn, node) or {})
-    result["node_group_membership_history"] = _delete_count(conn, "DELETE FROM node_group_membership_history WHERE node=?", (node,))
     result["node_consumption_hourly"] = _delete_count(conn, "DELETE FROM node_consumption_hourly WHERE node=?", (node,))
     result["node_consumption_daily"] = _delete_count(conn, "DELETE FROM node_consumption_daily WHERE node=?", (node,))
     return result
@@ -36419,31 +36430,3 @@ def page(title, content):
     except Exception:
         app.logger.exception("Could not apply v50.5.9 r3 UI alignment layer")
     return response
-
-# ---------------------------------------------------------------------------
-# VirtInfra Monitor 50.5.9 prod-r5 - additive Node Groups hotfix
-# Release: 50.5.9-prod-r6-node-groups-admin-bulk-management-retention-safe-maintenance-hotfix
-# Installed only after all existing append-only runtime implementations are
-# registered, so baseline wrappers and view functions remain intact.
-# ---------------------------------------------------------------------------
-import sys as _node_groups_sys
-import node_groups as _node_groups_hotfix
-
-
-class _NodeGroupsModuleProxy:
-    """Forward module attribute access to this exec_module() globals mapping."""
-
-    def __getattr__(self, name):
-        try:
-            return globals()[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
-
-    def __setattr__(self, name, value):
-        globals()[name] = value
-
-
-_node_groups_module = _node_groups_sys.modules.get(__name__)
-if _node_groups_module is None:
-    _node_groups_module = _NodeGroupsModuleProxy()
-_node_groups_hotfix.install(_node_groups_module)

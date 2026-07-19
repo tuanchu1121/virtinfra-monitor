@@ -58,7 +58,7 @@ _SERIAL_TABLES = {
     # Only tables whose callers actually consume Cursor.lastrowid. Keeping this
     # list small avoids a RETURNING round trip on high-volume metric inserts.
     "maintenance_jobs", "retention_runs", "dashboard_users", "api_keys",
-    "vm_abuse_events", "vm_abuse_incidents", "node_groups",
+    "vm_abuse_events", "vm_abuse_incidents",
 }
 
 _RE_COLLATE_NOCASE = re.compile(r"\s+COLLATE\s+NOCASE\b", re.I)

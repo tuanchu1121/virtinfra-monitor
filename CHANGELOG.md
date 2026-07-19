@@ -1,23 +1,3 @@
-# 50.5.9-prod-r6-node-groups-admin-bulk-management-retention-safe-maintenance-hotfix
-
-- Harden Node Groups administration, bulk membership management, monitoring summaries and role boundaries.
-- Preserve Node Group configuration during ordinary retention and cleanup; Nuclear reset recreates Ungrouped atomically.
-- Remove fixed credential text, restore baseline login controls and keep the original `/push` view untouched.
-- Add local flag assets, responsive UI regression coverage and PostgreSQL migration 012.
-
-# 50.5.9-prod-r5-node-groups-hotfix-additive
-
-Baseline trực tiếp: `50.5.9-prod-r4-dead-code-cleanup`.
-
-## Thay đổi riêng của r5
-
-- Bổ sung Node Groups theo module additive được nạp sau implementation runtime cuối cùng; `app/app.py` baseline giữ nguyên byte-for-byte và chỉ nối loader ở cuối file.
-- Thêm quản lý Node Groups, membership một-node-một-group, Ungrouped bất biến, VM kế thừa group từ node, audit history và filter Group trên các trang được yêu cầu.
-- Tách role cũ `admin` thành `super_admin` bằng migration có marker idempotent; role `admin` mới bị chặn khỏi Maintenance, API Keys, Theme, Retention, reset và cấu hình hệ thống nguy hiểm.
-- Thêm migration PostgreSQL `011_node_groups.sql`; không sửa bảng metric, công thức, agent payload, cadence, retention, abuse engine hoặc queue.
-- Vendor cục bộ flag-icons 7.5.0 MIT; không CDN, npm hay download runtime.
-- Group=All hoặc không truyền group gọi lại implementation baseline và giữ HTML/data behavior cũ.
-
 # 50.5.9-prod-r3-ui-alignment-overflow-hotfix
 
 Baseline trực tiếp: `50.5.9-prod-r2-ui-layout-polish-only`.

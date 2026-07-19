@@ -29,7 +29,7 @@ fail(){ echo "ERROR: $*" >&2; exit 1; }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.9-prod-r7-rbac-node-groups-node-vm-ui-refresh-hotfix-r1" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.5.9-prod-r7-production-minimal-rbac-visibility-ui-hotfix" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/bw_pg.py && -f app/maintenance_native.py \
    && -f app/maintenance_queue.py && -f app/maintenance_dispatch.py \
    && -f postgres/sql/007_safe_maintenance_queue.sql \
@@ -155,6 +155,7 @@ log "Validate additive Node Groups, role split, permissions and UI contracts"
 "$PYTHON" -m pytest -q tests/test_node_groups_hotfix.py
 "$PYTHON" -m pytest -q tests/test_node_groups_importlib_loader.py
 "$PYTHON" -m pytest -q tests/test_node_groups_r6.py
+"$PYTHON" -m pytest -q tests/test_v5059_r7_production_hotfix.py
 
 log "Verify one-command installer and operations flow"
 bash ./tools/test-installer-flow.sh

@@ -15,7 +15,7 @@ MODULE = ROOT / "app" / "node_groups.py"
 MIGRATION = ROOT / "postgres" / "sql" / "011_node_groups.sql"
 R6_MIGRATION = ROOT / "postgres" / "sql" / "012_node_groups_r6_safety.sql"
 RUNTIME_TOOL = ROOT / "tools" / "node-groups-runtime-validation.py"
-EXPECTED_RELEASE = "50.5.9-prod-r7-rbac-node-groups-node-vm-ui-refresh-hotfix-r1"
+EXPECTED_RELEASE = "50.5.9-prod-r7-production-minimal-rbac-visibility-ui-hotfix"
 
 
 @pytest.fixture(scope="module")
@@ -128,9 +128,7 @@ def test_runtime_role_crud_assignment_inheritance_and_filters(runtime_result):
         "ungrouped_protection", "occupied_group_delete_block", "new_node_ungrouped",
         "bulk_assign", "vm_inheritance", "audit_events", "page_filters",
         "group_all_html_equivalence", "group_all_delegation",
-        "admin_permission_boundary", "change_password_self_only",
-        "hide_group_visibility", "move_all_ungrouped", "node_vm_actions",
-        "ui_render_contract", "super_admin_stealth", "viewer_read_only",
+        "admin_permission_boundary", "super_admin_stealth", "viewer_read_only",
         "push_view_untouched", "node_groups_monitoring", "route_contract",
     }
     assert {key for key, value in result.items() if value == "PASS"} == expected

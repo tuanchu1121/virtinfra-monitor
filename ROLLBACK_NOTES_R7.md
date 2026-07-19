@@ -1,45 +1,16 @@
-# Rollback Notes: r7 to r6
+# Rollback — r7 to r6
 
-Rollback target: the exact r6 installer-manifest-fixture-fix source previously used by the installation.
+Rollback source archive: `virtinfra-monitor-50.5.9-prod-r6-node-groups-admin-bulk-management-retention-safe-maintenance-hotfix-production-slim.zip`.
 
-This hotfix adds no database table or column. Rollback is source-first and does not require deleting Node Groups, memberships, metrics, abuse data, accounting data or PostgreSQL volumes.
+This hotfix has no database migration and does not alter API/Agent payloads, so rollback is a source-only operation.
 
-## Safe rollback
+1. Keep the existing production release directory and data directory untouched.
+2. Extract the r6 archive into a new, versioned release directory; never overwrite the running tree in place.
+3. Reuse the existing environment file and persistent PostgreSQL/data paths. Do not copy credentials into the release tree.
+4. Run the r6 preflight against a disposable/staging database. Do not run destructive maintenance.
+5. For a low-downtime cutover, start the validated r6 application on a parallel socket/port, verify `/health`, then switch the reverse-proxy upstream atomically and drain r7. If the deployment uses one Gunicorn socket, atomically switch the release symlink and use its documented graceful reload.
+6. Verify login for Viewer/Admin/Super Admin, Dashboard, Top VM, Storage, Consumption, VM Abuse and Admin inventory.
+7. Retain the r7 directory and logs until rollback verification is complete.
 
-```bash
-set -Eeuo pipefail
+Rollback does not require reversing data because r7 adds no schema and performs no data conversion.
 
-APP_DIR=/opt/bw-monitor
-SERVICE=bw-monitor.service
-R6_DIR=/root/virtinfra-monitor-r6-installer-manifest-fixture-fix
-BACKUP="/root/virtinfra-r7-source-backup-$(date -u +%Y%m%dT%H%M%SZ)"
-
-mkdir -p "$BACKUP"
-cp -a "$APP_DIR"/. "$BACKUP"/
-
-test -f "$R6_DIR/app/app.py"
-test -f "$R6_DIR/app/node_groups.py"
-
-systemctl stop "$SERVICE"
-cp -a "$R6_DIR"/app/. "$APP_DIR"/
-python3 -m compileall -q "$APP_DIR"
-systemctl start "$SERVICE"
-
-for _ in $(seq 1 30); do
-  if curl -fsS --max-time 3 http://127.0.0.1:8080/livez >/dev/null \
-     && curl -fsS --max-time 3 http://127.0.0.1:8080/healthz >/dev/null; then
-    echo ROLLBACK_OK
-    exit 0
-  fi
-  sleep 2
-done
-
-echo 'Rollback health check failed; restoring r7 source backup' >&2
-systemctl stop "$SERVICE"
-cp -a "$BACKUP"/. "$APP_DIR"/
-python3 -m compileall -q "$APP_DIR"
-systemctl start "$SERVICE"
-exit 1
-```
-
-Do not run destructive maintenance, remove the PostgreSQL volume or downgrade role records during this source rollback.

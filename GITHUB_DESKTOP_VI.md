@@ -1,6 +1,6 @@
 # Đưa VirtInfra Monitor lên GitHub bằng GitHub Desktop
 
-> Release: `50.5.9-prod-r7-rbac-node-groups-node-vm-ui-refresh-hotfix-r1`
+> Release: `50.5.9-prod-r7-production-minimal-rbac-visibility-ui-hotfix`
 
 > Dùng cho release `50.5.9-prod-r3-ui-alignment-overflow-hotfix`.
 

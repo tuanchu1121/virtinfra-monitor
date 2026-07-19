@@ -1,13 +1,10 @@
-# 50.5.9-prod-r7-rbac-node-groups-node-vm-ui-refresh-hotfix-r1
+# 50.5.9-prod-r7-production-minimal-rbac-visibility-ui-hotfix
 
-- Fix Admin capability boundaries: User Management, Theme Settings, Account Logs, Node Logs and System Health are available to Admin, while Queue, PostgreSQL Data and privileged maintenance remain Super Admin-only.
-- Change Password now verifies and updates only the account stored in the current session, preserving username and role; Admin cannot view or manage Super Admin accounts.
-- Apply one canonical hidden-Node-Group visibility rule across monitoring, search, details, Storage, Consumption and VM Abuse while keeping hidden inventory manageable in Admin.
-- Fix Move all to Ungrouped so the backend resolves the system group automatically and records membership history without requiring a target selection.
-- Restore direct per-row Node and VM Hide, Restore and Purge actions, remove obsolete bulk selectors, preserve the existing purge queue and return operators to the correct Admin tab.
-- Replace broad Admin table injection with scoped renderers, align header/data cells, add safe sort keys, keep Group Hidden distinct from agent state and read Node CPU/RAM/Disk/Network from the existing current cache.
-- Remove Node Group icons from VM UUID and metric labels, correct Node Group and Consumption table mapping, retain Search/Clear and Apply/Reset order, and set operational auto-refresh to 30 seconds.
-- No metric formula, agent payload, ingest cadence, abuse threshold, queue architecture, retention logic or database schema change.
+- Correct capability-scoped Admin/Super Admin RBAC and make Change Password update only the signed-in dashboard user.
+- Apply one active-Node-Group visibility source across monitoring lists, searches, detail routes, Storage, Consumption and VM Abuse while retaining hidden inventory in Admin.
+- Replace Admin Node/VM bulk selectors with explicit row actions; add Node sorting and separate Agent versus Group Hidden state.
+- Correct Node Groups search, RAM severity, move-all-to-Ungrouped, Consumption columns/sorting, icon scope and 30-second refresh lifecycle.
+- Preserve endpoints, payloads, database schema, ingest, queue, retention, maintenance, Abuse rules and metric formulas.
 
 # 50.5.9-prod-r6-node-groups-admin-bulk-management-retention-safe-maintenance-hotfix
 

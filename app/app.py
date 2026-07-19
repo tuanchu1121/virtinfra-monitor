@@ -6887,7 +6887,7 @@ def page(title, content):
             }} catch (error) {{
                 if (error && error.name === 'AbortError') return;
                 // Normal clicks may fall back to a full navigation. The
-                // five-second silent refresh intentionally does not reload the
+                // silent refresh intentionally does not reload the
                 // document on timeout/5xx/network errors.
                 if (!silent) window.location.assign(requestedUrl);
             }} finally {{
@@ -6952,20 +6952,22 @@ def page(title, content):
         // Quiet 30-second content refresh for live operational pages only.
         // It never reloads the browser document, never overlaps requests, and
         // pauses while the operator is editing a form.
-        const BW_AUTO_REFRESH_MS = 30000;
+        const AUTO_REFRESH_MS = 30000;
         function bwIsLivePage() {{
             const p = window.location.pathname;
-            return p === '/' || p === '/top' || p === '/top/nodes'
-                || p === '/health/nodes' || p === '/storage'
-                || p === '/bandwidth-consumption' || p === '/abuse/vms'
-                || p.startsWith('/node/') || p.startsWith('/vm/');
+            return p === '/' || p === '/top' || p === '/top/nodes' || p === '/health/nodes'
+                || p === '/storage' || p === '/bandwidth-consumption' || p === '/abuse/vms'
+                || p.startsWith('/node/') || p === '/vm' || p.startsWith('/vm/');
         }}
         function bwOperatorIsEditing() {{
             const el = document.activeElement;
             if (!el || el === document.body) return false;
             return !!el.closest('input,select,textarea,[contenteditable="true"]');
         }}
-        setInterval(function() {{
+        if (window.__virtinfraAutoRefreshTimer) {{
+            clearInterval(window.__virtinfraAutoRefreshTimer);
+        }}
+        window.__virtinfraAutoRefreshTimer = setInterval(function() {{
             const mode = readThemeMode();
             if (mode === 'auto') applyTheme('auto', false);
             if (!bwIsLivePage() || document.hidden || bwNavigationBusy || bwOperatorIsEditing()) return;
@@ -6974,7 +6976,13 @@ def page(title, content):
                 preserveScroll: true,
                 silent: true
             }});
-        }}, BW_AUTO_REFRESH_MS);
+        }}, AUTO_REFRESH_MS);
+        window.addEventListener('pagehide', function() {{
+            if (window.__virtinfraAutoRefreshTimer) {{
+                clearInterval(window.__virtinfraAutoRefreshTimer);
+                window.__virtinfraAutoRefreshTimer = null;
+            }}
+        }}, {{once:true}});
         </script>
     </body>
     </html>
@@ -36423,8 +36431,8 @@ def page(title, content):
     return response
 
 # ---------------------------------------------------------------------------
-# VirtInfra Monitor 50.5.9 prod-r5 - additive Node Groups hotfix
-# Release: 50.5.9-prod-r7-rbac-node-groups-node-vm-ui-refresh-hotfix-r1
+# VirtInfra Monitor 50.5.9 prod-r7 - production-minimal runtime hotfix
+# Release: 50.5.9-prod-r7-production-minimal-rbac-visibility-ui-hotfix
 # Installed only after all existing append-only runtime implementations are
 # registered, so baseline wrappers and view functions remain intact.
 # ---------------------------------------------------------------------------

@@ -29,7 +29,7 @@ def compile_function(name: str, index: int = -1, namespace=None):
 
 
 def test_release_identity_and_preflight_dependencies():
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r11-functional-correctness-maintenance-hotfix"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r14-purge-queue-visibility-hotfix"
     requirements = (ROOT / "requirements.txt").read_text()
     assert "pytest>=8,<9" in requirements
     assert "PyYAML>=6,<7" in requirements

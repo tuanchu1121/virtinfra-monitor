@@ -1,6 +1,6 @@
 # Installation
 
-Release: `50.5.9-prod-r11-functional-correctness-maintenance-hotfix`
+Release: `50.5.9-prod-r14-purge-queue-visibility-hotfix`
 ## Requirements
 
 - Debian 12+ or Ubuntu 22.04+

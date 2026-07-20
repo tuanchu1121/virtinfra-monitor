@@ -62,12 +62,7 @@ def main() -> int:
         item = {}
         item["card_count_before"] = len(before.select(".card"))
         item["card_count_after"] = len(after.select(".card"))
-        if name == "admin-overview":
-            item["cards_unchanged"] = item["card_count_after"] == item["card_count_before"] - 1
-        elif name == "admin-maintenance":
-            item["cards_unchanged"] = item["card_count_after"] == item["card_count_before"] + 1
-        else:
-            item["cards_unchanged"] = item["card_count_before"] == item["card_count_after"]
+        item["cards_unchanged"] = item["card_count_before"] == item["card_count_after"]
 
         old_headers = header_texts(before.find_all("th"))
         new_headers = header_texts(after.find_all("th"))
@@ -77,16 +72,9 @@ def main() -> int:
 
         old_buttons = Counter(texts(before.find_all("button")))
         new_buttons = Counter(texts(after.find_all("button")))
-        if name == "admin-overview":
-            # r6 intentionally moves the accounting cleanup buttons to the
-            # Super Admin Maintenance page.
-            allowed_moved = {"Run cleanup now", "Clear history"}
-            item["old_buttons_preserved"] = all(
-                key in allowed_moved or new_buttons[key] >= count
-                for key, count in old_buttons.items()
-            )
-        else:
-            item["old_buttons_preserved"] = all(new_buttons[key] >= count for key, count in old_buttons.items())
+        item["old_buttons_preserved"] = all(
+            new_buttons[key] >= count for key, count in old_buttons.items()
+        )
 
         old_filters = [tag.get("name") for tag in before.select("form.search [name], form.storage-search-bar [name], form.v5058c-toolbar [name], form.abuse-filter [name]") if tag.get("name")]
         new_filters = [tag.get("name") for tag in after.select("form.search [name], form.storage-search-bar [name], form.v5058c-toolbar [name], form.abuse-filter [name]") if tag.get("name")]

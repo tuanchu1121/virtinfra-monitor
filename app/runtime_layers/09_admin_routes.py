@@ -1077,7 +1077,7 @@ def admin_delete_vm():
             jobs = enqueue_batched_purge_jobs("purge_vms", [{"node": node, "vm_uuid": vm_uuid}], actor)
             msg = f"Queued VM purge job #{jobs[0][0]} for {node}/{vm_uuid}."
             log_account_event("vm_purge_queued", username=actor, realm="admin", role="admin", detail=msg)
-            return redirect(url_for("admin_page", section="vms", dbmsg=msg))
+            return redirect(url_for("admin_page", section="maintenance", dbmsg=msg) + "#maintenance-queue")
         except Exception as exc:
             conn = db()
             try:
@@ -1088,7 +1088,7 @@ def admin_delete_vm():
                 conn.close()
             err = f"Could not queue VM purge: {exc}"
             log_account_event("vm_purge_queue_failed", username=actor, realm="admin", role="admin", detail=err[:500])
-            return redirect(url_for("admin_page", section="vms", dberr=err))
+            return redirect(url_for("admin_page", section="maintenance", dberr=err) + "#maintenance-queue")
 
     conn = db()
     try:
@@ -1147,7 +1147,7 @@ def admin_delete_node():
             jobs = enqueue_batched_purge_jobs("purge_nodes", [node], actor)
             msg = f"Queued node purge job #{jobs[0][0]} for {node}."
             log_account_event("node_purge_queued", username=actor, realm="admin", role="admin", detail=msg)
-            return redirect(url_for("admin_page", section="nodes", dbmsg=msg))
+            return redirect(url_for("admin_page", section="maintenance", dbmsg=msg) + "#maintenance-queue")
         except Exception as exc:
             conn = db()
             try:
@@ -1158,7 +1158,7 @@ def admin_delete_node():
                 conn.close()
             err = f"Could not queue node purge: {exc}"
             log_account_event("node_purge_queue_failed", username=actor, realm="admin", role="admin", detail=err[:500])
-            return redirect(url_for("admin_page", section="nodes", dberr=err))
+            return redirect(url_for("admin_page", section="maintenance", dberr=err) + "#maintenance-queue")
 
     conn = db()
     try:
@@ -1212,7 +1212,7 @@ def admin_purge_node_vms():
         jobs = enqueue_batched_purge_jobs("purge_node_vms", [node], actor)
         msg = f"Queued purge-all-VM job #{jobs[0][0]} for node {node}."
         log_account_event("node_vms_purge_queued", username=actor, realm="admin", role="admin", detail=msg)
-        return redirect(url_for("admin_page", section="nodes", dbmsg=msg))
+        return redirect(url_for("admin_page", section="maintenance", dbmsg=msg) + "#maintenance-queue")
     except Exception as exc:
         conn = db()
         try:
@@ -1223,7 +1223,7 @@ def admin_purge_node_vms():
             conn.close()
         err = f"Could not queue node VM purge: {exc}"
         log_account_event("node_vms_purge_queue_failed", username=actor, realm="admin", role="admin", detail=err[:500])
-        return redirect(url_for("admin_page", section="nodes", dberr=err))
+        return redirect(url_for("admin_page", section="maintenance", dberr=err) + "#maintenance-queue")
 
 @app.route("/admin/bulk_nodes", methods=["POST"])
 def admin_bulk_nodes():
@@ -1267,7 +1267,7 @@ def admin_bulk_nodes():
             job_list = ", ".join(f"#{job_id}" for job_id, _unit, _count in jobs)
             msg = f"Queued {len(nodes)} node item(s) in exclusive purge job #{jobs[0][0]}. Internal batch size: {MAX_PURGE_ITEMS_PER_JOB}."
             log_account_event("bulk_node_purge_queued", username=actor, realm="admin", role="admin", detail=f"action={action};nodes={len(nodes)};jobs={job_list}")
-            return redirect(url_for("admin_page", section="nodes", dbmsg=msg))
+            return redirect(url_for("admin_page", section="maintenance", dbmsg=msg) + "#maintenance-queue")
         except Exception as exc:
             conn = db()
             try:
@@ -1280,7 +1280,7 @@ def admin_bulk_nodes():
                 conn.close()
             err = f"Could not queue bulk node purge: {exc}"
             log_account_event("bulk_node_purge_queue_failed", username=actor, realm="admin", role="admin", detail=err[:500])
-            return redirect(url_for("admin_page", section="nodes", dberr=err))
+            return redirect(url_for("admin_page", section="maintenance", dberr=err) + "#maintenance-queue")
 
     conn = db()
     try:
@@ -1349,7 +1349,7 @@ def admin_bulk_vms():
             job_list = ", ".join(f"#{job_id}" for job_id, _unit, _count in jobs)
             msg = f"Queued {len(selected)} VM purge(s) in exclusive purge job #{jobs[0][0]}. Internal batch size: {MAX_PURGE_ITEMS_PER_JOB}."
             log_account_event("bulk_vm_purge_queued", username=actor, realm="admin", role="admin", detail=f"vms={len(selected)};jobs={job_list}")
-            return redirect(url_for("admin_page", section="vms", dbmsg=msg))
+            return redirect(url_for("admin_page", section="maintenance", dbmsg=msg) + "#maintenance-queue")
         except Exception as exc:
             conn = db()
             try:
@@ -1360,7 +1360,7 @@ def admin_bulk_vms():
                 conn.close()
             err = f"Could not queue bulk VM purge: {exc}"
             log_account_event("bulk_vm_purge_queue_failed", username=actor, realm="admin", role="admin", detail=err[:500])
-            return redirect(url_for("admin_page", section="vms", dberr=err))
+            return redirect(url_for("admin_page", section="maintenance", dberr=err) + "#maintenance-queue")
 
     conn = db()
     try:

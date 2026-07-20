@@ -17,7 +17,7 @@ MODULE = ROOT / "app" / "node_groups.py"
 MIGRATION = ROOT / "postgres" / "sql" / "011_node_groups.sql"
 R6_MIGRATION = ROOT / "postgres" / "sql" / "012_node_groups_r6_safety.sql"
 RUNTIME_TOOL = ROOT / "tools" / "node-groups-runtime-validation.py"
-EXPECTED_RELEASE = "50.5.9-prod-r11-functional-correctness-maintenance-hotfix"
+EXPECTED_RELEASE = "50.5.9-prod-r14-purge-queue-visibility-hotfix"
 
 
 @pytest.fixture(scope="module")

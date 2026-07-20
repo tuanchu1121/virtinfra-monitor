@@ -1,4 +1,4 @@
-# Release: 50.5.9-prod-r11-functional-correctness-maintenance-hotfix
+# Release: 50.5.9-prod-r14-purge-queue-visibility-hotfix
 # Installed only after all existing append-only runtime implementations are
 # registered, so baseline wrappers and view functions remain intact.
 import sys as _node_groups_sys

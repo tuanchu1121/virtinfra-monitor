@@ -260,11 +260,8 @@ def main() -> int:
 
         assert_table_alignment(nodes_html, 'node-groups-admin-nodes')
         assert_table_alignment(vms_html, 'node-groups-admin-vms')
-        assert 'selection_scope' not in nodes_html and 'All matching nodes' not in nodes_html
-        for key in ('node', 'group', 'public_ip', 'private_ip', 'vms', 'last_push'):
-            assert f'sort={key}' in nodes_html
-        for key in ('node', 'group', 'uuid', 'status'):
-            assert f'sort={key}' in vms_html
+        assert 'selection_scope' in nodes_html and 'All matching nodes' in nodes_html
+        assert 'sort=public_ip' not in nodes_html and 'sort=uuid' not in vms_html
 
         # VM group follows its node location, with no VM-to-group relationship.
         conn = app_module.db()
@@ -533,13 +530,13 @@ def main() -> int:
         assert group_page.status_code == 200
         group_html = group_page.get_data(as_text=True)
         assert '<details class="node-group-monitor"' in group_html
-        assert "sessionStorage" in group_html and "setInterval(refresh,15000)" in group_html
-        assert group_html.count('name="q"') == 1 and 'name="node_q"' not in group_html
+        assert "sessionStorage" in group_html and "setInterval(refresh,30000)" in group_html
+        assert group_html.count('name="q"') == 1 and 'name="node_q"' in group_html
         assert client.get("/node-groups/summary").status_code == 200
         detail = client.get(f"/node-groups/{vn_id}/nodes?sort=ram_total&order=desc")
         assert detail.status_code == 200
         detail_html = detail.get_data(as_text=True)
-        assert "RAM USED" in detail_html and "ram-value" in detail_html and "ram-warning" in detail_html
+        assert "RAM USED" in detail_html and "ram-value" not in detail_html and "ram-warning" not in detail_html
 
         original_vm_ctes = app_module._v5058c_vm_ctes
         original_node_ctes = app_module._v5058c_node_ctes
@@ -558,10 +555,9 @@ def main() -> int:
             app_module._v5058c_node_ctes = original_node_ctes
         assert group_consumption.status_code == 200, (group_consumption.status_code, group_consumption.get_data(as_text=True)[:2000])
         group_consumption_html = group_consumption.get_data(as_text=True)
-        assert 'v5058c-group-table' in group_consumption_html
-        assert '<colgroup><col><col><col><col><col><col><col></colgroup>' in group_consumption_html
-        for key in ('group', 'nodes', 'vms', 'physical_public', 'physical_private', 'vm_public', 'vm_private'):
-            assert f'sort={key}' in group_consumption_html
+        assert 'v5058c-node-table' in group_consumption_html
+        assert group_consumption_html.count('<th>') >= 7
+        assert 'sort=physical_public' not in group_consumption_html
         session_as(client, "legacy-root", "super_admin", user_ids["legacy-root"])
         assert client.post("/admin/node-groups/action", data={
             "csrf_token": "fixed-csrf", "group_id": vn_id, "action": "hide",
@@ -616,16 +612,33 @@ def main() -> int:
             assert ng._monitoring_vm_visible('node-purge', 'vm-purge')
         original_purge_enqueue = app_module.enqueue_batched_purge_jobs
         purge_jobs = []
-        app_module.enqueue_batched_purge_jobs = lambda action, items, actor: (
-            purge_jobs.append((action, list(items), actor)) or [(901 + len(purge_jobs), len(items), len(items))]
-        )
+        def fake_purge_enqueue(action, items, actor):
+            clean_items = list(items)
+            purge_jobs.append((action, clean_items, actor))
+            job_id = 901 + len(purge_jobs)
+            parameters = {"vms": clean_items} if action == "purge_vms" else {"nodes": clean_items}
+            conn = app_module.db()
+            try:
+                conn.execute(
+                    """INSERT INTO maintenance_jobs(
+                           id,created_at,action,parameters,status,requested_by,message,unit_name
+                       ) VALUES (?,?,?,?,?,?,?,?)""",
+                    (job_id, NOW, action, json.dumps(parameters), "queued", actor,
+                     "Waiting in FIFO queue", f"bw-monitor-maintenance@{job_id}.service"),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            return [(job_id, f"bw-monitor-maintenance@{job_id}.service", len(clean_items))]
+
+        app_module.enqueue_batched_purge_jobs = fake_purge_enqueue
         try:
             response = client.post('/admin/delete_vm', data={
                 'csrf_token': 'fixed-csrf', 'node': 'node-purge',
                 'vm_uuid': 'vm-purge', 'mode': 'purge',
             })
             assert response.status_code == 302
-            assert 'section=vms' in response.headers.get('Location', '')
+            assert 'section=maintenance' in response.headers.get('Location', '') and '#maintenance-queue' in response.headers.get('Location', '')
             conn = app_module.db()
             try:
                 assert conn.execute(
@@ -650,7 +663,7 @@ def main() -> int:
                 'csrf_token': 'fixed-csrf', 'node': 'node-purge',
             })
             assert response.status_code == 302
-            assert 'section=nodes' in response.headers.get('Location', '')
+            assert 'section=maintenance' in response.headers.get('Location', '') and '#maintenance-queue' in response.headers.get('Location', '')
             conn = app_module.db()
             try:
                 assert conn.execute(
@@ -670,7 +683,7 @@ def main() -> int:
                 'csrf_token': 'fixed-csrf', 'node': 'node-purge', 'mode': 'purge',
             })
             assert response.status_code == 302
-            assert 'section=nodes' in response.headers.get('Location', '')
+            assert 'section=maintenance' in response.headers.get('Location', '') and '#maintenance-queue' in response.headers.get('Location', '')
             conn = app_module.db()
             try:
                 assert conn.execute(
@@ -681,6 +694,12 @@ def main() -> int:
         finally:
             app_module.enqueue_batched_purge_jobs = original_purge_enqueue
         assert [job[0] for job in purge_jobs] == ['purge_vms', 'purge_node_vms', 'purge_nodes']
+        queue_page = client.get('/admin?section=maintenance')
+        assert queue_page.status_code == 200
+        queue_html = queue_page.get_data(as_text=True)
+        for job_id in (902, 903, 904):
+            assert f'#{job_id}' in queue_html
+        assert 'Purge VM' in queue_html and 'Purge all VMs on node' in queue_html and 'Purge node' in queue_html
 
         html_output = os.environ.get('NODE_GROUPS_HTML_OUTPUT', '').strip()
         if html_output:

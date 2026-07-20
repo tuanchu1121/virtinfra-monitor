@@ -29,7 +29,7 @@ fail(){ echo "ERROR: $*" >&2; exit 1; }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.9-prod-r11-functional-correctness-maintenance-hotfix" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.5.9-prod-r14-purge-queue-visibility-hotfix" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/runtime_loader.py \
    && -f deploy/postgres/install-postgres-native.sh \
    && -f deploy/postgres/update-postgres-native.sh \
@@ -169,8 +169,9 @@ log "Validate additive Node Groups, role split, permissions and UI contracts"
 "$PYTHON" -m pytest -q tests/test_node_groups_importlib_loader.py
 "$PYTHON" -m pytest -q tests/test_node_groups_r6.py
 
-log "Validate r11 functional correctness and maintenance diagnostics"
-"$PYTHON" -m pytest -q tests/test_r11_functional_correctness.py
+log "Validate r13 conservative correctness, refresh and retention"
+"$PYTHON" -m pytest -q tests/test_r13_conservative_correctness.py
+"$PYTHON" -m pytest -q tests/test_r14_purge_queue_visibility.py
 
 log "Verify one-command installer and operations flow"
 bash ./tools/test-installer-flow.sh

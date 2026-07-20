@@ -239,7 +239,7 @@ def main() -> int:
         })
         mark("admin_consumption_cleanup_backend_allowed", cleanup.status_code == 302)
         clear = client.post("/admin/bandwidth-consumption", data={
-            "csrf_token": "fixed-csrf", "action": "clear", "confirm_text": "CLEAR BANDWIDTH HISTORY",
+            "csrf_token": "fixed-csrf", "action": "clear", "confirm_text": "CLEAR CONSUMPTION HISTORY",
         })
         mark("admin_consumption_clear_backend_block", clear.status_code == 403)
         conn = app_module.db()

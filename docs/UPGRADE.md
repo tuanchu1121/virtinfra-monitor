@@ -1,6 +1,6 @@
 # Update an existing installation
 
-Release: `50.5.9-prod-r18-user-rbac-session-hardening-hotfix`
+Release: `50.5.9-prod-r19-production-readiness-audit-hotfix`
 Use this path only when VirtInfra Monitor is already installed. The updater requires both `/etc/default/bw-monitor` and `/etc/default/bw-monitor-postgres`.
 
 ```bash
@@ -15,7 +15,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/update.sh \
 | bash
 ```
 
-Before application files are replaced, the updater runs the installed PostgreSQL backup tool. It preserves:
+Before application files are replaced, the updater runs the installed PostgreSQL backup tool. R19 then refuses an update while a maintenance worker is active and briefly stops the web, retention, backup, inventory-cleanup and health-watch services so schema/backfill work cannot deadlock with live traffic. It preserves:
 
 - the `bw_monitor_postgres_data` volume;
 - PostgreSQL credentials and port;
@@ -24,7 +24,7 @@ Before application files are replaced, the updater runs the installed PostgreSQL
 - domain, TLS, Gunicorn and optional Redis settings;
 - all current and historical monitoring data.
 
-After update, R18 intentionally requires every existing browser session to sign in again because sessions are now bound to the account's current password, role and enabled state.
+After updating from a pre-R18 release, every existing browser session must sign in again because sessions are now bound to the account's current password, role and enabled state.
 
 After update:
 

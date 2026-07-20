@@ -55,6 +55,8 @@ MONITORING_TABLES: tuple[str, ...] = (
     "node_physical_net_stats",
     "agent_health_stats",
     "node_bandwidth_consumption_2h",
+    "node_consumption_hourly",
+    "node_consumption_daily",
     "vm_chart_5m",
     "vm_raw_detail_5m",
     "node_chart_5m",

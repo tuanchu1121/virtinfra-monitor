@@ -11,7 +11,7 @@ VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 
 def test_release_identity():
-    assert VERSION == "50.5.9-prod-r18-user-rbac-session-hardening-hotfix"
+    assert VERSION == "50.5.9-prod-r19-production-readiness-audit-hotfix"
     assert VERSION in APP
     assert VERSION in INSTALLER
 

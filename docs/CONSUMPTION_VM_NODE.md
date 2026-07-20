@@ -1,6 +1,6 @@
 # Consumption VM/Node
 
-Release: `50.5.9-prod-r18-user-rbac-session-hardening-hotfix`
+Release: `50.5.9-prod-r19-production-readiness-audit-hotfix`
 
 ## Scope
 

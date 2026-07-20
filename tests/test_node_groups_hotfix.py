@@ -18,7 +18,7 @@ MIGRATION = ROOT / "postgres" / "sql" / "011_node_groups.sql"
 R6_MIGRATION = ROOT / "postgres" / "sql" / "012_node_groups_r6_safety.sql"
 QUEUE_BOOLEAN_MIGRATION = ROOT / "postgres" / "sql" / "013_maintenance_queue_boolean.sql"
 RUNTIME_TOOL = ROOT / "tools" / "node-groups-runtime-validation.py"
-EXPECTED_RELEASE = "50.5.9-prod-r18-user-rbac-session-hardening-hotfix"
+EXPECTED_RELEASE = "50.5.9-prod-r19-production-readiness-audit-hotfix"
 
 
 @pytest.fixture(scope="module")
@@ -64,7 +64,7 @@ def test_node_groups_loader_and_required_runtime_sections_are_present():
     assert "_node_groups_hotfix.install(_node_groups_module)" in connector
     assert "Green" + "cloud" not in data
     assert "Green@" + "1234" not in data
-    assert "2-hour Node Accounting Storage" in data
+    assert "Node Consumption Rollup Storage" in data
     assert "accounting/RETENTION7 controls live only under Maintenance" in data
 
 

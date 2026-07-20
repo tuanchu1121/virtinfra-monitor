@@ -39,7 +39,7 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_COMPRESSED_PUSH_BYTES
 # v48.4.7: unified node/IP/UUID/interface search across dashboard pages
 # 50.5.7-prod-r2: retain VM/uplink MAC identity, search by MAC, show MAC on VM/Node detail
 
-TOKEN = os.environ.get("BW_MONITOR_TOKEN", "123456")
+TOKEN = str(os.environ.get("BW_MONITOR_TOKEN") or "").strip()
 DB = os.environ.get("BW_MONITOR_DB", "/var/lib/bw-monitor/postgresql")
 DATABASE_URL = os.environ.get("BW_DATABASE_URL") or os.environ.get("BW_POSTGRES_DSN", "")
 

@@ -1,4 +1,4 @@
-"""50.5.9-prod-r18-user-rbac-session-hardening-hotfix.
+"""50.5.9-prod-r19-production-readiness-audit-hotfix.
 
 Operations single-shell, Node flag scope and user/RBAC/session hardening.
 

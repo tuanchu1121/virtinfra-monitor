@@ -14,7 +14,7 @@ def valid_agent_token(value):
     supplied = str(value or "")
     return any(hmac.compare_digest(supplied, expected) for expected in V5057_AGENT_TOKENS)
 
-V5057_VERSION = "50.5.9-prod-r18-user-rbac-session-hardening-hotfix"
+V5057_VERSION = "50.5.9-prod-r19-production-readiness-audit-hotfix"
 
 def enqueue_maintenance_job(action, parameters, actor):
     payload = dict(parameters or {})
@@ -259,12 +259,12 @@ def database_maintenance_card(message="", error=""):
         token = escape(csrf_token(), quote=True)
         accounting = """
       <div class="card admin-section" id="accounting-storage">
-        <div class="section-head"><div><span class="eyebrow">MAINTENANCE</span><h3>2-hour Node Accounting Storage</h3><p>Direct idempotent ingestion. No monitor-side queue and no per-VM UUID rows.</p></div><a class="btn" href="%s">Open Consumption</a></div>
-        <div class="admin-kpis"><div><small>RETENTION</small><b>7 days</b></div><div><small>ROWS</small><b>%s</b></div><div><small>TABLE + INDEX</small><b>%s</b></div><div><small>REPORTING VISIBLE NODES</small><b>%s / %s</b></div><div><small>MISSING</small><b>%s</b></div><div><small>LAST INGESTION</small><b>%s</b></div><div><small>OLDEST BUCKET</small><b>%s</b></div><div><small>NEWEST BUCKET</small><b>%s</b></div></div>
-        <div class="bulk-bar"><form method="post" action="%s"><input type="hidden" name="csrf_token" value="%s"><input type="hidden" name="action" value="cleanup"><button type="submit">Run RETENTION7 cleanup</button></form><form method="post" action="%s" onsubmit="return confirm('Delete all Consumption history?');"><input type="hidden" name="csrf_token" value="%s"><input type="hidden" name="action" value="clear"><input name="confirm_text" placeholder="CLEAR BANDWIDTH HISTORY"><button class="btn-danger" type="submit">Clear accounting history</button></form></div>
-        <div class="table-hint">These controls only affect node_bandwidth_consumption_2h. Node Groups, memberships and membership history are configuration data and are not part of RETENTION7.</div>
+        <div class="section-head"><div><span class="eyebrow">MAINTENANCE</span><h3>Node Consumption Rollup Storage</h3><p>Current hourly/daily physical Node rollups created from normal 5-minute Agent pushes. No per-VM accounting rows.</p></div><a class="btn" href="%s">Open Consumption</a></div>
+        <div class="admin-kpis"><div><small>RETENTION</small><b>7 days</b></div><div><small>HOURLY ROWS</small><b>%s</b></div><div><small>DAILY ROWS</small><b>%s</b></div><div><small>LEGACY 2H ROWS</small><b>%s</b></div><div><small>TABLE + INDEX</small><b>%s</b></div><div><small>REPORTING VISIBLE NODES</small><b>%s / %s</b></div><div><small>MISSING RECENT ROLLUP</small><b>%s</b></div><div><small>LAST INGESTION</small><b>%s</b></div><div><small>OLDEST BUCKET</small><b>%s</b></div><div><small>NEWEST BUCKET</small><b>%s</b></div></div>
+        <div class="bulk-bar"><form method="post" action="%s"><input type="hidden" name="csrf_token" value="%s"><input type="hidden" name="action" value="cleanup"><button type="submit">Run 7-day Consumption cleanup</button></form><form method="post" action="%s" onsubmit="return confirm('Delete all hourly, daily and legacy Consumption history?');"><input type="hidden" name="csrf_token" value="%s"><input type="hidden" name="action" value="clear"><input name="confirm_text" placeholder="CLEAR CONSUMPTION HISTORY"><button class="btn-danger" type="submit">Clear Consumption history</button></form></div>
+        <div class="table-hint">Clear Monitoring Data also clears these rollups. Node/VM inventory, Node Groups, memberships and user settings are preserved.</div>
       </div>
-        """ % (url_for("bandwidth_consumption_page"), f"{item['rows']:,}", human(item["size"]), item["reporting"], item["visible_nodes"], item["missing"], fmt_full(item["last_received"]), fmt_full(item["oldest"]), fmt_full(item["newest"]), url_for("admin_bandwidth_consumption_action"), token, url_for("admin_bandwidth_consumption_action"), token)
+        """ % (url_for("bandwidth_consumption_page"), f"{item['hourly_rows']:,}", f"{item['daily_rows']:,}", f"{item['legacy_rows']:,}", human(item["size"]), item["reporting"], item["visible_nodes"], item["missing"], fmt_full(item["last_received"]), fmt_full(item["oldest"]), fmt_full(item["newest"]), url_for("admin_bandwidth_consumption_action"), token, url_for("admin_bandwidth_consumption_action"), token)
         html += accounting
     except Exception:
         app.logger.exception("Could not render accounting maintenance card")

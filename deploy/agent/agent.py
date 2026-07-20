@@ -34,8 +34,8 @@ import threading
 import stat
 from pathlib import Path
 
-API = os.environ.get("VIRTINFRA_AGENT_API") or os.environ.get("BW_AGENT_API", "http://103.199.19.207:8080/push")
-TOKEN = os.environ.get("VIRTINFRA_AGENT_TOKEN") or os.environ.get("BW_AGENT_TOKEN", "123456")
+API = str(os.environ.get("VIRTINFRA_AGENT_API") or os.environ.get("BW_AGENT_API") or "").strip()
+TOKEN = str(os.environ.get("VIRTINFRA_AGENT_TOKEN") or os.environ.get("BW_AGENT_TOKEN") or "").strip()
 STATE = os.environ.get("VIRTINFRA_AGENT_STATE") or os.environ.get("BW_AGENT_STATE", "/var/lib/virtinfra-agent/state.json")
 NODE_NAME = (os.environ.get("VIRTINFRA_AGENT_NODE") or os.environ.get("BW_AGENT_NODE") or os.uname().nodename).strip()
 
@@ -1946,6 +1946,11 @@ def post_payload(payload):
 
 
 def main():
+    if not DRY_RUN:
+        if not (API.startswith("http://") or API.startswith("https://")):
+            raise SystemExit("VIRTINFRA_AGENT_API/BW_AGENT_API must be an http(s) /push URL")
+        if not TOKEN:
+            raise SystemExit("VIRTINFRA_AGENT_TOKEN/BW_AGENT_TOKEN is required")
     signal.signal(signal.SIGTERM, handle_signal)
     signal.signal(signal.SIGINT, handle_signal)
 

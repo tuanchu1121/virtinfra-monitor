@@ -37,16 +37,17 @@ def _v5049_runtime_theme_script(settings=None):
 (function(){{
   var themes={payload};
   var customKey="{V5049_THEME_SELECTION_KEY}";
-  var select=document.getElementById("unified-theme-select");
+  var coreApply=(typeof window.applyTheme==="function")?window.applyTheme:null;
+  function currentSelect(){{return document.getElementById("unified-theme-select")}}
   function readCustom(){{try{{return localStorage.getItem(customKey)||""}}catch(e){{return""}}}}
   function writeCustom(id){{try{{if(id)localStorage.setItem(customKey,id);else localStorage.removeItem(customKey)}}catch(e){{}}}}
   function coreMode(){{try{{var mode=localStorage.getItem("bw-theme-mode")||"auto";return mode==="dark"||mode==="light"?mode:"auto"}}catch(e){{return"auto"}}}}
-  function selectValue(value){{if(select)select.value=value}}
+  function selectValue(value){{var select=currentSelect();if(select)select.value=value}}
   function useCore(mode,persist){{
     mode=(mode==="dark"||mode==="light")?mode:"auto";
     writeCustom("");
     document.documentElement.removeAttribute("data-custom-theme");
-    if(typeof applyTheme==="function")applyTheme(mode,!!persist);
+    if(coreApply)coreApply(mode,!!persist);
     else{{
       try{{if(persist)localStorage.setItem("bw-theme-mode",mode)}}catch(e){{}}
       document.documentElement.setAttribute("data-theme-mode",mode);
@@ -68,13 +69,21 @@ def _v5049_runtime_theme_script(settings=None):
     if(value&&value.indexOf("theme:")===0)useCustom(value.slice(6),persist);
     else useCore(value&&value.indexOf("mode:")===0?value.slice(5):"auto",persist);
   }}
-  if(select)select.addEventListener("change",function(){{applySelection(this.value,true)}});
-  window.addEventListener("storage",function(ev){{
-    if(ev.key===customKey||ev.key==="bw-theme-mode"){{
-      var id=readCustom();if(id&&themes[id])useCustom(id,false);else useCore(coreMode(),false);
-    }}
+  function applyStored(){{var id=readCustom();if(id&&themes[id])useCustom(id,false);else useCore(coreMode(),false)}}
+  window.virtinfraApplySelectedTheme=applyStored;
+  window.applyTheme=function(mode,persist){{
+    if(persist){{useCore(mode,true);return}}
+    var id=readCustom();
+    if(id&&themes[id])useCustom(id,false);else if(coreApply)coreApply(mode,false);else useCore(mode,false);
+  }};
+  document.addEventListener("change",function(ev){{
+    var target=ev.target;
+    if(target&&target.id==="unified-theme-select")applySelection(target.value,true);
   }});
-  var current=readCustom();if(current&&themes[current])useCustom(current,false);else useCore(coreMode(),false);
+  window.addEventListener("storage",function(ev){{
+    if(ev.key===customKey||ev.key==="bw-theme-mode")applyStored();
+  }});
+  applyStored();
 }})();
 </script>
 '''

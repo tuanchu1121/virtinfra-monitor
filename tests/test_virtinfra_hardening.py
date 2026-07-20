@@ -4,7 +4,7 @@ root=Path(__file__).resolve().parents[1]
 from runtime_source import read_app_source
 app=read_app_source()
 agent=(root/'deploy/agent/agent.py').read_text()
-assert (root/'VERSION').read_text().strip() == '50.5.9-prod-r18-user-rbac-session-hardening-hotfix'
+assert (root/'VERSION').read_text().strip() == '50.5.9-prod-r19-production-readiness-audit-hotfix'
 assert 'VirtInfra Monitor' in app
 assert 'WAL reserved/recycled' in app
 assert 'SHM {human' not in app

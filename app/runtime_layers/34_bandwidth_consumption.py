@@ -614,9 +614,20 @@ def bandwidth_consumption_page():
     return page("Consumption", content)
 
 def _v5030_bandwidth_admin_stats():
+    """Return stats for the current hourly/daily rollups plus legacy storage."""
     conn = db()
     try:
-        row = conn.execute("""
+        hourly = conn.execute("""
+            SELECT COUNT(*),COALESCE(MIN(hour_start),0),COALESCE(MAX(hour_start),0),
+                   COALESCE(MAX(last_push),0)
+            FROM node_consumption_hourly
+        """).fetchone()
+        daily = conn.execute("""
+            SELECT COUNT(*),COALESCE(MIN(day_start),0),COALESCE(MAX(day_start),0),
+                   COALESCE(MAX(last_push),0)
+            FROM node_consumption_daily
+        """).fetchone()
+        legacy = conn.execute("""
             SELECT COUNT(*),COALESCE(MIN(bucket_start),0),COALESCE(MAX(bucket_end),0),
                    COALESCE(MAX(received_at),0)
             FROM node_bandwidth_consumption_2h
@@ -626,22 +637,33 @@ def _v5030_bandwidth_admin_stats():
             WHERE COALESCE(status,'active')!='hidden' AND deleted_at IS NULL
         """).fetchone()[0], 0)
         reporting = safe_int(conn.execute("""
-            SELECT COUNT(DISTINCT b.node)
-            FROM node_bandwidth_consumption_2h b
-            JOIN node_inventory ni ON ni.node=b.node
+            SELECT COUNT(DISTINCT h.node)
+            FROM node_consumption_hourly h
+            JOIN node_inventory ni ON ni.node=h.node
             WHERE COALESCE(ni.status,'active')!='hidden'
               AND ni.deleted_at IS NULL
-              AND b.bucket_end>?
-        """, (now_ts() - V5030_BW_RETENTION_SECONDS,)).fetchone()[0], 0)
+              AND h.last_push>?
+        """, (now_ts() - 7200,)).fetchone()[0], 0)
         try:
-            size = safe_int(conn.execute("SELECT COALESCE(pg_total_relation_size('node_bandwidth_consumption_2h'),0)").fetchone()[0], 0)
+            size = safe_int(conn.execute("""
+                SELECT COALESCE(pg_total_relation_size('node_consumption_hourly'),0)
+                     + COALESCE(pg_total_relation_size('node_consumption_daily'),0)
+                     + COALESCE(pg_total_relation_size('node_bandwidth_consumption_2h'),0)
+            """).fetchone()[0], 0)
         except Exception:
             size = 0
+        starts = [safe_int(hourly[1], 0), safe_int(daily[1], 0), safe_int(legacy[1], 0)]
+        ends = [safe_int(hourly[2], 0), safe_int(daily[2], 0), safe_int(legacy[2], 0)]
+        received = [safe_int(hourly[3], 0), safe_int(daily[3], 0), safe_int(legacy[3], 0)]
+        starts = [value for value in starts if value > 0]
         return {
-            "rows": safe_int(row[0], 0),
-            "oldest": safe_int(row[1], 0),
-            "newest": safe_int(row[2], 0),
-            "last_received": safe_int(row[3], 0),
+            "rows": safe_int(hourly[0], 0) + safe_int(daily[0], 0) + safe_int(legacy[0], 0),
+            "hourly_rows": safe_int(hourly[0], 0),
+            "daily_rows": safe_int(daily[0], 0),
+            "legacy_rows": safe_int(legacy[0], 0),
+            "oldest": min(starts) if starts else 0,
+            "newest": max(ends) if ends else 0,
+            "last_received": max(received) if received else 0,
             "size": size,
             "visible_nodes": visible_nodes,
             "reporting": reporting,
@@ -663,25 +685,49 @@ def admin_bandwidth_consumption_action():
     if deny:
         return deny
     action = str(request.form.get("action") or "").strip().lower()
+    actor = str(session.get("admin_username") or "")
+    role = str(session.get("dashboard_role") or session.get("admin_role") or "admin")
     if action == "cleanup":
-        deleted = _v5030_cleanup_bandwidth_consumption()
-        log_account_event("bandwidth_consumption_cleanup", username=str(session.get("admin_username") or ""), realm="admin", role="admin", detail="deleted=%s" % deleted)
+        cutoff = now_ts() - V5030_BW_RETENTION_SECONDS
+        deleted_legacy = _v5030_cleanup_bandwidth_consumption(cutoff=cutoff)
+        conn = db()
+        try:
+            hourly = conn.execute("DELETE FROM node_consumption_hourly WHERE hour_start<?", (cutoff,))
+            daily = conn.execute("DELETE FROM node_consumption_daily WHERE day_start<?", (cutoff,))
+            deleted_hourly = max(0, safe_int(hourly.rowcount, 0))
+            deleted_daily = max(0, safe_int(daily.rowcount, 0))
+            conn.commit()
+        finally:
+            conn.close()
+        deleted = deleted_legacy + deleted_hourly + deleted_daily
+        log_account_event(
+            "bandwidth_consumption_cleanup", username=actor, realm="admin", role=role,
+            detail="legacy=%s hourly=%s daily=%s" % (deleted_legacy, deleted_hourly, deleted_daily),
+        )
         _v48140_bump_cache_generation()
-        return redirect(url_for("admin_page", section="system", message="Bandwidth cleanup deleted %s expired rows." % deleted))
+        return redirect(url_for("admin_page", section="system", message="Consumption cleanup deleted %s expired rows." % deleted))
     if action == "clear":
-        if str(request.form.get("confirm_text") or "").strip() != "CLEAR BANDWIDTH HISTORY":
+        if str(request.form.get("confirm_text") or "").strip() != "CLEAR CONSUMPTION HISTORY":
             return Response("Confirmation text mismatch\n", status=400, mimetype="text/plain")
         conn = db()
         try:
-            cur = conn.execute("DELETE FROM node_bandwidth_consumption_2h")
-            deleted = max(0, safe_int(cur.rowcount, 0))
+            counts = {}
+            for table in ("node_consumption_hourly", "node_consumption_daily", "node_bandwidth_consumption_2h"):
+                cur = conn.execute("DELETE FROM %s" % table)
+                counts[table] = max(0, safe_int(cur.rowcount, 0))
             conn.commit()
         finally:
             conn.close()
         epoch = _v5030_set_bandwidth_accept_after(now_ts())
-        log_account_event("bandwidth_consumption_clear", username=str(session.get("admin_username") or ""), realm="admin", role="admin", detail="deleted=%s accept_after=%s" % (deleted, epoch))
+        log_account_event(
+            "bandwidth_consumption_clear", username=actor, realm="admin", role=role,
+            detail="hourly=%s daily=%s legacy=%s accept_after=%s" % (
+                counts["node_consumption_hourly"], counts["node_consumption_daily"],
+                counts["node_bandwidth_consumption_2h"], epoch,
+            ),
+        )
         _v48140_bump_cache_generation()
-        return redirect(url_for("admin_page", section="system", message="Bandwidth history cleared."))
+        return redirect(url_for("admin_page", section="system", message="Consumption history cleared."))
     return Response("Unsupported action\n", status=400, mimetype="text/plain")
 
 # Existing retention and manual history cleanup now include the dedicated table.

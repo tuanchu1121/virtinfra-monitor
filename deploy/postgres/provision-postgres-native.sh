@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE="50.5.9-prod-r18-user-rbac-session-hardening-hotfix"
+RELEASE="50.5.9-prod-r19-production-readiness-audit-hotfix"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 APP_SRC="$REPO_ROOT/app"
@@ -30,6 +30,20 @@ DOMAIN_EXPLICIT=0; PUBLIC_IP_EXPLICIT=0; PORT_EXPLICIT=0; WORKERS_EXPLICIT=0; TH
 log(){ printf '\n==> %s\n' "$*"; }
 warn(){ printf '\nWARNING: %s\n' "$*" >&2; }
 die(){ printf '\nERROR: %s\n' "$*" >&2; exit 1; }
+UPDATE_QUIESCED=0
+resume_update_services(){
+  ((UPDATE_QUIESCED)) || return 0
+  warn "Update aborted after services were quiesced; restarting the installed services best-effort."
+  systemctl daemon-reload >/dev/null 2>&1 || true
+  systemctl start bw-monitor.service >/dev/null 2>&1 || true
+  systemctl start bw-monitor-maintenance-watchdog.timer bw-monitor-retention.timer bw-monitor-backup.timer bw-monitor-inventory-cleanup.timer virtinfra-monitor-health-watch.timer >/dev/null 2>&1 || true
+}
+update_exit_handler(){
+  status=$?
+  if ((status!=0)); then resume_update_services; fi
+  return "$status"
+}
+trap update_exit_handler EXIT
 usage(){
   if [[ "$MODE" == "update" ]]; then
     cat <<'EOF'
@@ -307,6 +321,15 @@ done
 if [[ "$MODE" == "update" && -f "$APP_DIR/backup.sh" ]]; then
   log "Create PostgreSQL backup before update"
   bash "$APP_DIR/backup.sh"
+fi
+
+if [[ "$MODE" == "update" ]]; then
+  RUNNING_MAINTENANCE="$(systemctl list-units 'bw-monitor-maintenance@*.service' --state=running --no-legend --plain 2>/dev/null | awk 'NF{print $1}' | paste -sd, -)"
+  [[ -z "$RUNNING_MAINTENANCE" ]] || die "Active maintenance job services detected: $RUNNING_MAINTENANCE. Wait for them to finish before updating."
+  log "Quiesce web, maintenance and cleanup services for schema update"
+  systemctl stop virtinfra-monitor-health-watch.timer bw-monitor-maintenance-watchdog.timer bw-monitor-retention.timer bw-monitor-backup.timer bw-monitor-inventory-cleanup.timer 2>/dev/null || true
+  systemctl stop virtinfra-monitor-health-watch.service bw-monitor-retention.service bw-monitor-backup.service bw-monitor-inventory-cleanup.service bw-monitor-maintenance-dispatch.service bw-monitor.service 2>/dev/null || true
+  UPDATE_QUIESCED=1
 fi
 
 log "Install full application code"
@@ -595,6 +618,7 @@ for i in $(seq 1 60); do
 done
 systemctl is-active --quiet bw-monitor.service || die "bw-monitor.service inactive"
 systemctl restart bw-monitor-inventory-cleanup.timer
+UPDATE_QUIESCED=0
 if [[ -n "$DOMAIN" && $NO_TLS -eq 0 ]]; then
   for i in $(seq 1 30); do curl -fsS --max-time 10 "https://$DOMAIN/login" >/dev/null && break; ((i==30)) && die "HTTPS health check failed"; sleep 2; done
 fi

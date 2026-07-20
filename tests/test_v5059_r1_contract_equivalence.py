@@ -92,7 +92,7 @@ def test_route_endpoint_query_form_sort_contract_is_unchanged():
         assert actual[key] == CONTRACT[key], f"runtime contract changed: {key}"
 
 
-def test_agent_is_byte_for_byte_unchanged():
+def test_agent_matches_pinned_release_contract():
     actual = hashlib.sha256((ROOT / "deploy" / "agent" / "agent.py").read_bytes()).hexdigest()
     assert actual == CONTRACT["agent_sha256"]
 

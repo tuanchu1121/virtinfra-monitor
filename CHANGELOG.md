@@ -1,5 +1,14 @@
 # Changelog
 
+## 50.5.9-prod-r19-production-readiness-audit-hotfix
+
+- Fixed Custom/preset Theme application after PJAX navigation and 30-second refresh by using one delegated browser controller.
+- Added current hourly/daily Node Consumption rollups to Clear Monitoring Data and Nuclear Reset.
+- Replaced the misleading legacy 2-hour accounting card with accurate current rollup storage statistics and actions.
+- Quiesced web, timers and cleanup services before update schema/backfill work; active maintenance jobs now block update.
+- Rewrote Consumption backfill to use a standalone PostgreSQL connection instead of importing the complete Flask runtime.
+- Removed the weak fallback Agent token and added production-readiness regression coverage.
+
 ## 50.5.9-prod-r18-user-rbac-session-hardening-hotfix
 
 - Prevents the last enabled Super Admin from being downgraded, disabled or deleted.

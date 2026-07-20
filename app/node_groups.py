@@ -1,4 +1,4 @@
-"""50.5.9-prod-r19-production-readiness-audit-hotfix.
+"""50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix.
 
 Operations single-shell, Node flag scope and user/RBAC/session hardening.
 

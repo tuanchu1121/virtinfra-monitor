@@ -29,12 +29,13 @@ fail(){ echo "ERROR: $*" >&2; exit 1; }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.9-prod-r19-production-readiness-audit-hotfix" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/runtime_loader.py \
    && -f deploy/postgres/install-postgres-native.sh \
    && -f deploy/postgres/update-postgres-native.sh \
    && -f deploy/postgres/provision-postgres-native.sh \
    && -f app/runtime_layers/manifest.json \
+   && -f app/runtime_layers/44_consumption_node_vm_rollup.py \
    && -f app/runtime_layers/00_bootstrap_database.py \
    && -f app/runtime_layers/43_node_groups_loader.py \
    && -f app/bw_pg.py && -f app/maintenance_native.py \
@@ -42,7 +43,7 @@ log "Validate release identity"
    && -f postgres/sql/007_safe_maintenance_queue.sql \
    && -f postgres/sql/010_consumption_inventory_cleanup.sql \
    && -f postgres/sql/011_node_groups.sql && -f postgres/sql/012_node_groups_r6_safety.sql \
-   && -f postgres/sql/013_maintenance_queue_boolean.sql && -f app/node_groups.py \
+   && -f postgres/sql/013_maintenance_queue_boolean.sql && -f postgres/sql/014_node_vm_consumption_rollups.sql && -f app/node_groups.py \
    && -f app/static/vendor/flag-icons/node-groups.css \
    && -f app/static/vendor/flag-icons/LICENSE \
    && -f app/static/vendor/flag-icons/SOURCE.md \
@@ -179,6 +180,7 @@ log "Validate r13 conservative correctness, refresh and retention"
 
 log "Validate r19 production-readiness audit hotfix"
 "$PYTHON" -m pytest -q tests/test_r19_production_readiness_audit.py
+"$PYTHON" -m pytest -q tests/test_r20_consumption_node_vm_rollup.py
 
 log "Verify one-command installer and operations flow"
 bash ./tools/test-installer-flow.sh

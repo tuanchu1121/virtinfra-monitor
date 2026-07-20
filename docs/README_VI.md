@@ -1,6 +1,6 @@
 # Tài liệu VirtInfra Monitor
 
-Release: `50.5.9-prod-r19-production-readiness-audit-hotfix`
+Release: `50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix`
 
 Runtime dùng PostgreSQL 17 + TimescaleDB làm nguồn dữ liệu duy nhất.
 

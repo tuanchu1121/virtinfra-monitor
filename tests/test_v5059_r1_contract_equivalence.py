@@ -88,8 +88,34 @@ def digest_tree(paths):
 
 def test_route_endpoint_query_form_sort_contract_is_unchanged():
     actual = current_contract()
-    for key in ("routes", "view_overrides", "request_args", "request_form", "request_values", "url_for_endpoints", "sort_maps"):
+    for key in ("routes", "request_values", "sort_maps"):
         assert actual[key] == CONTRACT[key], f"runtime contract changed: {key}"
+
+    # R20 changes only the effective Consumption view and retires the legacy
+    # 2-hour writer without adding or removing any Flask route.
+    allowed_overrides = [
+        {"endpoint": "bandwidth_consumption_page", "value": "bandwidth_consumption_page_r20"},
+        {"endpoint": "push_bandwidth_consumption", "value": "push_bandwidth_consumption_retired"},
+    ]
+    assert all(item in actual["view_overrides"] for item in allowed_overrides)
+    filtered_overrides = [item for item in actual["view_overrides"] if item not in allowed_overrides]
+    assert filtered_overrides == CONTRACT["view_overrides"]
+
+    expected_args = dict(CONTRACT["request_args"])
+    expected_args["period"] += 1
+    expected_args["tab"] += 1
+    assert dict(actual["request_args"]) == expected_args
+
+    expected_form = dict(CONTRACT["request_form"])
+    expected_form["confirm_text"] -= 1  # separate Consumption clear was removed
+    assert dict(actual["request_form"]) == expected_form
+
+    expected_urls = dict(CONTRACT["url_for_endpoints"])
+    expected_urls["admin_bandwidth_consumption_action"] += 1
+    expected_urls["admin_page"] -= 1
+    expected_urls["bandwidth_consumption_page"] += 8
+    expected_urls["node_page"] += 1
+    assert dict(actual["url_for_endpoints"]) == expected_urls
 
 
 def test_agent_matches_pinned_release_contract():
@@ -98,7 +124,7 @@ def test_agent_matches_pinned_release_contract():
 
 
 def test_existing_postgresql_sql_is_byte_for_byte_unchanged():
-    paths = [path for path in (ROOT / "postgres" / "sql").glob("*.sql") if path.name not in {"011_node_groups.sql", "012_node_groups_r6_safety.sql", "013_maintenance_queue_boolean.sql"}]
+    paths = [path for path in (ROOT / "postgres" / "sql").glob("*.sql") if path.name not in {"011_node_groups.sql", "012_node_groups_r6_safety.sql", "013_maintenance_queue_boolean.sql", "014_node_vm_consumption_rollups.sql"}]
     assert digest_tree(paths) == CONTRACT["postgres_sql_tree_sha256"]
 
 

@@ -3,7 +3,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 from runtime_source import read_app_source
 APP = read_app_source()
-CURRENT_VERSION = "50.5.9-prod-r19-production-readiness-audit-hotfix"
+CURRENT_VERSION = "50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix"
 R3_RELEASE = "50.5.9-prod-r4-dead-code-cleanup"
 
 

@@ -1,6 +1,6 @@
 # Update an existing installation
 
-Release: `50.5.9-prod-r17-operations-single-shell-hotfix`
+Release: `50.5.9-prod-r18-user-rbac-session-hardening-hotfix`
 Use this path only when VirtInfra Monitor is already installed. The updater requires both `/etc/default/bw-monitor` and `/etc/default/bw-monitor-postgres`.
 
 ```bash
@@ -23,6 +23,8 @@ Before application files are replaced, the updater runs the installed PostgreSQL
 - Agent token and accepted transition tokens;
 - domain, TLS, Gunicorn and optional Redis settings;
 - all current and historical monitoring data.
+
+After update, R18 intentionally requires every existing browser session to sign in again because sessions are now bound to the account's current password, role and enabled state.
 
 After update:
 

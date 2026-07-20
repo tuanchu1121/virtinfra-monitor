@@ -28,6 +28,8 @@ The repository `.gitignore` blocks common secret/data file patterns, but review 
 
 Agent `/push` uses a dedicated `BW_MONITOR_TOKEN`. REST API keys are separate, scoped and support Allowed IP/CIDR, expiry and rate limits. Do not reuse Agent tokens as REST API keys.
 
+Dashboard sessions are invalidated on the next request after a password reset, role change, disable or account deletion. User Management cannot alter the currently signed-in account, and the final enabled Super Admin cannot be downgraded, disabled or deleted. Initial `/admin/setup` is available only while no dashboard user exists.
+
 ## Host hardening
 
 The Agent service keeps `ProtectHome=read-only` so it can inspect storage under `/home` without writable home access. The Monitor database container uses a named volume and bounded JSON logs. Keep Docker, OS packages and the repository release updated.

@@ -1,6 +1,6 @@
 # VirtInfra Monitor
 
-**Release:** `50.5.9-prod-r17-operations-single-shell-hotfix`
+**Release:** `50.5.9-prod-r18-user-rbac-session-hardening-hotfix`
 
 VirtInfra Monitor is a PostgreSQL 17 and TimescaleDB monitoring platform for KVM/libvirt nodes and virtual machines. PostgreSQL is the authoritative datastore for inventory, users, settings, current metrics, historical metrics, Abuse events, Storage I/O and Consumption.
 
@@ -19,6 +19,8 @@ There is no automatic install-to-update fallback.
 - `admin` is the day-to-day operator: Node Groups, Node/VM Hide/Restore/Purge, Queue monitoring/cancel, retention, bounded history cleanup and online VACUUM.
 - `super_admin` has every Admin capability plus API management, Super Admin account control, Clear Monitoring Data, Clear API Data and Nuclear Reset.
 - UI visibility and backend authorization use the same role boundary; direct forged requests remain denied.
+- R18 binds each browser session to the current password hash, role and enabled state. Password resets, role changes, disable and delete actions revoke old sessions on their next request. Existing sessions from an older release must sign in again after update.
+- The final enabled Super Admin cannot be downgraded, disabled or deleted from the web UI. If an older release already left zero enabled Super Admin accounts, recover one from the server console; `/admin/setup` is reserved for a true first-user installation.
 
 
 ## Fresh installation

@@ -1,5 +1,18 @@
 # Changelog
 
+## 50.5.9-prod-r18-user-rbac-session-hardening-hotfix
+
+- Prevents the last enabled Super Admin from being downgraded, disabled or deleted.
+- Blocks every user from changing their own role/status/account from User Management; own password changes remain on the Password page and require the current password.
+- Makes Create User insert-only. A duplicate username now returns HTTP 409 and can no longer overwrite passwords, roles or Super Admin accounts.
+- Separates password reset from role changes; legacy R17 reset forms can no longer mutate a role.
+- Adds immediate session revocation after password, role, enabled-state or account deletion changes without adding a database column.
+- Restricts `/admin/setup` to the true first-user setup path. A deployment with existing users but no enabled Super Admin must be recovered from the server console, not claimed from the web.
+- Adds complete Super Admin create/promote controls while keeping regular Admin limited to Viewer/Admin accounts.
+- Aligns Admin UI and backend permissions: routine Consumption cleanup is allowed, full Consumption clear is Super Admin-only, audit logs are read-only for Admin, and read-only System Health JSON is accessible.
+- Corrects legacy hard-coded audit entries so actions performed by the acting Super Admin are recorded as `super_admin`.
+- Preserves all monitoring routes, Agent/API payloads, metric formulas, Node Groups, Queue, retention and the R17 single Operations shell.
+
 ## 50.5.9-prod-r17-operations-single-shell-hotfix
 
 - Fixed the duplicated Operations header and tab navigation caused by stacked legacy Admin and retention page wrappers.

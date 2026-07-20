@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_VERSION = "50.5.9-prod-r17-operations-single-shell-hotfix"
+EXPECTED_VERSION = "50.5.9-prod-r18-user-rbac-session-hardening-hotfix"
 LAYER_DIR = ROOT / "app/runtime_layers"
 MANIFEST = LAYER_DIR / "manifest.json"
 

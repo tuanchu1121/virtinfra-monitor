@@ -29,7 +29,7 @@ fail(){ echo "ERROR: $*" >&2; exit 1; }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.9-prod-r17-operations-single-shell-hotfix" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.5.9-prod-r18-user-rbac-session-hardening-hotfix" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/runtime_loader.py \
    && -f deploy/postgres/install-postgres-native.sh \
    && -f deploy/postgres/update-postgres-native.sh \
@@ -175,6 +175,7 @@ log "Validate r13 conservative correctness, refresh and retention"
 "$PYTHON" -m pytest -q tests/test_r14_purge_queue_visibility.py
 "$PYTHON" -m pytest -q tests/test_r15_super_admin_maintenance_queue_schema.py
 "$PYTHON" -m pytest -q tests/test_r17_operations_single_shell.py
+"$PYTHON" -m pytest -q tests/test_r18_user_rbac_session_hardening.py
 
 log "Verify one-command installer and operations flow"
 bash ./tools/test-installer-flow.sh

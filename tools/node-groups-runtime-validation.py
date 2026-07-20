@@ -49,6 +49,9 @@ def install_sqlite_shim(db_path: Path) -> None:
 
 
 def session_as(client, username: str, role: str, user_id: int) -> None:
+    import app as app_module
+    import node_groups as ng
+    user = app_module.get_dashboard_user_by_id(user_id)
     with client.session_transaction() as sess:
         sess.clear()
         sess.update({
@@ -59,6 +62,7 @@ def session_as(client, username: str, role: str, user_id: int) -> None:
             "dashboard_role": role,
             "dashboard_user_id": user_id,
             "csrf_token": "fixed-csrf",
+            "dashboard_auth_stamp": ng._user_auth_stamp(user),
         })
 
 

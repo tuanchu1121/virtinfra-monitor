@@ -1,4 +1,6 @@
-"""50.5.9-r17 single Operations shell, operator RBAC and node-flag scope hotfix.
+"""50.5.9-prod-r18-user-rbac-session-hardening-hotfix.
+
+Operations single-shell, Node flag scope and user/RBAC/session hardening.
 
 This module is installed after the existing append-only app.py runtime has
 finished registering its final implementations. It keeps the original call
@@ -8,6 +10,8 @@ Node Groups and the admin role split.
 from __future__ import annotations
 
 import html as html_lib
+import hashlib
+import hmac
 import json
 import math
 import re
@@ -36,9 +40,11 @@ ADMIN_ALLOWED_ENDPOINTS = {
     "admin_change_password", "admin_logout",
     "admin_users_page", "admin_create_user", "admin_user_action",
     "admin_theme_manager", "admin_logs_page", "admin_system_health_page",
+    "admin_api_system_health", "admin_bandwidth_consumption_action",
     "admin_node_groups_create", "admin_node_groups_update",
     "admin_node_groups_action", "admin_node_groups_assign", "admin_node_groups_bulk",
 }
+VALID_ROLES = ("viewer", "admin", "super_admin")
 
 
 def _m():
@@ -98,7 +104,91 @@ def is_super_admin() -> bool:
 
 def clean_role(value: Any) -> str:
     role = str(value or "viewer").strip().lower()
-    return role if role in {"viewer", "admin", "super_admin"} else "viewer"
+    return role if role in VALID_ROLES else "viewer"
+
+
+def _requested_role(value: Any) -> str | None:
+    """Strict role parser for write operations.
+
+    Read compatibility keeps ``clean_role`` permissive, but a malformed POST
+    must never silently become ``viewer`` because that can downgrade accounts.
+    """
+    role = str(value or "").strip().lower()
+    return role if role in VALID_ROLES else None
+
+
+def _user_auth_stamp(user: Any) -> str:
+    """Bind a browser session to password, role and enabled state.
+
+    Flask's default cookie session is signed but not server-side revocable.  A
+    compact HMAC lets password resets, role changes, disable and delete actions
+    invalidate existing sessions on their next request without a schema change.
+    """
+    if not user:
+        return ""
+    user_id, username, password_hash, role, is_active, *_ = user
+    m = _m()
+    secret = m.app.secret_key or ""
+    if isinstance(secret, bytes):
+        key = secret
+    else:
+        key = str(secret).encode("utf-8", errors="replace")
+    payload = "\x1f".join((
+        str(int(user_id)), str(username or ""), str(password_hash or ""),
+        clean_role(role), "1" if bool(is_active) else "0",
+    )).encode("utf-8", errors="replace")
+    return hmac.new(key, payload, hashlib.sha256).hexdigest()
+
+
+def _set_session_auth_stamp(user: Any = None) -> None:
+    m = _m()
+    user = user or m.current_dashboard_user()
+    stamp = _user_auth_stamp(user)
+    if stamp:
+        m.session["dashboard_auth_stamp"] = stamp
+    else:
+        m.session.pop("dashboard_auth_stamp", None)
+
+
+def dashboard_allowed() -> bool:
+    """Validate the signed session against the current database account."""
+    m = _m()
+    if not (m.session.get("dashboard_authenticated") or m.session.get("admin_authenticated")):
+        return False
+    user = m.current_dashboard_user()
+    if not user or not bool(user[4]):
+        m.session.clear()
+        return False
+    actual = str(m.session.get("dashboard_auth_stamp") or "")
+    expected = _user_auth_stamp(user)
+    if not actual or not hmac.compare_digest(actual, expected):
+        m.session.clear()
+        return False
+    return True
+
+
+def require_dashboard():
+    m = _m()
+    if dashboard_allowed():
+        return None
+    if m.request.path.startswith("/api/") or m.request.path == "/summary":
+        return m.jsonify({"error": "login_required"}), 401
+    if m.request.method == "POST":
+        return m.Response("Login required\n", status=401, mimetype="text/plain")
+    next_url = m.request.full_path if m.request.query_string else m.request.path
+    return m.redirect(m.url_for("dashboard_login", next=next_url))
+
+
+def log_account_event(event, username="", realm="dashboard", role="", detail=""):
+    """Correct legacy hard-coded ``admin`` audit roles for the acting user."""
+    m = _m()
+    actor = m.session.get("admin_username") or m.session.get("dashboard_username") or ""
+    if str(realm or "") == "admin" and actor and str(username or "") == str(actor):
+        if dashboard_allowed():
+            role = current_role()
+    return _BASE["log_account_event"](
+        event, username=username, realm=realm, role=role, detail=detail,
+    )
 
 
 def ensure_schema(conn=None) -> None:
@@ -522,12 +612,9 @@ def role_migration_completed() -> bool:
 
 def admin_allowed() -> bool:
     m = _m()
-    if not m.session.get("admin_authenticated"):
+    if not dashboard_allowed():
         return False
-    username = m.session.get("admin_username") or m.session.get("dashboard_username") or ""
-    if not username:
-        return False
-    user = m.get_dashboard_user(username)
+    user = m.current_dashboard_user()
     if not user:
         return False
     role = clean_role(user[3])
@@ -561,10 +648,15 @@ def is_last_enabled_admin(user_id) -> bool:
 def require_admin():
     m = _m()
     bootstrap_dashboard_admin_from_settings()
-    if not m.admin_is_configured() or emergency_admin_needed():
-        if m.request.method == "POST" or m.dashboard_allowed():
-            return m.Response("Forbidden\n", status=403, mimetype="text/plain")
-        return m.redirect(m.url_for("admin_setup"))
+    if emergency_admin_needed():
+        return m.Response(
+            "Forbidden: no enabled Super Admin exists. Recover the account from the server console.\n",
+            status=403, mimetype="text/plain",
+        )
+    if not m.admin_is_configured():
+        if m.dashboard_user_count() == 0 and m.request.method == "GET":
+            return m.redirect(m.url_for("admin_setup"))
+        return m.Response("Forbidden\n", status=403, mimetype="text/plain")
     if not admin_allowed():
         if m.dashboard_allowed() or m.request.method == "POST":
             return m.Response("Forbidden\n", status=403, mimetype="text/plain")
@@ -715,6 +807,41 @@ def _remove_div_blocks_with_class(text: str, class_name: str) -> str:
         text = text[:match.start()] + text[end:]
 
 
+def _remove_form_containing_action(text: str, action: str) -> str:
+    """Remove one or more non-nested forms containing an action value."""
+    form_re = re.compile(r'<form\b[^>]*>.*?</form>', flags=re.I | re.S)
+    token_re = re.compile(
+        r'name=["\']action["\'][^>]*value=["\']%s["\']'
+        % re.escape(action),
+        flags=re.I,
+    )
+    return form_re.sub(lambda match: "" if token_re.search(match.group(0)) else match.group(0), text)
+
+
+def _make_admin_logs_read_only(text: str) -> str:
+    """Keep the log table visible for Admin while removing delete controls."""
+    pattern = re.compile(
+        r'<form\b[^>]*\bid=["\']logs-bulk-form["\'][^>]*>(.*?)</form>',
+        flags=re.I | re.S,
+    )
+
+    def replace(match: re.Match[str]) -> str:
+        inner = match.group(1)
+        inner = re.sub(
+            r'<div\b[^>]*\bclass=["\'][^"\']*\bbulk-bar\b[^"\']*["\'][^>]*>.*?</div>',
+            '<div class="admin-note">Admin access is read-only for audit logs. Super Admin can clear logs.</div>',
+            inner, count=1, flags=re.I | re.S,
+        )
+        inner = re.sub(r'<th\b[^>]*>\s*SELECT\s*</th>', '', inner, count=1, flags=re.I | re.S)
+        inner = re.sub(
+            r'<td\b[^>]*>\s*<input\b[^>]*\bname=["\']log_id["\'][^>]*>\s*</td>',
+            '', inner, flags=re.I | re.S,
+        )
+        return '<div id="logs-bulk-readonly">' + inner + '</div>'
+
+    return pattern.sub(replace, text, count=1)
+
+
 def _normalize_operations_shell(text: str) -> str:
     """Render exactly one shared /admin shell; preserve all page actions and content."""
     m = _m()
@@ -728,6 +855,11 @@ def _normalize_operations_shell(text: str) -> str:
     if current_role() == "admin":
         for action in ("clear_monitoring_data", "clear_api_logs", "clear_api_data"):
             text = _remove_card_containing_action(text, action)
+        request_args = getattr(m.request, "args", {}) or {}
+        if endpoint == "admin_page" and str(request_args.get("section") or "overview").strip().lower() == "maintenance":
+            text = _remove_form_containing_action(text, "clear")
+        if endpoint == "admin_logs_page":
+            text = _make_admin_logs_read_only(text)
 
     # Legacy runtime layers prepend retention content before their own Admin hero.
     # Remove every old/canonical shell first, then add one canonical Operations
@@ -1396,6 +1528,20 @@ def admin_cancel_maintenance_v5057():
     return _BASE["admin_cancel_maintenance_view"]()
 
 
+def admin_bandwidth_consumption_action():
+    m = _m()
+    deny = require_admin()
+    if deny:
+        return deny
+    action = str(m.request.form.get("action") or "").strip().lower()
+    if current_role() == "admin" and action != "cleanup":
+        return m.Response(
+            "Forbidden: Super Admin is required to clear Consumption history.\n",
+            status=403, mimetype="text/plain",
+        )
+    return _BASE["admin_bandwidth_consumption_action_view"]()
+
+
 
 def dashboard_login():
     m = _m()
@@ -1433,6 +1579,7 @@ def dashboard_login():
                     m.session["admin_username"] = username
                 m.session["csrf_token"] = m.secrets.token_urlsafe(32)
                 m.update_dashboard_user_login(user_id)
+                _set_session_auth_stamp(m.get_dashboard_user(username))
                 m.log_account_event("login_success", username=username, realm="dashboard", role=role)
                 return m.redirect(next_url)
     error_html = f'<div class="login-alert error">{m.escape(error)}</div>' if error else ""
@@ -1453,7 +1600,10 @@ def admin_login():
     error = ""
     bootstrap_dashboard_admin_from_settings()
     if emergency_admin_needed():
-        return m.redirect(m.url_for("admin_setup"))
+        return m.Response(
+            "Forbidden: no enabled Super Admin exists. Recover the account from the server console.\n",
+            status=403, mimetype="text/plain",
+        )
     if admin_allowed():
         return m.redirect(next_url)
     admin_username = m.get_admin_username()
@@ -1474,7 +1624,7 @@ def admin_login():
                 error = "Invalid username or password."
             else:
                 m.session.clear(); m.session["dashboard_authenticated"] = True; m.session["dashboard_user_id"] = int(user_id); m.session["dashboard_username"] = user_name; m.session["dashboard_role"] = role; m.session["admin_authenticated"] = True; m.session["admin_username"] = user_name; m.session["csrf_token"] = m.secrets.token_urlsafe(32)
-                m.update_dashboard_user_login(user_id); m.log_account_event("login_success", username=user_name, realm="admin", role=role)
+                m.update_dashboard_user_login(user_id); _set_session_auth_stamp(m.get_dashboard_user(user_name)); m.log_account_event("login_success", username=user_name, realm="admin", role=role)
                 return m.redirect(next_url)
         else:
             legacy_name = m.get_admin_username(); legacy_hash = m.get_admin_password_hash()
@@ -1483,7 +1633,7 @@ def admin_login():
                 converted = m.get_dashboard_user(username)
                 if converted:
                     m.session.clear(); m.session["dashboard_authenticated"] = True; m.session["dashboard_user_id"] = int(converted[0]); m.session["dashboard_username"] = username; m.session["dashboard_role"] = "super_admin"; m.session["admin_authenticated"] = True; m.session["admin_username"] = username; m.session["csrf_token"] = m.secrets.token_urlsafe(32)
-                    m.update_dashboard_user_login(converted[0]); m.log_account_event("login_success", username=username, realm="admin", role="super_admin", detail="legacy admin converted")
+                    m.update_dashboard_user_login(converted[0]); _set_session_auth_stamp(m.get_dashboard_user(username)); m.log_account_event("login_success", username=username, realm="admin", role="super_admin", detail="legacy admin converted")
                     return m.redirect(next_url)
             m.log_account_event("login_failed", username=username, realm="admin", role="", detail="unknown admin user")
             error = "Invalid username or password."
@@ -1496,11 +1646,14 @@ def admin_login():
 def admin_setup():
     m = _m()
     bootstrap_dashboard_admin_from_settings()
-    emergency_mode = emergency_admin_needed()
-    if m.admin_is_configured() and not emergency_mode and not admin_allowed():
-        return m.redirect(m.url_for("admin_login"))
-    if m.admin_is_configured() and not emergency_mode and admin_allowed():
-        return m.redirect(m.url_for("admin_page"))
+    if m.dashboard_user_count() > 0:
+        if admin_allowed():
+            return m.redirect(m.url_for("admin_page"))
+        return m.Response(
+            "Forbidden: initial setup is disabled after the first user is created. "
+            "Recover a missing Super Admin from the server console.\n",
+            status=403, mimetype="text/plain",
+        )
     error = ""
     username_value = str(m.request.form.get("username") or "admin").strip() or "admin"
     if m.request.method == "POST":
@@ -1519,13 +1672,16 @@ def admin_setup():
             if created:
                 m.session["dashboard_user_id"] = int(created[0])
             m.session["dashboard_username"] = username_value; m.session["dashboard_role"] = "super_admin"; m.session["admin_authenticated"] = True; m.session["admin_username"] = username_value; m.session["csrf_token"] = m.secrets.token_urlsafe(32)
+            if created:
+                m.update_dashboard_user_login(created[0])
+                _set_session_auth_stamp(m.get_dashboard_user(username_value))
             m.log_account_event("setup_admin", username=username_value, realm="admin", role="super_admin")
             return m.redirect(m.url_for("admin_page"))
     error_html = f'<div class="login-alert error">{m.escape(error)}</div>' if error else ""
-    note = "No enabled Super Admin exists. Create one here to recover full access." if emergency_mode else "Create the first Super Admin account."
+    note = "Create the first Super Admin account."
     note_html = f'<div class="login-alert note">{m.escape(note)}</div>'
     extra = m._v48106_password_field("admin-setup-password", "password", "Password", "new-password") + m._v48106_password_field("admin-setup-confirm", "confirm", "Confirm password", "new-password")
-    title = "Emergency Super Admin Setup" if emergency_mode else "Initial Super Admin Setup"
+    title = "Initial Super Admin Setup"
     return m.Response(m._v48106_login_document(action=m.url_for("admin_setup"), title=title, subtitle="Create a full-privilege account for the operations console.", username_value=username_value, error_html=error_html, note_html=note_html, next_url="", button_label="Create Super Admin", extra_fields=extra), mimetype="text/html")
 
 # ---------------------------------------------------------------------------
@@ -1549,31 +1705,272 @@ def _can_manage_user(target_role: Any) -> bool:
     return is_super_admin() or clean_role(target_role) != "super_admin"
 
 
+def _insert_dashboard_user(username: str, password: str, role: str) -> bool:
+    """Insert one new account; never overwrite an existing username."""
+    m = _m()
+    now = _ts()
+    conn = m.db()
+    try:
+        conn.execute(
+            """INSERT INTO dashboard_users(
+                   username,password_hash,role,is_active,created_at,updated_at
+               ) VALUES (?,?,?,?,?,?)""",
+            (username, m.generate_password_hash(password), role, 1, now, now),
+        )
+        conn.commit()
+        return True
+    except m.dbapi.IntegrityError:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return False
+    finally:
+        conn.close()
+
+
+def _set_dashboard_user_role(user_id: int, role: str) -> None:
+    m = _m()
+    conn = m.db()
+    try:
+        conn.execute(
+            "UPDATE dashboard_users SET role=?,updated_at=? WHERE id=?",
+            (role, _ts(), int(user_id)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _role_options(selected: str) -> str:
+    m = _m()
+    return "".join(
+        '<option value="%s"%s>%s</option>' % (
+            m.escape(role, quote=True),
+            " selected" if role == selected else "",
+            m.escape(role),
+        )
+        for role in _manageable_roles()
+    )
+
+
 def admin_users_page():
+    m = _m()
     deny = require_admin()
     if deny:
         return deny
-    return _BASE["admin_users_page_view"]()
 
+    actor_is_super = is_super_admin()
+    current_id = m.current_dashboard_user_id()
+    users = [
+        row for row in m.get_dashboard_users()
+        if actor_is_super or clean_role(row[2]) != "super_admin"
+    ]
+    body = ""
+    for user_id, username, role, is_active, created_at, updated_at, last_login in users:
+        role = clean_role(role)
+        is_current = int(user_id) == int(current_id or 0)
+        is_last_super = role == "super_admin" and bool(is_active) and active_super_admin_count(user_id) == 0
+        status = "active" if is_active else "disabled"
+        status_cls = "active" if is_active else "stale"
+        badges = []
+        if is_current:
+            badges.append('<span class="vm-state active">CURRENT</span>')
+        if is_last_super:
+            badges.append('<span class="vm-state stale">LAST SUPER ADMIN</span>')
+        badge_html = " ".join(badges)
 
+        if is_current:
+            actions = (
+                '<div class="admin-note">Use the Password page to change your own password. '
+                'Your own role, status and account cannot be changed here.</div>'
+            )
+        else:
+            reset_form = f"""
+                <form class="inline-form" method="post" action="{m.url_for('admin_user_action')}" onsubmit="return confirm('Reset this user password?')">
+                    <input type="hidden" name="csrf_token" value="{m.escape(m.csrf_token(), quote=True)}">
+                    <input type="hidden" name="user_id" value="{int(user_id)}">
+                    <input type="hidden" name="action" value="reset_password">
+                    <input name="new_password" type="password" placeholder="New password" autocomplete="new-password" required>
+                    <button class="btn" type="submit">Reset password</button>
+                </form>"""
+            role_form = f"""
+                <form class="inline-form" method="post" action="{m.url_for('admin_user_action')}" onsubmit="return confirm('Change this user role?')">
+                    <input type="hidden" name="csrf_token" value="{m.escape(m.csrf_token(), quote=True)}">
+                    <input type="hidden" name="user_id" value="{int(user_id)}">
+                    <input type="hidden" name="action" value="change_role">
+                    <select name="role">{_role_options(role)}</select>
+                    <button class="btn" type="submit">Change role</button>
+                </form>"""
+            toggle_label = "Disable" if is_active else "Enable"
+            toggle_action = "disable" if is_active else "enable"
+            toggle_form = m.admin_form(
+                m.url_for("admin_user_action"), toggle_label,
+                {"user_id": user_id, "action": toggle_action},
+                danger=False, confirm=f"{toggle_label} this user?",
+            )
+            delete_form = m.admin_form(
+                m.url_for("admin_user_action"), "Delete",
+                {"user_id": user_id, "action": "delete"},
+                danger=True, confirm="Delete this dashboard user?",
+            )
+            if is_last_super:
+                role_form = '<div class="admin-note">Create or promote another enabled Super Admin before changing this role.</div>'
+                toggle_form = ""
+                delete_form = ""
+            actions = reset_form + role_form + toggle_form + delete_form
+
+        body += f"""
+        <tr>
+            <td>{int(user_id)}</td>
+            <td class="mono"><b>{m.escape(username)}</b> {badge_html}</td>
+            <td>{m.escape(role)}</td>
+            <td><span class="vm-state {status_cls}">{m.escape(status.upper())}</span></td>
+            <td>{m.fmt_full(created_at)}</td>
+            <td>{m.fmt_full(last_login)}</td>
+            <td>{actions}</td>
+        </tr>"""
+
+    if not body:
+        body = '<tr><td colspan="7" class="empty">No dashboard users</td></tr>'
+
+    create_roles = "".join(
+        '<option value="%s">%s</option>' % (m.escape(role, quote=True), m.escape(role))
+        for role in _manageable_roles()
+    )
+    content = f"""
+    <div class="card">
+        <h3>Dashboard Users</h3>
+        <div class="admin-note">Viewer can read monitoring pages. Admin can run routine Operations and manage Viewer/Admin accounts. Super Admin can additionally manage Super Admin accounts and destructive operations. Existing usernames are never overwritten.</div>
+    </div>
+
+    <div class="card">
+        <h3>Create User</h3>
+        <form method="post" action="{m.url_for('admin_create_user')}" onsubmit="return confirm('Create this user?')">
+            <input type="hidden" name="csrf_token" value="{m.escape(m.csrf_token(), quote=True)}">
+            <div class="form-grid">
+                <div><label>Username</label><input name="username" autocomplete="username" required></div>
+                <div><label>Password</label><input name="password" type="password" autocomplete="new-password" required></div>
+                <div><label>Role</label><select name="role">{create_roles}</select></div>
+                <div><button class="btn" type="submit">Create user</button></div>
+            </div>
+        </form>
+    </div>
+
+    <div class="card">
+        <div class="table-title-row"><h3>Users</h3><div class="count-badges"><span>Users <b>{len(users)}</b></span></div></div>
+        <table>
+            <thead><tr><th>ID</th><th>USERNAME</th><th>ROLE</th><th>STATUS</th><th>CREATED</th><th>LAST LOGIN</th><th>ACTION</th></tr></thead>
+            <tbody>{body}</tbody>
+        </table>
+    </div>"""
+    return m.page("Dashboard Users", content)
 
 
 def admin_create_user():
+    m = _m()
     deny = require_admin()
     if deny:
         return deny
-    return _BASE["admin_create_user_view"]()
 
-
+    username = m.clean_username(m.request.form.get("username"))
+    password = m.request.form.get("password") or ""
+    role = _requested_role(m.request.form.get("role"))
+    if role is None:
+        return m.Response("Invalid role\n", status=400, mimetype="text/plain")
+    if role == "super_admin" and not is_super_admin():
+        return m.Response("Forbidden role assignment\n", status=403, mimetype="text/plain")
+    if not username or len(username) < 3 or len(username) > 128:
+        return m.Response("Username must be between 3 and 128 characters\n", status=400, mimetype="text/plain")
+    if any(ord(ch) < 32 for ch in username):
+        return m.Response("Username contains invalid control characters\n", status=400, mimetype="text/plain")
+    if len(password) < 10:
+        return m.Response("Password must be at least 10 characters\n", status=400, mimetype="text/plain")
+    if not _insert_dashboard_user(username, password, role):
+        return m.Response("Username already exists\n", status=409, mimetype="text/plain")
+    actor = m.session.get("admin_username") or m.dashboard_username()
+    m.log_account_event(
+        "user_created", username=username, realm="admin", role=role,
+        detail=f"created_by={actor};created_by_role={current_role()}",
+    )
+    return m.redirect(m.url_for("admin_users_page"))
 
 
 def admin_user_action():
+    m = _m()
     deny = require_admin()
     if deny:
         return deny
-    return _BASE["admin_user_action_view"]()
 
+    user_id = m.safe_int(m.request.form.get("user_id"), 0)
+    action = str(m.request.form.get("action") or "").strip().lower()
+    if user_id <= 0:
+        return m.Response("Missing user_id\n", status=400, mimetype="text/plain")
+    user = m.get_dashboard_user_by_id(user_id)
+    if not user:
+        return m.Response("User not found\n", status=404, mimetype="text/plain")
+    _id, username, _password_hash, old_role, old_is_active, *_ = user
+    old_role = clean_role(old_role)
+    if not _can_manage_user(old_role):
+        return m.Response("User not found\n", status=404, mimetype="text/plain")
 
+    current_id = m.current_dashboard_user_id()
+    is_self = int(user_id) == int(current_id or 0)
+    if is_self and action in {"disable", "delete", "reset_password", "change_role"}:
+        return m.Response(
+            "Safety block: use the Password page for your own password; your own role, status and account cannot be changed here.\n",
+            status=400, mimetype="text/plain",
+        )
+
+    if action in {"disable", "delete"} and is_last_enabled_admin(user_id):
+        return m.Response(
+            "Safety block: you cannot disable or delete the last enabled Super Admin. Create another Super Admin first.\n",
+            status=400, mimetype="text/plain",
+        )
+
+    actor = m.session.get("admin_username") or m.dashboard_username()
+    actor_role = current_role()
+    if action == "disable":
+        m.set_dashboard_user_status(user_id, 0)
+        event = "user_disabled"
+        detail = f"changed_by={actor};changed_by_role={actor_role}"
+    elif action == "enable":
+        m.set_dashboard_user_status(user_id, 1)
+        event = "user_enabled"
+        detail = f"changed_by={actor};changed_by_role={actor_role}"
+    elif action == "delete":
+        m.delete_dashboard_user(user_id)
+        event = "user_deleted"
+        detail = f"changed_by={actor};changed_by_role={actor_role}"
+    elif action == "reset_password":
+        new_password = m.request.form.get("new_password") or ""
+        if len(new_password) < 10:
+            return m.Response("New password must be at least 10 characters\n", status=400, mimetype="text/plain")
+        # Ignore any legacy role field posted by older R17 pages. Password reset
+        # must never mutate role.
+        m.reset_dashboard_user_password(user_id, new_password, role=None)
+        event = "user_password_reset"
+        detail = f"changed_by={actor};changed_by_role={actor_role};role_unchanged={old_role}"
+    elif action == "change_role":
+        role = _requested_role(m.request.form.get("role"))
+        if role is None:
+            return m.Response("Invalid role\n", status=400, mimetype="text/plain")
+        if role == "super_admin" and not is_super_admin():
+            return m.Response("Forbidden role assignment\n", status=403, mimetype="text/plain")
+        if old_role == "super_admin" and role != "super_admin" and bool(old_is_active) and active_super_admin_count(user_id) == 0:
+            return m.Response(
+                "Safety block: you cannot downgrade the last enabled Super Admin. Create another Super Admin first.\n",
+                status=400, mimetype="text/plain",
+            )
+        _set_dashboard_user_role(user_id, role)
+        event = "user_role_changed"
+        detail = f"changed_by={actor};changed_by_role={actor_role};old_role={old_role};new_role={role}"
+        old_role = role
+    else:
+        return m.Response("Invalid action\n", status=400, mimetype="text/plain")
+
+    m.log_account_event(event, username=username, realm="admin", role=old_role, detail=detail)
+    return m.redirect(m.url_for("admin_users_page"))
 
 
 
@@ -1600,6 +1997,7 @@ def admin_change_password():
             error = "Password confirmation does not match."
         else:
             m.reset_dashboard_user_password(int(user_id), new_password, role=clean_role(role))
+            _set_session_auth_stamp(m.get_dashboard_user_by_id(user_id))
             m.log_account_event("password_changed", username=username, realm="admin", role=clean_role(role))
             success = "Your password has been updated."
     error_html = f'<div class="error-box">{m.escape(error)}</div>' if error else ""
@@ -2572,7 +2970,7 @@ def install(module):
     _CONSUMPTION_STYLE = style_match.group(0).replace("%%", "%")
     app=module.app
     _BASE.update({
-        "page":module.page,"url_for":module.url_for,"admin_nav":module._v490_admin_nav,
+        "page":module.page,"url_for":module.url_for,"admin_nav":module._v490_admin_nav,"log_account_event":module.log_account_event,
         "admin_page_view":app.view_functions["admin_page"],
         "admin_nodes_query":module._v48134_admin_nodes,"admin_vms_query":module._v48134_admin_vms,
         "admin_nodes_section":module._v48134_admin_nodes_section,"admin_vms_section":module._v48134_admin_vms_section,
@@ -2586,6 +2984,7 @@ def install(module):
         "admin_purge_node_vms_view":app.view_functions["admin_purge_node_vms"],
         "admin_database_maintenance_view":app.view_functions["admin_database_maintenance"],
         "admin_cancel_maintenance_view":app.view_functions["admin_cancel_maintenance_v5057"],
+        "admin_bandwidth_consumption_action_view":app.view_functions["admin_bandwidth_consumption_action"],
         "admin_users_page_view":app.view_functions["admin_users_page"],"admin_create_user_view":app.view_functions["admin_create_user"],"admin_user_action_view":app.view_functions["admin_user_action"],
         "storage_params":module._storage_io_params,"storage_disk_clause":module._v48140_disk_search_clause,"storage_target":module._v48137_storage_target,
         "storage_payload_rows":module._v48137_snapshot_payload_rows,"storage_filter_options":module._v48137_storage_filter_options,"storage_node_cards":module._v48140_node_group_cards_fast,
@@ -2599,7 +2998,7 @@ def install(module):
     })
     ensure_schema()
     replacements={
-        "page":page,"url_for":url_for,"_v490_admin_nav":admin_nav,"clean_role":clean_role,"dashboard_role":dashboard_role,"admin_allowed":admin_allowed,"require_admin":require_admin,
+        "page":page,"url_for":url_for,"_v490_admin_nav":admin_nav,"clean_role":clean_role,"dashboard_role":dashboard_role,"dashboard_allowed":dashboard_allowed,"require_dashboard":require_dashboard,"log_account_event":log_account_event,"admin_allowed":admin_allowed,"require_admin":require_admin,
         "_v48134_admin_nodes":_filtered_admin_nodes,"_v48134_admin_vms":_filtered_admin_vms,
         "_v48134_admin_nodes_section":admin_nodes_section,"_v48134_admin_vms_section":admin_vms_section,"_v48134_admin_pager":admin_pager,
         "active_admin_count":active_admin_count,"emergency_admin_needed":emergency_admin_needed,"is_last_enabled_admin":is_last_enabled_admin,"set_admin_credentials":set_admin_credentials,"bootstrap_dashboard_admin_from_settings":bootstrap_dashboard_admin_from_settings,
@@ -2611,7 +3010,7 @@ def install(module):
         "_v48128_filter_values":_v48128_filter_values,"_v48128_filter_form":_v48128_filter_form,"_v48126_visible_nodes":_v48126_visible_nodes,"_v48127_event_where":_v48127_event_where,"_v48139_current_rows":_v48139_current_rows,
     }
     for name,value in replacements.items():setattr(module,name,value)
-    view_replacements={"index":index,"top_page":top_page,"node_health_page":node_health_page,"storage_io_page":storage_io_page,"bandwidth_consumption_page":bandwidth_consumption_page,"admin_page":admin_page,"admin_change_password":admin_change_password,"admin_users_page":admin_users_page,"admin_create_user":admin_create_user,"admin_user_action":admin_user_action,"admin_bulk_nodes":admin_bulk_nodes,"admin_bulk_vms":admin_bulk_vms,"admin_delete_node":admin_delete_node,"admin_delete_vm":admin_delete_vm,"admin_purge_node_vms":admin_purge_node_vms,"admin_database_maintenance":admin_database_maintenance,"admin_cancel_maintenance_v5057":admin_cancel_maintenance_v5057,"dashboard_login":dashboard_login,"admin_login":admin_login,"admin_setup":admin_setup,"node_page":node_page,"node_missed_detail_page":node_missed_detail_page,"bandwidth_consumption_node_page":bandwidth_consumption_node_page,"vm_page":vm_page}
+    view_replacements={"index":index,"top_page":top_page,"node_health_page":node_health_page,"storage_io_page":storage_io_page,"bandwidth_consumption_page":bandwidth_consumption_page,"admin_page":admin_page,"admin_change_password":admin_change_password,"admin_users_page":admin_users_page,"admin_create_user":admin_create_user,"admin_user_action":admin_user_action,"admin_bulk_nodes":admin_bulk_nodes,"admin_bulk_vms":admin_bulk_vms,"admin_delete_node":admin_delete_node,"admin_delete_vm":admin_delete_vm,"admin_purge_node_vms":admin_purge_node_vms,"admin_database_maintenance":admin_database_maintenance,"admin_cancel_maintenance_v5057":admin_cancel_maintenance_v5057,"admin_bandwidth_consumption_action":admin_bandwidth_consumption_action,"dashboard_login":dashboard_login,"admin_login":admin_login,"admin_setup":admin_setup,"node_page":node_page,"node_missed_detail_page":node_missed_detail_page,"bandwidth_consumption_node_page":bandwidth_consumption_node_page,"vm_page":vm_page}
     for endpoint,view in view_replacements.items():app.view_functions[endpoint]=view
     routes=[
         ("/admin/node-groups/create","admin_node_groups_create",admin_node_groups_create,["POST"]),

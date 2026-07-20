@@ -1,6 +1,6 @@
 # Consumption VM/Node
 
-Release: `50.5.9-prod-r17-operations-single-shell-hotfix`
+Release: `50.5.9-prod-r18-user-rbac-session-hardening-hotfix`
 
 ## Scope
 

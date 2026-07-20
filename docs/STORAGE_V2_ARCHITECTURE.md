@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.9-prod-r17-operations-single-shell-hotfix`
+Release: `50.5.9-prod-r18-user-rbac-session-hardening-hotfix`
 
 ## Final data path
 

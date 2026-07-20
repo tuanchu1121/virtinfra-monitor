@@ -198,13 +198,17 @@ assert bw_response.get_json().get("ok") is True
 bw_retry = client.post("/push/bandwidth-consumption", json=bw_payload, headers={"X-Token": "v50-integration-token"})
 assert bw_retry.status_code == 200 and bw_retry.get_json().get("ok") is True
 
+admin_user = module.get_dashboard_user("admin")
+node_groups_module = sys.modules["node_groups"]
 with client.session_transaction() as sess:
     sess["dashboard_authenticated"] = True
+    sess["dashboard_user_id"] = int(admin_user[0])
     sess["dashboard_username"] = "admin"
     sess["dashboard_role"] = "super_admin"
     sess["admin_authenticated"] = True
     sess["admin_username"] = "admin"
     sess["csrf_token"] = "test-csrf"
+    sess["dashboard_auth_stamp"] = node_groups_module._user_auth_stamp(admin_user)
 
 # Live PostgreSQL Node Group create/assign/inheritance contract.
 created = client.post("/admin/node-groups/create", data={

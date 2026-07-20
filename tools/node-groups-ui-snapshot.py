@@ -142,6 +142,9 @@ def main() -> int:
         })
 
     client = app_module.app.test_client()
+    auth_stamp = ""
+    if node_groups_module:
+        auth_stamp = node_groups_module._user_auth_stamp(app_module.get_dashboard_user_by_id(1))
     with client.session_transaction() as sess:
         sess.update({
             "admin_authenticated": True,
@@ -151,6 +154,7 @@ def main() -> int:
             "dashboard_role": "super_admin" if node_groups_module else "admin",
             "dashboard_user_id": 1,
             "csrf_token": "fixed-csrf-token",
+            "dashboard_auth_stamp": auth_stamp,
         })
     pages = dict(PAGES)
     if node_groups_module:

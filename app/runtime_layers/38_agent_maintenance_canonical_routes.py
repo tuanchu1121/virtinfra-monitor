@@ -14,7 +14,7 @@ def valid_agent_token(value):
     supplied = str(value or "")
     return any(hmac.compare_digest(supplied, expected) for expected in V5057_AGENT_TOKENS)
 
-V5057_VERSION = "50.5.9-prod-r11-functional-correctness-maintenance-hotfix"
+V5057_VERSION = "50.5.9-prod-r16-operations-node-flag-scope-hotfix"
 
 def enqueue_maintenance_job(action, parameters, actor):
     payload = dict(parameters or {})
@@ -40,7 +40,7 @@ def _v5057_queue_has_pending_jobs():
 
 def _v5057_verify_current_admin_password(password):
     row = current_dashboard_user()
-    if not row or str(row[3] or "") not in {"admin", "super_admin"} or not safe_int(row[4], 0):
+    if not row or str(row[3] or "") != "super_admin" or not safe_int(row[4], 0):
         return False
     return bool(password) and check_password_hash(str(row[2] or ""), str(password))
 
@@ -67,13 +67,10 @@ _v5057_admin_database_maintenance_base = app.view_functions.get("admin_database_
 def admin_database_maintenance_v5057():
     action = str(request.form.get("action") or "").strip().lower()
     role = current_role() if "current_role" in globals() else dashboard_role()
-    routine_actions = {"retention", "vacuum", "delete_history", "delete_compact"}
     if action not in {"reset_app_data_preview", "reset_app_data"}:
-        if role == "admin" and action not in routine_actions:
-            return Response("Forbidden: super_admin role required for destructive maintenance\n", status=403, mimetype="text/plain")
         return _v5057_admin_database_maintenance_base()
     if role != "super_admin":
-        return Response("Forbidden: super_admin role required for nuclear reset\n", status=403, mimetype="text/plain")
+        return Response("Forbidden: super_admin role required\n", status=403, mimetype="text/plain")
 
     deny = require_admin()
     if deny:

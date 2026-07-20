@@ -29,7 +29,7 @@ fail(){ echo "ERROR: $*" >&2; exit 1; }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.9-prod-r11-functional-correctness-maintenance-hotfix" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.5.9-prod-r16-operations-node-flag-scope-hotfix" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/runtime_loader.py \
    && -f deploy/postgres/install-postgres-native.sh \
    && -f deploy/postgres/update-postgres-native.sh \
@@ -41,7 +41,8 @@ log "Validate release identity"
    && -f app/maintenance_queue.py && -f app/maintenance_dispatch.py \
    && -f postgres/sql/007_safe_maintenance_queue.sql \
    && -f postgres/sql/010_consumption_inventory_cleanup.sql \
-   && -f postgres/sql/011_node_groups.sql && -f postgres/sql/012_node_groups_r6_safety.sql && -f app/node_groups.py \
+   && -f postgres/sql/011_node_groups.sql && -f postgres/sql/012_node_groups_r6_safety.sql \
+   && -f postgres/sql/013_maintenance_queue_boolean.sql && -f app/node_groups.py \
    && -f app/static/vendor/flag-icons/node-groups.css \
    && -f app/static/vendor/flag-icons/LICENSE \
    && -f app/static/vendor/flag-icons/SOURCE.md \
@@ -169,8 +170,11 @@ log "Validate additive Node Groups, role split, permissions and UI contracts"
 "$PYTHON" -m pytest -q tests/test_node_groups_importlib_loader.py
 "$PYTHON" -m pytest -q tests/test_node_groups_r6.py
 
-log "Validate r11 functional correctness and maintenance diagnostics"
-"$PYTHON" -m pytest -q tests/test_r11_functional_correctness.py
+log "Validate r13 conservative correctness, refresh and retention"
+"$PYTHON" -m pytest -q tests/test_r13_conservative_correctness.py
+"$PYTHON" -m pytest -q tests/test_r14_purge_queue_visibility.py
+"$PYTHON" -m pytest -q tests/test_r15_super_admin_maintenance_queue_schema.py
+"$PYTHON" -m pytest -q tests/test_r16_operations_node_flag_scope.py
 
 log "Verify one-command installer and operations flow"
 bash ./tools/test-installer-flow.sh

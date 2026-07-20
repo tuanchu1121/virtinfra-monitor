@@ -50,20 +50,20 @@ virtinfra-monitorctl domain remove 203.0.113.10 8080
 
 The `vacuum` command runs online PostgreSQL `VACUUM/ANALYZE`; it is not a file rewrite operation.
 
-## Admin Maintenance actions
+## Operations Maintenance actions
 
-The Admin Maintenance page is a PostgreSQL FIFO queue. Routine jobs may wait in ID order, while a partial unique index permits only one `starting/running` worker. The dispatcher claims with `FOR UPDATE SKIP LOCKED`; the worker writes a heartbeat every 30 seconds and the systemd watchdog checks the queue every minute. A queued job may be cancelled before execution.
+Admin and Super Admin use the same Operations shell. Routine Queue actions are available to Admin operators; destructive whole-system/API reset actions are visible and callable only by Super Admin. The Maintenance page is a PostgreSQL FIFO queue. Routine jobs may wait in ID order, while a partial unique index permits only one `starting/running` worker. The dispatcher claims with `FOR UPDATE SKIP LOCKED`; the worker writes a heartbeat every 30 seconds and the systemd watchdog checks the queue every minute. A queued job may be cancelled before execution.
 
 | Action | Online? | What it does | Preserves |
 |---|---:|---|---|
 | Run retention now | Yes | Applies the normal 0–2 day 5-minute, day 3–7 hourly, older-than-7-day deletion policy | Current/latest state, inventory, users, settings, API keys |
-| Delete history | Yes | Deletes history older than 1, 3 or 7 days in committed batches | Current/latest state, inventory, users, settings |
+| Delete history | Yes | Deletes history older than 1, 2, 3 or 7 days in committed batches | Current/latest state, inventory, users, settings |
 | Delete history + VACUUM | Yes | Runs the same deletion, then online `VACUUM (ANALYZE)` | Same as Delete history |
 | VACUUM ANALYZE | Yes | Reclaims dead tuples for reuse and refreshes planner statistics with no maintenance statement timeout | All rows |
-| Clear monitoring data | Brief stop | Atomically truncates monitoring history, current caches, inventory, node logs and Abuse rows | Dashboard users, Admin settings, account logs, API keys/logs, Maintenance history |
-| Nuclear operational reset | Brief stop after backup | Truncates the explicit operational/API/account allow-list only after preview and verified backup | Dashboard users, Admin settings, schema metadata, Maintenance history and permanent nuclear audit |
-| Clear API logs | Yes | Truncates API request logs and API management events | API keys and Agent token |
-| Clear all API data | Yes | Truncates external API keys and API logs | Agent `BW_MONITOR_TOKEN` and legacy Agent tokens |
+| Clear monitoring data (Super Admin) | Brief stop | Atomically truncates monitoring history, current caches, inventory, node logs and Abuse rows | Dashboard users, Admin settings, account logs, API keys/logs, Maintenance history |
+| Nuclear operational reset (Super Admin) | Brief stop after backup | Truncates the explicit operational/API/account allow-list only after preview and verified backup | Dashboard users, Admin settings, schema metadata, Maintenance history and permanent nuclear audit |
+| Clear API logs (Super Admin) | Yes | Truncates API request logs and API management events | API keys and Agent token |
+| Clear all API data (Super Admin) | Yes | Truncates external API keys and API logs | Agent `BW_MONITOR_TOKEN` and legacy Agent tokens |
 | Purge VM/node | Yes, per-node lock | Permanently removes the selected object and its retained history | Other nodes and VMs |
 
 ### Nuclear reset safety

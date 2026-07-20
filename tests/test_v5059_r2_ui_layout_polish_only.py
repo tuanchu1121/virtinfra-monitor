@@ -7,7 +7,7 @@ FEATURE_VERSION = "50.5.9-prod-r3-ui-alignment-overflow-hotfix"
 
 
 def test_release_identity():
-    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "50.5.9-prod-r11-functional-correctness-maintenance-hotfix"
+    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "50.5.9-prod-r16-operations-node-flag-scope-hotfix"
     assert f'V5059R2_RELEASE = "{FEATURE_VERSION}"' in APP
     assert 'style id="v5059r2-layout-polish-only"' in APP
 

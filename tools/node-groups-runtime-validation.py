@@ -260,11 +260,8 @@ def main() -> int:
 
         assert_table_alignment(nodes_html, 'node-groups-admin-nodes')
         assert_table_alignment(vms_html, 'node-groups-admin-vms')
-        assert 'selection_scope' not in nodes_html and 'All matching nodes' not in nodes_html
-        for key in ('node', 'group', 'public_ip', 'private_ip', 'vms', 'last_push'):
-            assert f'sort={key}' in nodes_html
-        for key in ('node', 'group', 'uuid', 'status'):
-            assert f'sort={key}' in vms_html
+        assert 'selection_scope' in nodes_html and 'All matching nodes' in nodes_html
+        assert 'sort=public_ip' not in nodes_html and 'sort=uuid' not in vms_html
 
         # VM group follows its node location, with no VM-to-group relationship.
         conn = app_module.db()
@@ -377,9 +374,9 @@ def main() -> int:
             ng.effective_visible_nodes = original_effective
             ng._BASE.update(original_delegates)
 
-        # Restricted Admin may manage ordinary users, themes, logs and routine
-        # maintenance, but cannot access API keys, Super Admin accounts or
-        # destructive maintenance controls.
+        # Admin is the day-to-day operator. Operations, Queue, routine
+        # retention/VACUUM and permanent Node/VM purge are available, while
+        # destructive whole-system/API resets remain Super Admin only.
         session_as(client, "new-admin", "admin", user_ids["new-admin"])
         assert client.get("/admin?section=groups").status_code == 200
         assert client.get("/admin?section=nodes").status_code == 200
@@ -389,30 +386,74 @@ def main() -> int:
         assert client.get("/admin/logs?type=node").status_code == 200
         assert client.get("/admin/system-health").status_code == 200
         assert client.get("/admin?section=maintenance").status_code == 200
+        admin_dashboard = client.get("/").get_data(as_text=True)
+        assert '>Operations</a>' in admin_dashboard
+        admin_overview = client.get("/admin").get_data(as_text=True)
+        assert 'Operations' in admin_overview and 'section=maintenance' in admin_overview
+        admin_nodes_html = client.get("/admin?section=nodes").get_data(as_text=True)
+        admin_vms_html = client.get("/admin?section=vms").get_data(as_text=True)
+        assert "Purge node" in admin_nodes_html and "Purge all VMs" in admin_nodes_html
+        assert "Purge VM" in admin_vms_html
+        maintenance_html = client.get("/admin?section=maintenance").get_data(as_text=True)
+        for routine_label in ("Run retention now", "Run online VACUUM", "Delete history"):
+            assert routine_label in maintenance_html
+        for destructive_label in ("Clear monitoring data", "Clear API logs", "Clear all API data"):
+            assert destructive_label not in maintenance_html
         users_page = client.get("/admin/users")
         assert users_page.status_code == 200
-        assert "legacy-root" not in users_page.get_data(as_text=True)
-        original_enqueue = app_module.enqueue_maintenance_job
-        queued = []
-        app_module.enqueue_maintenance_job = lambda action, parameters, actor: (queued.append((action, dict(parameters), actor)) or (77 + len(queued), "bw-monitor-maintenance@77.service"))
+        users_html = users_page.get_data(as_text=True)
+        assert "legacy-root" not in users_html
+        assert '<h2>Operations</h2>' in users_html and 'class="admin-tabs"' in users_html
+        for shell_path in ("/admin/logs?type=account", "/admin/system-health", "/admin/theme", "/admin/password"):
+            shell_response = client.get(shell_path)
+            assert shell_response.status_code == 200, shell_path
+            shell_html = shell_response.get_data(as_text=True)
+            assert '<h2>Operations</h2>' in shell_html and 'class="admin-tabs"' in shell_html, shell_path
+        original_admin_enqueue = app_module.enqueue_maintenance_job
+        admin_jobs = []
+        app_module.enqueue_maintenance_job = lambda action, parameters, actor: (admin_jobs.append((action, dict(parameters), actor)) or (601 + len(admin_jobs), "bw-monitor-maintenance@601.service"))
         try:
-            assert client.post("/admin/database-maintenance", data={
-                "csrf_token": "fixed-csrf", "action": "retention",
-            }).status_code == 302
-            for days in (2, 7):
+            for action_data in (
+                {"action": "retention"},
+                {"action": "delete_history", "confirm_text": "DELETE HISTORY", "days": "2"},
+                {"action": "vacuum", "confirm_text": "VACUUM"},
+            ):
                 assert client.post("/admin/database-maintenance", data={
-                    "csrf_token": "fixed-csrf", "action": "delete_history",
-                    "confirm_text": "DELETE HISTORY", "days": str(days),
+                    "csrf_token": "fixed-csrf", **action_data,
                 }).status_code == 302
         finally:
-            app_module.enqueue_maintenance_job = original_enqueue
-        assert [(item[0], item[1].get("days")) for item in queued] == [
-            ("retention", None), ("delete_history", 2), ("delete_history", 7),
-        ]
-        assert client.post("/admin/database-maintenance", data={
-            "csrf_token": "fixed-csrf", "action": "clear_monitoring_data",
-            "confirm_text": "CLEAR ALL MONITORING DATA",
-        }).status_code == 403
+            app_module.enqueue_maintenance_job = original_admin_enqueue
+        assert [item[0] for item in admin_jobs] == ["retention", "delete_history", "vacuum"]
+        for action_data in (
+            {"action": "clear_monitoring_data", "confirm_text": "CLEAR ALL MONITORING DATA"},
+            {"action": "clear_api_logs", "confirm_text": "CLEAR API LOGS"},
+            {"action": "clear_api_data", "confirm_text": "CLEAR ALL API DATA"},
+            {"action": "reset_app_data_preview", "admin_password": "Password123!"},
+        ):
+            assert client.post("/admin/database-maintenance", data={
+                "csrf_token": "fixed-csrf", **action_data,
+            }).status_code == 403
+        original_cancel = app_module.maintenance_queue.cancel_queued_job
+        original_wake = app_module.maintenance_queue.wake_dispatcher
+        app_module.maintenance_queue.cancel_queued_job = lambda job_id, actor: False
+        app_module.maintenance_queue.wake_dispatcher = lambda: (True, "")
+        try:
+            cancel_response = client.post("/admin/maintenance/cancel", data={
+                "csrf_token": "fixed-csrf", "job_id": "99999",
+            })
+        finally:
+            app_module.maintenance_queue.cancel_queued_job = original_cancel
+            app_module.maintenance_queue.wake_dispatcher = original_wake
+        assert cancel_response.status_code == 302, (
+            cancel_response.status_code, cancel_response.get_data(as_text=True)
+        )
+        # Reversible inventory actions remain available to regular Admin.
+        assert client.post("/admin/delete_node", data={
+            "csrf_token": "fixed-csrf", "node": "node-vn", "mode": "soft",
+        }).status_code == 302
+        assert client.post("/admin/restore_node", data={
+            "csrf_token": "fixed-csrf", "node": "node-vn",
+        }).status_code == 302
         assert client.post("/admin/users/action", data={
             "csrf_token": "fixed-csrf", "user_id": user_ids["legacy-root"], "action": "disable",
         }).status_code == 404
@@ -442,6 +483,24 @@ def main() -> int:
         # verify the current Super Admin password, return to Maintenance and
         # enqueue only after the safety preview is confirmed.
         session_as(client, "legacy-root", "super_admin", user_ids["legacy-root"])
+        assert client.get("/admin?section=maintenance").status_code == 200
+        original_enqueue = app_module.enqueue_maintenance_job
+        queued = []
+        app_module.enqueue_maintenance_job = lambda action, parameters, actor: (queued.append((action, dict(parameters), actor)) or (77 + len(queued), "bw-monitor-maintenance@77.service"))
+        try:
+            assert client.post("/admin/database-maintenance", data={
+                "csrf_token": "fixed-csrf", "action": "retention",
+            }).status_code == 302
+            for days in (2, 7):
+                assert client.post("/admin/database-maintenance", data={
+                    "csrf_token": "fixed-csrf", "action": "delete_history",
+                    "confirm_text": "DELETE HISTORY", "days": str(days),
+                }).status_code == 302
+        finally:
+            app_module.enqueue_maintenance_job = original_enqueue
+        assert [(item[0], item[1].get("days")) for item in queued] == [
+            ("retention", None), ("delete_history", 2), ("delete_history", 7),
+        ]
         original_preview = app_module.maintenance_native.preview_reset_app_data
         original_pending = app_module._v5057_queue_has_pending_jobs
         original_nuclear_enqueue = app_module.maintenance_queue.enqueue_job
@@ -533,13 +592,13 @@ def main() -> int:
         assert group_page.status_code == 200
         group_html = group_page.get_data(as_text=True)
         assert '<details class="node-group-monitor"' in group_html
-        assert "sessionStorage" in group_html and "setInterval(refresh,15000)" in group_html
-        assert group_html.count('name="q"') == 1 and 'name="node_q"' not in group_html
+        assert "sessionStorage" in group_html and "setInterval(refresh,30000)" in group_html
+        assert group_html.count('name="q"') == 1 and 'name="node_q"' in group_html
         assert client.get("/node-groups/summary").status_code == 200
         detail = client.get(f"/node-groups/{vn_id}/nodes?sort=ram_total&order=desc")
         assert detail.status_code == 200
         detail_html = detail.get_data(as_text=True)
-        assert "RAM USED" in detail_html and "ram-value" in detail_html and "ram-warning" in detail_html
+        assert "RAM USED" in detail_html and "ram-value" not in detail_html and "ram-warning" not in detail_html
 
         original_vm_ctes = app_module._v5058c_vm_ctes
         original_node_ctes = app_module._v5058c_node_ctes
@@ -558,10 +617,9 @@ def main() -> int:
             app_module._v5058c_node_ctes = original_node_ctes
         assert group_consumption.status_code == 200, (group_consumption.status_code, group_consumption.get_data(as_text=True)[:2000])
         group_consumption_html = group_consumption.get_data(as_text=True)
-        assert 'v5058c-group-table' in group_consumption_html
-        assert '<colgroup><col><col><col><col><col><col><col></colgroup>' in group_consumption_html
-        for key in ('group', 'nodes', 'vms', 'physical_public', 'physical_private', 'vm_public', 'vm_private'):
-            assert f'sort={key}' in group_consumption_html
+        assert 'v5058c-node-table' in group_consumption_html
+        assert group_consumption_html.count('<th>') >= 7
+        assert 'sort=physical_public' not in group_consumption_html
         session_as(client, "legacy-root", "super_admin", user_ids["legacy-root"])
         assert client.post("/admin/node-groups/action", data={
             "csrf_token": "fixed-csrf", "group_id": vn_id, "action": "hide",
@@ -582,17 +640,23 @@ def main() -> int:
         try:
             with app_module.app.test_request_context('/'):
                 decorated = ng._inject_node_flags(
-                    '<a href="/node/node-vn">node-vn</a>'
+                    '<a href="/node/node-vn"><b>node-vn</b></a>'
+                    '<a href="/node/node-vn?period=5m">5m</a>'
+                    '<a href="/node/node-vn?net=both">Both Cards</a>'
+                    '<a href="/node/node-vn?net=public">Public Only</a>'
+                    '<a href="/node/node-vn?sort=rx">RX</a>'
+                    '<a href="/node/node-vn?sort=cpu">CPU Core%</a>'
+                    '<a href="/node/node-vn">vm-uuid-should-not-be-flagged</a>'
                     '<a href="/node/node-vn/vm/vm-flag">vm-flag</a>'
-                    '<a href="/node/node-vn/vm/vm-flag?sort=rx">RX</a>'
                     '<a href="/vm?node=node-vn&amp;vm_uuid=vm-flag">vm-search</a>'
+                    '<a href="/node/node-vn">← Back to node</a>'
                 )
         finally:
             ng._groups_for_node_links = original_flag_lookup
         assert decorated.count("node-group-flag") == 1
         assert 'node-group-flag' in decorated.split('</a>', 1)[0]
         assert '<a href="/node/node-vn/vm/vm-flag">vm-flag</a>' in decorated
-        assert '<a href="/node/node-vn/vm/vm-flag?sort=rx">RX</a>' in decorated
+        assert '<a href="/node/node-vn?sort=rx">RX</a>' in decorated
 
         # Purge jobs hide their target immediately so monitoring/search cannot
         # keep presenting an item while the FIFO worker is still queued.
@@ -616,16 +680,34 @@ def main() -> int:
             assert ng._monitoring_vm_visible('node-purge', 'vm-purge')
         original_purge_enqueue = app_module.enqueue_batched_purge_jobs
         purge_jobs = []
-        app_module.enqueue_batched_purge_jobs = lambda action, items, actor: (
-            purge_jobs.append((action, list(items), actor)) or [(901 + len(purge_jobs), len(items), len(items))]
-        )
+        def fake_purge_enqueue(action, items, actor):
+            clean_items = list(items)
+            purge_jobs.append((action, clean_items, actor))
+            job_id = 901 + len(purge_jobs)
+            parameters = {"vms": clean_items} if action == "purge_vms" else {"nodes": clean_items}
+            conn = app_module.db()
+            try:
+                conn.execute(
+                    """INSERT INTO maintenance_jobs(
+                           id,created_at,action,parameters,status,requested_by,message,unit_name
+                       ) VALUES (?,?,?,?,?,?,?,?)""",
+                    (job_id, NOW, action, json.dumps(parameters), "queued", actor,
+                     "Waiting in FIFO queue", f"bw-monitor-maintenance@{job_id}.service"),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            return [(job_id, f"bw-monitor-maintenance@{job_id}.service", len(clean_items))]
+
+        app_module.enqueue_batched_purge_jobs = fake_purge_enqueue
+        session_as(client, "new-admin", "admin", user_ids["new-admin"])
         try:
             response = client.post('/admin/delete_vm', data={
                 'csrf_token': 'fixed-csrf', 'node': 'node-purge',
                 'vm_uuid': 'vm-purge', 'mode': 'purge',
             })
             assert response.status_code == 302
-            assert 'section=vms' in response.headers.get('Location', '')
+            assert 'section=maintenance' in response.headers.get('Location', '') and '#maintenance-queue' in response.headers.get('Location', '')
             conn = app_module.db()
             try:
                 assert conn.execute(
@@ -650,7 +732,7 @@ def main() -> int:
                 'csrf_token': 'fixed-csrf', 'node': 'node-purge',
             })
             assert response.status_code == 302
-            assert 'section=nodes' in response.headers.get('Location', '')
+            assert 'section=maintenance' in response.headers.get('Location', '') and '#maintenance-queue' in response.headers.get('Location', '')
             conn = app_module.db()
             try:
                 assert conn.execute(
@@ -670,7 +752,7 @@ def main() -> int:
                 'csrf_token': 'fixed-csrf', 'node': 'node-purge', 'mode': 'purge',
             })
             assert response.status_code == 302
-            assert 'section=nodes' in response.headers.get('Location', '')
+            assert 'section=maintenance' in response.headers.get('Location', '') and '#maintenance-queue' in response.headers.get('Location', '')
             conn = app_module.db()
             try:
                 assert conn.execute(
@@ -681,6 +763,12 @@ def main() -> int:
         finally:
             app_module.enqueue_batched_purge_jobs = original_purge_enqueue
         assert [job[0] for job in purge_jobs] == ['purge_vms', 'purge_node_vms', 'purge_nodes']
+        queue_page = client.get('/admin?section=maintenance')
+        assert queue_page.status_code == 200
+        queue_html = queue_page.get_data(as_text=True)
+        for job_id in (902, 903, 904):
+            assert f'#{job_id}' in queue_html
+        assert 'Purge VM' in queue_html and 'Purge all VMs on node' in queue_html and 'Purge node' in queue_html
 
         html_output = os.environ.get('NODE_GROUPS_HTML_OUTPUT', '').strip()
         if html_output:
@@ -717,6 +805,8 @@ def main() -> int:
 
         # Viewer retains read-only monitoring and group filters, with no Admin access.
         session_as(client, "viewer", "viewer", user_ids["viewer"])
+        viewer_dashboard = client.get("/").get_data(as_text=True)
+        assert '>Operations</a>' not in viewer_dashboard
         assert client.get("/top").status_code == 200
         assert client.get("/node-groups").status_code == 200
         assert client.get("/admin?section=groups").status_code == 403

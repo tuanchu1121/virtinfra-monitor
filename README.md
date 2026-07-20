@@ -1,6 +1,6 @@
 # VirtInfra Monitor
 
-**Release:** `50.5.9-prod-r11-functional-correctness-maintenance-hotfix`
+**Release:** `50.5.9-prod-r16-operations-node-flag-scope-hotfix`
 
 VirtInfra Monitor is a PostgreSQL 17 and TimescaleDB monitoring platform for KVM/libvirt nodes and virtual machines. PostgreSQL is the authoritative datastore for inventory, users, settings, current metrics, historical metrics, Abuse events, Storage I/O and Consumption.
 
@@ -12,6 +12,14 @@ The release has two explicit entry points:
 - `update.sh` is update-only. It requires an existing installation, preserves configuration and credentials, and creates a PostgreSQL backup before replacing application code.
 
 There is no automatic install-to-update fallback.
+
+## Operations boundary
+
+- `viewer` keeps the existing read-only monitoring dashboard and does not see the **Operations** navigation entry.
+- `admin` is the day-to-day operator: Node Groups, Node/VM Hide/Restore/Purge, Queue monitoring/cancel, retention, bounded history cleanup and online VACUUM.
+- `super_admin` has every Admin capability plus API management, Super Admin account control, Clear Monitoring Data, Clear API Data and Nuclear Reset.
+- UI visibility and backend authorization use the same role boundary; direct forged requests remain denied.
+
 
 ## Fresh installation
 

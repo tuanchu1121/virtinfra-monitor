@@ -28,6 +28,7 @@ required=(
   postgres/docker-compose.yml postgres/sql/004_storage_v2.sql
   postgres/sql/006_postgres_native_maintenance.sql postgres/sql/007_safe_maintenance_queue.sql
   postgres/sql/011_node_groups.sql postgres/sql/012_node_groups_r6_safety.sql
+  postgres/sql/013_maintenance_queue_boolean.sql
   requirements.txt VERSION CANONICAL_REPOSITORY README.md
 )
 for rel in "${required[@]}"; do

@@ -98,7 +98,7 @@ def test_agent_is_byte_for_byte_unchanged():
 
 
 def test_existing_postgresql_sql_is_byte_for_byte_unchanged():
-    paths = [path for path in (ROOT / "postgres" / "sql").glob("*.sql") if path.name not in {"011_node_groups.sql", "012_node_groups_r6_safety.sql"}]
+    paths = [path for path in (ROOT / "postgres" / "sql").glob("*.sql") if path.name not in {"011_node_groups.sql", "012_node_groups_r6_safety.sql", "013_maintenance_queue_boolean.sql"}]
     assert digest_tree(paths) == CONTRACT["postgres_sql_tree_sha256"]
 
 

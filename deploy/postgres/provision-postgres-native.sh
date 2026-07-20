@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE="50.5.9-prod-r11-functional-correctness-maintenance-hotfix"
+RELEASE="50.5.9-prod-r16-operations-node-flag-scope-hotfix"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 APP_SRC="$REPO_ROOT/app"
@@ -293,6 +293,7 @@ install -m 0644 "$PG_SRC/sql/009_low_io_compat.sql" "$APP_DIR/postgres/sql/009_l
 install -m 0644 "$PG_SRC/sql/010_consumption_inventory_cleanup.sql" "$APP_DIR/postgres/sql/010_consumption_inventory_cleanup.sql"
 install -m 0644 "$PG_SRC/sql/011_node_groups.sql" "$APP_DIR/postgres/sql/011_node_groups.sql"
 install -m 0644 "$PG_SRC/sql/012_node_groups_r6_safety.sql" "$APP_DIR/postgres/sql/012_node_groups_r6_safety.sql"
+install -m 0644 "$PG_SRC/sql/013_maintenance_queue_boolean.sql" "$APP_DIR/postgres/sql/013_maintenance_queue_boolean.sql"
 
 log "Start PostgreSQL 17 + TimescaleDB"
 "${COMPOSE[@]}" --env-file "$PG_ENV" -f "$APP_DIR/postgres/docker-compose.yml" pull
@@ -470,6 +471,23 @@ docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATA
 log "Apply Node Groups and role migration"
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/011_node_groups.sql"
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/012_node_groups_r6_safety.sql"
+log "Normalize maintenance queue cancel flag to PostgreSQL BOOLEAN"
+docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/013_maintenance_queue_boolean.sql"
+QUEUE_CANCEL_TYPE="$(docker exec bw-timescaledb psql -U "$PG_USER" -d "$PG_DATABASE" -Atqc "SELECT data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='maintenance_jobs' AND column_name='cancel_requested'")"
+[[ "$QUEUE_CANCEL_TYPE" == "boolean" ]] || die "maintenance_jobs.cancel_requested must be boolean; found ${QUEUE_CANCEL_TYPE:-missing}"
+log "Verify maintenance Queue accepts PostgreSQL BOOLEAN values"
+docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" <<'SQL'
+BEGIN;
+INSERT INTO public.maintenance_jobs(
+    created_at, action, parameters, status, requested_by,
+    message, heartbeat_at, progress, attempt, cancel_requested
+) VALUES (
+    EXTRACT(EPOCH FROM clock_timestamp())::bigint,
+    'vacuum', '{}', 'queued', 'schema-self-test',
+    'ROLLBACK ONLY', NULL, 0, 0, FALSE
+);
+ROLLBACK;
+SQL
 
 log "Backfill recent physical Consumption rollups"
 if ! "$APP_DIR/venv/bin/python3" "$APP_DIR/consumption_rollup.py" --hours 48; then
@@ -521,7 +539,13 @@ WantedBy=timers.target
 UNIT
 
 systemctl daemon-reload
+# Force any stale pre-upgrade dispatcher invocation to release the timer, then
+# load the new unit and return the watchdog to active/waiting state. Active
+# per-job workers are independent template units and are not stopped here.
+systemctl stop bw-monitor-maintenance-dispatch.service 2>/dev/null || true
+systemctl reset-failed bw-monitor-maintenance-dispatch.service bw-monitor-maintenance-watchdog.timer 2>/dev/null || true
 systemctl enable --now bw-monitor-maintenance-watchdog.timer
+systemctl restart bw-monitor-maintenance-watchdog.timer
 systemctl --no-block start bw-monitor-maintenance-dispatch.service || true
 systemctl enable bw-monitor.service bw-monitor-retention.timer bw-monitor-backup.timer virtinfra-monitor-health-watch.timer bw-monitor-inventory-cleanup.timer
 systemctl restart bw-monitor-retention.timer bw-monitor-backup.timer virtinfra-monitor-health-watch.timer

@@ -1,9 +1,0 @@
-flag-icons version: 7.5.0
-packaged ISO alpha-2 SVG files: 257
-byte-identical readable RAR entries: 228
-RAR entries recovered from matching 7.5.0 package: 29
-recovered codes: ag.svg,az.svg,dm.svg,do.svg,et.svg,gt.svg,gw.svg,gy.svg,jo.svg,ke.svg,ki.svg,ky.svg,li.svg,mn.svg,mp.svg,mu.svg,mw.svg,mz.svg,pf.svg,py.svg,si.svg,sx.svg,sz.svg,tg.svg,tr.svg,vu.svg,ws.svg,za.svg,zm.svg
-CSS mappings: 257
-CSS/file set identical: True
-zero-byte or invalid SVG files: 0
-runtime URL dependency present: False

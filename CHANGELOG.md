@@ -1,41 +1,43 @@
 # Changelog
 
-## 50.5.9-prod-r11-functional-correctness-maintenance-hotfix
+## 50.5.9-prod-r16-operations-node-flag-scope-hotfix
 
-### Administration and RBAC
+- Added a role-aware **Operations** navigation item beside VM Abuse. Viewer sessions do not see it; Admin and Super Admin do.
+- Standardized the existing `/admin` pages with one Operations hero and tab shell without changing routes, forms, query parameters, monitoring UI or metric calculations.
+- Restored the operator model for regular Admin: Queue visibility/cancel, routine retention, 1/2/3/7-day cleanup, online VACUUM and permanent Node/VM purge through the existing FIFO worker path.
+- Kept Clear Monitoring Data, API-data deletion, Nuclear Reset, API management and Super Admin account control restricted to Super Admin at both UI and backend layers.
+- Fixed Node Group flag decoration so a flag appears only beside the visible Node identity. VM UUIDs, 5m–7d periods, Both/Public/Private selectors, RX/TX/TOTAL, Mbps/PPS, SAMPLE, CPU, vCPU, RAM, disk, drops, errors and other sort/filter labels are never decorated.
+- Preserved the R15 Boolean Queue migration, 83 Flask routes, Agent/API payloads, dashboard behavior, 30-second refresh and all CPU/RAM/network/disk/Abuse/Consumption/retention formulas.
 
-- Admin can open User Management, Theme Settings, Account Logs, Node Logs, System Health and the Maintenance/Queue page.
-- Admin can manage Viewer and Admin accounts, but Super Admin accounts remain invisible and protected.
-- Change Password now updates only the currently authenticated account. It no longer changes the global/Super Admin credential.
-- Routine maintenance is available to Admin. Destructive reset and Nuclear Reset remain Super Admin only.
+## 50.5.9-prod-r15-super-admin-maintenance-queue-schema-fix
 
-### Node Groups and inventory
+- Restricted the complete Maintenance area, Queue controls, database operations and permanent Node/VM purge actions to `super_admin`.
+- Regular `admin` accounts no longer see Maintenance KPI cards or permanent purge controls, and direct requests return HTTP 403.
+- Preserved regular Admin Hide, Restore, Node Group and ordinary user-management behavior.
+- Corrected new-install queue schema so `maintenance_jobs.cancel_requested` is PostgreSQL `BOOLEAN NOT NULL DEFAULT FALSE`.
+- Added an idempotent migration that converts legacy numeric cancel flags to Boolean without deleting Queue history.
+- Added an update-time Queue insert/rollback self-test so installation stops before deployment if Boolean insertion is incompatible.
+- Reloaded the dispatcher and watchdog timer safely during update without stopping active per-job worker units.
+- Preserved all monitoring formulas, API/Agent payloads, routes, UI layout and retention behavior.
 
-- Hiding a Node Group now applies effective visibility to its Nodes and inherited VMs across monitoring pages without deleting stored metrics.
-- Admin inventory shows `hidden by group` while preserving the Node or VM's own inventory state for safe restore.
-- Fixed `Move all to Ungrouped` returning `Select a Node Group`.
-- Node and VM inventory tables have aligned headers/cells and sortable columns.
-- Removed the `Selected nodes / All matching nodes` scope control; bulk actions operate only on checked rows.
-- Node Groups uses one search field for group name, Node name and Node IP, refreshes every 15 seconds and reuses existing RAM percentage thresholds for warning/critical color.
+## 50.5.9-prod-r13-conservative-refresh30-retention-verified
 
-### Purge, Queue and Maintenance
+### Scope
 
-- Node/VM purge targets are hidden immediately after a FIFO job is accepted, preventing stale search/monitoring results while the worker is waiting.
-- Purge queue failures restore the previous inventory state and return a visible error.
-- Maintenance jobs now treat `starting` as active consistently.
-- Dispatcher wake failures are written into the queued job message; the watchdog retries every minute.
-- Manual history deletion accepts 1, 2, 3 and 7 days.
-- Nuclear Reset verifies the active Super Admin account and returns to the Maintenance/Queue panel after preview, execution or error.
+- Preserves the current UI structure, Flask routes, endpoint names, request/response payloads, database schema, Agent protocol and all monitoring calculations.
+- Keeps the conservative Admin, Maintenance, Queue, Node Group visibility, purge and password correctness fixes already present in the source.
+- Changes only the browser live refresh interval from 5 seconds to 30 seconds, including Node Groups.
+- Fixes the release preflight reference so it invokes the test file that is actually shipped.
 
-### UI correctness
+### Retention verification
 
-- Global live-page refresh changes from 5 seconds to 30 seconds. Node Groups refresh remains independent at 15 seconds.
-- Node Group flags are injected only into exact Node links, not VM UUIDs, VM detail metrics or sortable column labels.
-- Node Group Consumption has fixed seven-column alignment and sorting for group, Node/VM counts and Public/Private totals.
-- Existing Storage and Consumption toolbar order is preserved: `Search` then `Clear`, and `Apply` then `Reset`.
+- Latest 48 hours retain every real five-minute Agent push.
+- From 48 hours through day 7, one real retained snapshot per Node and local hour is preserved.
+- Historical metric rows older than 7 days are deleted while current inventory/state remains preserved.
+- The release includes an executable regression test that populates points across days 1, 3, 6 and 8 and verifies the effective retention function end to end.
 
 ### Compatibility boundary
 
-- Flask route count, endpoint names, Agent payload, API payload, PostgreSQL schema, SQL migrations and static assets are unchanged.
-- CPU, RAM, network Mbps/PPS, disk throughput/IOPS, bandwidth Consumption, Abuse, snapshot, retention and queue calculation formulas are unchanged.
-- Fresh installation remains `install.sh`; update and backup preservation remain isolated in `update.sh`.
+- CPU, RAM, network Mbps/PPS, disk throughput/IOPS, Consumption, Abuse, snapshot selection, Queue batching and retention formulas are unchanged.
+- Static UI assets are unchanged.
+- Fresh installation remains `install.sh`; update with backup preservation remains `update.sh`.

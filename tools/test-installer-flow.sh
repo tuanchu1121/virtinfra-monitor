@@ -13,7 +13,7 @@ for f in "$ROOT/install.sh" "$ROOT/update.sh" "$FRESH" "$UPDATE" "$ENGINE" "$CTL
   bash -n "$f"
 done
 
-RELEASE='50.5.9-prod-r11-functional-correctness-maintenance-hotfix'
+RELEASE='50.5.9-prod-r16-operations-node-flag-scope-hotfix'
 grep -q "RELEASE=\"$RELEASE\"" "$ENGINE" || fail "release marker missing"
 [[ "$(cat "$ROOT/VERSION")" == "$RELEASE" ]] || fail "VERSION mismatch"
 CANONICAL='tuanchu1121/virtinfra-monitor'
@@ -72,7 +72,7 @@ grep -q 'Raw detail:     per-interface V2 rows for 48 hours' "$ENGINE" || fail "
 
 for required in \
   004_storage_v2.sql 007_safe_maintenance_queue.sql 010_consumption_inventory_cleanup.sql \
-  011_node_groups.sql 012_node_groups_r6_safety.sql maintenance_queue.py \
+  011_node_groups.sql 012_node_groups_r6_safety.sql 013_maintenance_queue_boolean.sql maintenance_queue.py \
   maintenance_dispatch.py runtime_loader.py runtime_layers node_groups.py \
   consumption_rollup.py bw-monitor-inventory-cleanup.timer; do
   grep -q "$required" "$ENGINE" || fail "installer does not deploy $required"

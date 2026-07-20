@@ -46,6 +46,7 @@ repo_complete() {
     postgres/sql/007_safe_maintenance_queue.sql \
     postgres/sql/011_node_groups.sql \
     postgres/sql/012_node_groups_r6_safety.sql \
+    postgres/sql/013_maintenance_queue_boolean.sql \
     requirements.txt \
     VERSION \
     CANONICAL_REPOSITORY \

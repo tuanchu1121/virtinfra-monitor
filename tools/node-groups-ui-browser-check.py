@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Browser-level UI regression metrics for Node Groups additive hotfix."""
+"""Browser-level conservative UI regression metrics for VirtInfra Monitor."""
 from __future__ import annotations
 
 import argparse
@@ -77,9 +77,6 @@ def main() -> int:
             for path in (before_file, after_file):
                 page = pages[viewport_name]
                 html = path.read_text(encoding="utf-8")
-                if path == after_file:
-                    feature_css = (Path(__file__).resolve().parents[1] / "app/static/flags/node-groups.css").read_text(encoding="utf-8")
-                    html = html.replace("</head>", f"<style>{feature_css}</style></head>", 1)
                 page.set_content(html, wait_until="load")
                 page.wait_for_timeout(50)
                 metrics.append(page.evaluate(JS))
@@ -92,12 +89,7 @@ def main() -> int:
                 before["body"]["style"][key] == after["body"]["style"][key]
                 for key in ("fontFamily", "fontSize", "fontWeight", "color", "backgroundColor", "lineHeight")
             )
-            if page_name == "admin-overview":
-                checks["card_count_identical"] = len(after["cards"]) == len(before["cards"]) - 1
-            elif page_name == "admin-maintenance":
-                checks["card_count_identical"] = len(after["cards"]) == len(before["cards"]) + 1
-            else:
-                checks["card_count_identical"] = len(before["cards"]) == len(after["cards"])
+            checks["card_count_identical"] = len(before["cards"]) == len(after["cards"])
             comparable = min(len(before["cards"]), len(after["cards"]))
             checks["card_geometry_preserved"] = all(
                 close(before["cards"][index]["rect"][key], after["cards"][index]["rect"][key])
@@ -115,11 +107,8 @@ def main() -> int:
                 for left, right in zip(before["tableWraps"], after["tableWraps"])
             )
             old_button_ok = True
-            moved_buttons = {"Run cleanup now", "Clear history"} if page_name == "admin-overview" else set()
             for text, old_items in before["buttons"].items():
                 new_items = after["buttons"].get(text, [])
-                if text in moved_buttons:
-                    continue
                 if len(new_items) < len(old_items):
                     old_button_ok = False
                     break
@@ -154,8 +143,6 @@ def main() -> int:
         for viewport_name, viewport in VIEWPORTS.items():
             page = pages[viewport_name]
             html = after_file.read_text(encoding="utf-8")
-            feature_css = (Path(__file__).resolve().parents[1] / "app/static/flags/node-groups.css").read_text(encoding="utf-8")
-            html = html.replace("</head>", f"<style>{feature_css}</style></head>", 1)
             page.set_content(html, wait_until="load")
             page.wait_for_timeout(50)
             after = page.evaluate(JS)
@@ -175,7 +162,7 @@ def main() -> int:
     args.json.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     lines = [
         "# Node Groups Browser UI Regression Report", "",
-        "Chromium measured the baseline and additive hotfix at 1440×1000, 1024×900 and 390×844.",
+        "Chromium measured the baseline and conservative release at 1440×1000, 1024×900 and 390×844.",
         "The checks cover document overflow, body theme/font, card geometry, table wrappers, old button dimensions and navigation containment.", "",
         "| Page | Desktop | Tablet | Mobile |", "|---|---|---|---|",
     ]

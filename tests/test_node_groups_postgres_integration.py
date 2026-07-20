@@ -129,3 +129,32 @@ def test_node_groups_postgresql_migration_is_idempotent_and_safe():
         with pytest.raises(psycopg.errors.ForeignKeyViolation):
             conn.execute("DELETE FROM node_groups WHERE id=%s", (group_id,))
         assert conn.execute("SELECT 1 FROM node_groups WHERE id=%s", (group_id,)).fetchone() == (1,)
+
+
+def test_maintenance_queue_boolean_migration_converts_legacy_numeric_values():
+    queue_sql = migration_sql("013_maintenance_queue_boolean.sql")
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
+        conn.execute("CREATE SCHEMA public")
+        conn.execute("GRANT ALL ON SCHEMA public TO PUBLIC")
+        conn.execute("""
+            CREATE TABLE public.maintenance_jobs (
+                id BIGSERIAL PRIMARY KEY,
+                cancel_requested BIGINT NOT NULL DEFAULT 0
+            )
+        """)
+        conn.execute("INSERT INTO public.maintenance_jobs(cancel_requested) VALUES (0),(1),(7)")
+        conn.execute(queue_sql, prepare=False)
+        conn.execute(queue_sql, prepare=False)
+        column = conn.execute("""
+            SELECT data_type, column_default, is_nullable
+              FROM information_schema.columns
+             WHERE table_schema='public'
+               AND table_name='maintenance_jobs'
+               AND column_name='cancel_requested'
+        """).fetchone()
+        assert column[0] == "boolean"
+        assert column[2] == "NO"
+        assert conn.execute(
+            "SELECT cancel_requested FROM public.maintenance_jobs ORDER BY id"
+        ).fetchall() == [(False,), (True,), (True,)]

@@ -41,7 +41,8 @@ def test_required_functional_hotfixes_remain_present() -> None:
     assert 're.fullmatch(r"/node/([^/]+)", path)' in groups
     assert "previous_nodes" in admin and "previous_vms" in admin
     assert 'role != "super_admin"' in maintenance
-    assert 'routine_actions = {"retention", "vacuum", "delete_history", "delete_compact"}' in maintenance
+    assert 'Forbidden: super_admin role required' in maintenance
+    assert 'routine_actions = {' not in maintenance
 
 
 def test_maintenance_watchdog_and_starting_state_are_installed() -> None:

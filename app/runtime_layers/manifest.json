@@ -3,7 +3,7 @@
     "file": "00_bootstrap_database.py",
     "start_line": 1,
     "end_line": 1060,
-    "sha256": "d75763e056950c5fd5fdf381f534e8ddfed825f3f9f57ab395af1e22005611e6"
+    "sha256": "c438d3a382d8093a0b411a51fee842441aec54219f3b75a51bc7d1eef22581dd"
   },
   {
     "file": "01_auth_permissions.py",
@@ -57,7 +57,7 @@
     "file": "09_admin_routes.py",
     "start_line": 7368,
     "end_line": 8774,
-    "sha256": "f953052a1ebd4ec13f118f0ec44b52460a3fdea2d22aec51b81760b0c0daccc6"
+    "sha256": "0f31c2baa0c21dbd98f6179b245a9bb57cd79792a12bfb3940a7606216ade48a"
   },
   {
     "file": "10_ingest_push.py",
@@ -230,37 +230,37 @@
   {
     "file": "38_agent_maintenance_canonical_routes.py",
     "start_line": 28142,
-    "end_line": 28972,
-    "sha256": "02062292fe98793586f4889fb7974fab15c3596028ce607cdd989a3997e2a28a"
+    "end_line": 28969,
+    "sha256": "780c725935819b17a0bd3d99ad3033a51a04ad29f14e0eb267230676855e6d90"
   },
   {
     "file": "39_inventory_consumption_views.py",
-    "start_line": 28973,
-    "end_line": 29504,
+    "start_line": 28970,
+    "end_line": 29501,
     "sha256": "df8ef4b399f07b0dc43a2f54557234eb2b1b33e7164e7f49da052e61f8d45252"
   },
   {
     "file": "40_consumption_cleanup_r4.py",
-    "start_line": 29505,
-    "end_line": 30349,
+    "start_line": 29502,
+    "end_line": 30346,
     "sha256": "bb2647f6e888cffb6b427de9c6ef1b02660600d0f6dca70f2ee496906c72fb4a"
   },
   {
     "file": "41_ui_layout_r2.py",
-    "start_line": 30350,
-    "end_line": 31056,
+    "start_line": 30347,
+    "end_line": 31053,
     "sha256": "5c3777ef2d4d44aa026d618826b5207d5078217a3e546544d59f0c6446d816e9"
   },
   {
     "file": "42_ui_alignment_r3.py",
-    "start_line": 31057,
-    "end_line": 31387,
+    "start_line": 31054,
+    "end_line": 31384,
     "sha256": "dfc0c94f61a6f9bb0cc9e6961c48458941525fd7fb26d1dbd63149322db660fd"
   },
   {
     "file": "43_node_groups_loader.py",
-    "start_line": 31388,
-    "end_line": 31409,
-    "sha256": "e791954aca3a6655db2039368d87cf27413b11deefec87cb260fd2dfc8bb3cf1"
+    "start_line": 31385,
+    "end_line": 31406,
+    "sha256": "e465dddbe73d9aea8f6ea01b86f48d6b72500c1a9efdde1cbb5992116789a9da"
   }
 ]

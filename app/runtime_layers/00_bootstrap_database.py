@@ -815,7 +815,7 @@ def db():
         heartbeat_at INTEGER,
         progress INTEGER NOT NULL DEFAULT 0,
         attempt INTEGER NOT NULL DEFAULT 0,
-        cancel_requested INTEGER NOT NULL DEFAULT 0
+        cancel_requested BOOLEAN NOT NULL DEFAULT FALSE
     )
     """)
 

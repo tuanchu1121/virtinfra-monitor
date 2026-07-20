@@ -1072,10 +1072,10 @@ def page(title, content):
             }});
         }});
 
-        // Quiet 5-second content refresh for live operational pages only.
+        // Quiet 30-second content refresh for live operational pages only.
         // It never reloads the browser document, never overlaps requests, and
         // pauses while the operator is editing a form.
-        const BW_AUTO_REFRESH_MS = 5000;
+        const BW_AUTO_REFRESH_MS = 30000;
         function bwIsLivePage() {{
             const p = window.location.pathname;
             return p === '/' || p === '/top' || p === '/top/nodes' || p === '/abuse/vms'

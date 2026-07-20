@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections import Counter
 from pathlib import Path
 import sqlite3
@@ -240,6 +241,31 @@ def main() -> int:
         assert "vm-1" in vms_html and "vm-2" in vms_html and "vm-3" not in vms_html
         assert "Vietnam DC" in vms_html
 
+        def assert_table_alignment(document: str, class_name: str) -> None:
+            table = re.search(
+                rf'<table[^>]*class="[^"]*{re.escape(class_name)}[^"]*"[^>]*>(.*?)</table>',
+                document, flags=re.I | re.S,
+            )
+            assert table, class_name
+            fragment = table.group(1)
+            header_count = len(re.findall(r'<th\b', fragment, flags=re.I))
+            body = re.search(r'<tbody[^>]*>(.*?)</tbody>', fragment, flags=re.I | re.S)
+            assert body and header_count > 0, class_name
+            rows = re.findall(r'<tr[^>]*>(.*?)</tr>', body.group(1), flags=re.I | re.S)
+            data_rows = [row for row in rows if '<td' in row.lower() and 'class="empty"' not in row.lower()]
+            assert data_rows, class_name
+            assert all(len(re.findall(r'<td\b', row, flags=re.I)) == header_count for row in data_rows), (
+                class_name, header_count, [len(re.findall(r'<td\b', row, flags=re.I)) for row in data_rows]
+            )
+
+        assert_table_alignment(nodes_html, 'node-groups-admin-nodes')
+        assert_table_alignment(vms_html, 'node-groups-admin-vms')
+        assert 'selection_scope' not in nodes_html and 'All matching nodes' not in nodes_html
+        for key in ('node', 'group', 'public_ip', 'private_ip', 'vms', 'last_push'):
+            assert f'sort={key}' in nodes_html
+        for key in ('node', 'group', 'uuid', 'status'):
+            assert f'sort={key}' in vms_html
+
         # VM group follows its node location, with no VM-to-group relationship.
         conn = app_module.db()
         try:
@@ -269,9 +295,15 @@ def main() -> int:
         assert client.post("/admin/node-groups/assign", data={
             "csrf_token": "fixed-csrf", "group_id": jp_id, "nodes": ["node-jp"],
         }).status_code == 302
-        assert client.post("/admin/node-groups/assign", data={
-            "csrf_token": "fixed-csrf", "group_id": system[0], "nodes": ["node-jp"],
+        assert client.post("/admin/node-groups/bulk", data={
+            "csrf_token": "fixed-csrf", "action": "move_all_ungrouped",
+            "source_group_id": jp_id,
         }).status_code == 302
+        conn = app_module.db()
+        try:
+            assert conn.execute("SELECT group_id FROM node_group_memberships WHERE node='node-jp'").fetchone() == (system[0],)
+        finally:
+            conn.close()
         assert client.post("/admin/node-groups/action", data={
             "csrf_token": "fixed-csrf", "group_id": jp_id, "action": "delete",
         }).status_code == 302
@@ -323,48 +355,127 @@ def main() -> int:
             all_html = client.get(path + joiner + "group=all").get_data(as_text=True)
             assert all_html == baseline_html, path
 
-        # Group=All delegates to untouched baseline data functions. Restore the
-        # originals immediately so later page-render checks still exercise the
-        # real baseline implementation and tuple shapes.
+        # Group=All still delegates metric calculation to the untouched baseline,
+        # then applies the active-group visibility predicate to the returned rows.
         original_delegates = {
             name: ng._BASE[name]
             for name in ("get_node_rows", "get_node_health_rows", "get_top_vm_rows")
         }
+        original_effective = ng.effective_visible_nodes
         try:
-            sentinel_nodes = ([('node-vn',)], 100, 200)
-            ng._BASE["get_node_rows"] = lambda *_a, **_k: sentinel_nodes
+            ng.effective_visible_nodes = lambda *_a, **_k: {"node-vn"}
+            ng._BASE["get_node_rows"] = lambda *_a, **_k: ([("node-vn",), ("node-hidden",)], 100, 200)
             with app_module.app.test_request_context("/?group=all"):
-                assert ng.get_node_rows("5m") is sentinel_nodes
-            sentinel_health = [('node-vn',)]
-            ng._BASE["get_node_health_rows"] = lambda *_a, **_k: sentinel_health
+                assert ng.get_node_rows("5m") == ([("node-vn",)], 100, 200)
+            ng._BASE["get_node_health_rows"] = lambda *_a, **_k: [("node-vn",), ("node-hidden",)]
             with app_module.app.test_request_context("/health/nodes"):
-                assert ng.get_node_health_rows() is sentinel_health
-            sentinel_top = ([('node-vn', 'vm-1')], 100, 100, 100)
-            ng._BASE["get_top_vm_rows"] = lambda *_a, **_k: sentinel_top
+                assert ng.get_node_health_rows() == [("node-vn",)]
+            ng._BASE["get_top_vm_rows"] = lambda *_a, **_k: ([("node-vn", "vm-1"), ("node-hidden", "vm-x")], 100, 100, 100)
             with app_module.app.test_request_context("/top?group=all"):
-                assert ng.get_top_vm_rows("5m") is sentinel_top
+                assert ng.get_top_vm_rows("5m") == ([("node-vn", "vm-1")], 100, 100, 100)
         finally:
+            ng.effective_visible_nodes = original_effective
             ng._BASE.update(original_delegates)
 
-        # Restricted Admin may manage nodes/groups/users but not dangerous controls or Super Admin accounts.
+        # Restricted Admin may manage ordinary users, themes, logs and routine
+        # maintenance, but cannot access API keys, Super Admin accounts or
+        # destructive maintenance controls.
         session_as(client, "new-admin", "admin", user_ids["new-admin"])
         assert client.get("/admin?section=groups").status_code == 200
         assert client.get("/admin?section=nodes").status_code == 200
         assert client.get("/admin/api-keys").status_code == 403
-        assert client.get("/admin/theme").status_code == 403
-        assert client.get("/admin?section=maintenance").status_code == 403
-        assert client.post("/admin/database-maintenance", data={"csrf_token": "fixed-csrf"}).status_code == 403
-        assert client.post("/admin/users/action", data={
-            "csrf_token": "fixed-csrf", "user_id": user_ids["legacy-root"], "action": "disable",
-        }).status_code == 404
-        assert client.get("/admin/users").status_code == 403
-        assert client.post("/admin/users/create", data={
-            "csrf_token": "fixed-csrf", "username": "managed-viewer",
-            "password": "Password123!", "role": "viewer",
+        assert client.get("/admin/theme").status_code == 200
+        assert client.get("/admin/logs?type=account").status_code == 200
+        assert client.get("/admin/logs?type=node").status_code == 200
+        assert client.get("/admin/system-health").status_code == 200
+        assert client.get("/admin?section=maintenance").status_code == 200
+        users_page = client.get("/admin/users")
+        assert users_page.status_code == 200
+        assert "legacy-root" not in users_page.get_data(as_text=True)
+        original_enqueue = app_module.enqueue_maintenance_job
+        queued = []
+        app_module.enqueue_maintenance_job = lambda action, parameters, actor: (queued.append((action, dict(parameters), actor)) or (77 + len(queued), "bw-monitor-maintenance@77.service"))
+        try:
+            assert client.post("/admin/database-maintenance", data={
+                "csrf_token": "fixed-csrf", "action": "retention",
+            }).status_code == 302
+            for days in (2, 7):
+                assert client.post("/admin/database-maintenance", data={
+                    "csrf_token": "fixed-csrf", "action": "delete_history",
+                    "confirm_text": "DELETE HISTORY", "days": str(days),
+                }).status_code == 302
+        finally:
+            app_module.enqueue_maintenance_job = original_enqueue
+        assert [(item[0], item[1].get("days")) for item in queued] == [
+            ("retention", None), ("delete_history", 2), ("delete_history", 7),
+        ]
+        assert client.post("/admin/database-maintenance", data={
+            "csrf_token": "fixed-csrf", "action": "clear_monitoring_data",
+            "confirm_text": "CLEAR ALL MONITORING DATA",
         }).status_code == 403
         assert client.post("/admin/users/action", data={
             "csrf_token": "fixed-csrf", "user_id": user_ids["legacy-root"], "action": "disable",
         }).status_code == 404
+        assert client.post("/admin/users/create", data={
+            "csrf_token": "fixed-csrf", "username": "managed-viewer",
+            "password": "Password123!", "role": "viewer",
+        }).status_code == 302
+        conn = app_module.db()
+        try:
+            super_before = conn.execute("SELECT password_hash FROM dashboard_users WHERE username='legacy-root'").fetchone()[0]
+        finally:
+            conn.close()
+        changed = client.post("/admin/password", data={
+            "csrf_token": "fixed-csrf", "current_password": "Password123!",
+            "new_password": "AdminPassword456!", "confirm_password": "AdminPassword456!",
+        })
+        assert changed.status_code == 200
+        conn = app_module.db()
+        try:
+            own_hash = conn.execute("SELECT password_hash FROM dashboard_users WHERE username='new-admin'").fetchone()[0]
+            super_after = conn.execute("SELECT password_hash FROM dashboard_users WHERE username='legacy-root'").fetchone()[0]
+        finally:
+            conn.close()
+        assert app_module.check_password_hash(own_hash, "AdminPassword456!")
+        assert super_after == super_before
+        # Super Admin nuclear reset is a two-step flow. The route must
+        # verify the current Super Admin password, return to Maintenance and
+        # enqueue only after the safety preview is confirmed.
+        session_as(client, "legacy-root", "super_admin", user_ids["legacy-root"])
+        original_preview = app_module.maintenance_native.preview_reset_app_data
+        original_pending = app_module._v5057_queue_has_pending_jobs
+        original_nuclear_enqueue = app_module.maintenance_queue.enqueue_job
+        nuclear_jobs = []
+        app_module.maintenance_native.preview_reset_app_data = lambda: {
+            "table_count": 12, "estimated_rows": 345, "estimated_bytes": 6789, "database_bytes": 9999,
+        }
+        app_module._v5057_queue_has_pending_jobs = lambda: None
+        app_module.maintenance_queue.enqueue_job = lambda action, parameters, actor, exclusive=False: (
+            nuclear_jobs.append((action, dict(parameters), actor, exclusive)) or (88, "bw-monitor-maintenance@88.service")
+        )
+        try:
+            preview_response = client.post("/admin/database-maintenance", data={
+                "csrf_token": "fixed-csrf", "action": "reset_app_data_preview",
+                "admin_password": "Password123!",
+            })
+            assert preview_response.status_code == 302
+            assert "section=maintenance" in preview_response.headers.get("Location", "")
+            with client.session_transaction() as sess:
+                preview_data = dict(sess["v5057_nuclear_preview"])
+                preview_data["not_before"] = NOW
+                sess["v5057_nuclear_preview"] = preview_data
+            final_response = client.post("/admin/database-maintenance", data={
+                "csrf_token": "fixed-csrf", "action": "reset_app_data",
+                "preview_nonce": preview_data["nonce"], "admin_password": "Password123!",
+                "confirm_text": "RESET VIRTINFRA " + preview_data["code"],
+            })
+            assert final_response.status_code == 302
+            assert "section=maintenance" in final_response.headers.get("Location", "")
+        finally:
+            app_module.maintenance_native.preview_reset_app_data = original_preview
+            app_module._v5057_queue_has_pending_jobs = original_pending
+            app_module.maintenance_queue.enqueue_job = original_nuclear_enqueue
+        assert nuclear_jobs and nuclear_jobs[0][0] == "reset_app_data" and nuclear_jobs[0][3] is True
 
         # Populate only the existing current caches. Summary/detail must not
         # scan metric history, must exclude hidden inventory, and must count a
@@ -422,11 +533,187 @@ def main() -> int:
         assert group_page.status_code == 200
         group_html = group_page.get_data(as_text=True)
         assert '<details class="node-group-monitor"' in group_html
-        assert "sessionStorage" in group_html and "setInterval(refresh,5000)" in group_html
+        assert "sessionStorage" in group_html and "setInterval(refresh,15000)" in group_html
+        assert group_html.count('name="q"') == 1 and 'name="node_q"' not in group_html
         assert client.get("/node-groups/summary").status_code == 200
         detail = client.get(f"/node-groups/{vn_id}/nodes?sort=ram_total&order=desc")
         assert detail.status_code == 200
-        assert "RAM USED" in detail.get_data(as_text=True)
+        detail_html = detail.get_data(as_text=True)
+        assert "RAM USED" in detail_html and "ram-value" in detail_html and "ram-warning" in detail_html
+
+        original_vm_ctes = app_module._v5058c_vm_ctes
+        original_node_ctes = app_module._v5058c_node_ctes
+        app_module._v5058c_vm_ctes = lambda *_a, **_k: (
+            "WITH vm_rows(node,public_rx,public_tx,private_rx,private_tx) AS "
+            "(SELECT '',0,0,0,0 WHERE 0) ", []
+        )
+        app_module._v5058c_node_ctes = lambda *_a, **_k: (
+            "WITH node_rows(node,physical_public_rx,physical_public_tx,physical_private_rx,physical_private_tx) AS "
+            "(SELECT '',0,0,0,0 WHERE 0) ", []
+        )
+        try:
+            group_consumption = client.get('/bandwidth-consumption?tab=group&sort=physical_public&order=desc')
+        finally:
+            app_module._v5058c_vm_ctes = original_vm_ctes
+            app_module._v5058c_node_ctes = original_node_ctes
+        assert group_consumption.status_code == 200, (group_consumption.status_code, group_consumption.get_data(as_text=True)[:2000])
+        group_consumption_html = group_consumption.get_data(as_text=True)
+        assert 'v5058c-group-table' in group_consumption_html
+        assert '<colgroup><col><col><col><col><col><col><col></colgroup>' in group_consumption_html
+        for key in ('group', 'nodes', 'vms', 'physical_public', 'physical_private', 'vm_public', 'vm_private'):
+            assert f'sort={key}' in group_consumption_html
+        session_as(client, "legacy-root", "super_admin", user_ids["legacy-root"])
+        assert client.post("/admin/node-groups/action", data={
+            "csrf_token": "fixed-csrf", "group_id": vn_id, "action": "hide",
+        }).status_code == 302
+        with app_module.app.test_request_context("/"):
+            assert "node-vn" not in ng.effective_visible_nodes()
+        assert client.get("/node/node-vn").status_code == 404
+        hidden_admin = client.get("/admin?section=nodes&group=%s" % vn_id).get_data(as_text=True)
+        assert "hidden by group" in hidden_admin
+        assert client.post("/admin/node-groups/action", data={
+            "csrf_token": "fixed-csrf", "group_id": vn_id, "action": "restore",
+        }).status_code == 302
+
+        # Node flags belong only to exact Node links. VM detail/UUID links and
+        # sortable metric links must never inherit the Node Group flag.
+        original_flag_lookup = ng._groups_for_node_links
+        ng._groups_for_node_links = lambda nodes: {node: ("Vietnam DC", "vn") for node in nodes}
+        try:
+            with app_module.app.test_request_context('/'):
+                decorated = ng._inject_node_flags(
+                    '<a href="/node/node-vn">node-vn</a>'
+                    '<a href="/node/node-vn/vm/vm-flag">vm-flag</a>'
+                    '<a href="/node/node-vn/vm/vm-flag?sort=rx">RX</a>'
+                    '<a href="/vm?node=node-vn&amp;vm_uuid=vm-flag">vm-search</a>'
+                )
+        finally:
+            ng._groups_for_node_links = original_flag_lookup
+        assert decorated.count("node-group-flag") == 1
+        assert 'node-group-flag' in decorated.split('</a>', 1)[0]
+        assert '<a href="/node/node-vn/vm/vm-flag">vm-flag</a>' in decorated
+        assert '<a href="/node/node-vn/vm/vm-flag?sort=rx">RX</a>' in decorated
+
+        # Purge jobs hide their target immediately so monitoring/search cannot
+        # keep presenting an item while the FIFO worker is still queued.
+        conn = app_module.db()
+        try:
+            conn.execute(
+                "INSERT INTO node_inventory(node,first_seen,last_push,status,hidden_at,deleted_at) "
+                "VALUES ('node-purge',?,?, 'active',NULL,NULL)",
+                (NOW, NOW),
+            )
+            conn.execute(
+                "INSERT INTO vm_inventory(node,vm_uuid,first_seen,last_seen,last_iface,last_bridge,status,hidden_at,deleted_at) "
+                "VALUES ('node-purge','vm-purge',?,?,?,'br0','active',NULL,NULL)",
+                (NOW, NOW, 'vnet-purge'),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        with app_module.app.test_request_context('/'):
+            assert ng._monitoring_node_visible('node-purge')
+            assert ng._monitoring_vm_visible('node-purge', 'vm-purge')
+        original_purge_enqueue = app_module.enqueue_batched_purge_jobs
+        purge_jobs = []
+        app_module.enqueue_batched_purge_jobs = lambda action, items, actor: (
+            purge_jobs.append((action, list(items), actor)) or [(901 + len(purge_jobs), len(items), len(items))]
+        )
+        try:
+            response = client.post('/admin/delete_vm', data={
+                'csrf_token': 'fixed-csrf', 'node': 'node-purge',
+                'vm_uuid': 'vm-purge', 'mode': 'purge',
+            })
+            assert response.status_code == 302
+            assert 'section=vms' in response.headers.get('Location', '')
+            conn = app_module.db()
+            try:
+                assert conn.execute(
+                    "SELECT status FROM vm_inventory WHERE node='node-purge' AND vm_uuid='vm-purge'"
+                ).fetchone() == ('hidden',)
+            finally:
+                conn.close()
+            with app_module.app.test_request_context('/'):
+                assert not ng._monitoring_vm_visible('node-purge', 'vm-purge')
+            conn = app_module.db()
+            try:
+                conn.execute(
+                    "UPDATE vm_inventory SET status='active',hidden_at=NULL WHERE node='node-purge' AND vm_uuid='vm-purge'"
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            with app_module.app.test_request_context('/'):
+                assert ng._monitoring_vm_visible('node-purge', 'vm-purge')
+
+            response = client.post('/admin/purge_node_vms', data={
+                'csrf_token': 'fixed-csrf', 'node': 'node-purge',
+            })
+            assert response.status_code == 302
+            assert 'section=nodes' in response.headers.get('Location', '')
+            conn = app_module.db()
+            try:
+                assert conn.execute(
+                    "SELECT status FROM vm_inventory WHERE node='node-purge' AND vm_uuid='vm-purge'"
+                ).fetchone() == ('hidden',)
+                assert conn.execute(
+                    "SELECT status FROM node_inventory WHERE node='node-purge'"
+                ).fetchone() == ('active',)
+                conn.execute(
+                    "UPDATE vm_inventory SET status='active',hidden_at=NULL WHERE node='node-purge' AND vm_uuid='vm-purge'"
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            response = client.post('/admin/delete_node', data={
+                'csrf_token': 'fixed-csrf', 'node': 'node-purge', 'mode': 'purge',
+            })
+            assert response.status_code == 302
+            assert 'section=nodes' in response.headers.get('Location', '')
+            conn = app_module.db()
+            try:
+                assert conn.execute(
+                    "SELECT status FROM node_inventory WHERE node='node-purge'"
+                ).fetchone() == ('hidden',)
+            finally:
+                conn.close()
+        finally:
+            app_module.enqueue_batched_purge_jobs = original_purge_enqueue
+        assert [job[0] for job in purge_jobs] == ['purge_vms', 'purge_node_vms', 'purge_nodes']
+
+        html_output = os.environ.get('NODE_GROUPS_HTML_OUTPUT', '').strip()
+        if html_output:
+            output_dir = Path(html_output)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            pages = {
+                'admin-overview': '/admin',
+                'admin-nodes': '/admin?section=nodes',
+                'admin-vms': '/admin?section=vms',
+                'admin-maintenance': '/admin?section=maintenance',
+                'node-groups': '/node-groups',
+            }
+            for name, path in pages.items():
+                response = client.get(path)
+                assert response.status_code == 200, (name, response.status_code)
+                (output_dir / f'{name}.html').write_text(response.get_data(as_text=True), encoding='utf-8')
+            original_vm_ctes = app_module._v5058c_vm_ctes
+            original_node_ctes = app_module._v5058c_node_ctes
+            app_module._v5058c_vm_ctes = lambda *_a, **_k: (
+                "WITH vm_rows(node,public_rx,public_tx,private_rx,private_tx) AS "
+                "(SELECT '',0,0,0,0 WHERE 0) ", []
+            )
+            app_module._v5058c_node_ctes = lambda *_a, **_k: (
+                "WITH node_rows(node,physical_public_rx,physical_public_tx,physical_private_rx,physical_private_tx) AS "
+                "(SELECT '',0,0,0,0 WHERE 0) ", []
+            )
+            try:
+                response = client.get('/bandwidth-consumption?tab=group')
+            finally:
+                app_module._v5058c_vm_ctes = original_vm_ctes
+                app_module._v5058c_node_ctes = original_node_ctes
+            assert response.status_code == 200
+            (output_dir / 'consumption-group.html').write_text(response.get_data(as_text=True), encoding='utf-8')
 
         # Viewer retains read-only monitoring and group filters, with no Admin access.
         session_as(client, "viewer", "viewer", user_ids["viewer"])
@@ -479,16 +766,25 @@ def main() -> int:
             "occupied_group_delete_block": "PASS",
             "new_node_ungrouped": "PASS",
             "bulk_assign": "PASS",
+            "move_all_ungrouped": "PASS",
             "vm_inheritance": "PASS",
             "audit_events": "PASS",
             "page_filters": "PASS",
             "group_all_html_equivalence": "PASS",
-            "group_all_delegation": "PASS",
+            "group_all_effective_visibility": "PASS",
             "admin_permission_boundary": "PASS",
+            "maintenance_2d_7d_queue": "PASS",
             "super_admin_stealth": "PASS",
+            "own_password_only": "PASS",
+            "nuclear_super_admin_flow": "PASS",
+            "hidden_group_effective_visibility": "PASS",
+            "node_flag_exact_link_only": "PASS",
+            "purge_immediate_visibility": "PASS",
             "viewer_read_only": "PASS",
             "push_view_untouched": "PASS",
             "node_groups_monitoring": "PASS",
+            "admin_inventory_alignment_sort": "PASS",
+            "consumption_group_alignment_sort": "PASS",
             "route_contract": "PASS",
             "route_count": len(route_rows),
         }, sort_keys=True))

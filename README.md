@@ -1,6 +1,6 @@
 # VirtInfra Monitor
 
-**Release:** `50.5.9-prod-r10-fresh-install-update-split`
+**Release:** `50.5.9-prod-r11-functional-correctness-maintenance-hotfix`
 
 VirtInfra Monitor is a PostgreSQL 17 and TimescaleDB monitoring platform for KVM/libvirt nodes and virtual machines. PostgreSQL is the authoritative datastore for inventory, users, settings, current metrics, historical metrics, Abuse events, Storage I/O and Consumption.
 
@@ -90,6 +90,22 @@ Core retention contracts:
 - `VIRTINFRA_READ_CHART_V2` and `VIRTINFRA_RAW_V2`: controlled Storage V2 readers and raw detail switches.
 
 The application keeps the existing CPU, RAM, network, PPS, disk, bandwidth, Abuse, retention and queue calculations unchanged.
+
+## Administration and maintenance
+
+- `admin` can manage Viewer/Admin accounts, themes, logs, system health, Node Groups, Nodes, VMs and routine maintenance.
+- `super_admin` additionally controls Super Admin accounts and destructive/Nuclear Reset operations.
+- Maintenance requests enter a PostgreSQL-backed FIFO queue. The dispatcher starts one systemd worker at a time and the one-minute watchdog retries queued work if an immediate wake fails.
+- Manual history deletion supports 1, 2, 3 and 7 days. Automatic retention remains the existing 2-day raw and 7-day hourly policy.
+
+Queue diagnostics:
+
+```bash
+systemctl status bw-monitor-maintenance-watchdog.timer --no-pager -l
+systemctl status bw-monitor-maintenance-dispatch.service --no-pager -l
+journalctl -u bw-monitor-maintenance-dispatch.service -n 100 --no-pager
+journalctl -u 'bw-monitor-maintenance@*.service' -n 100 --no-pager
+```
 
 ## Operations
 

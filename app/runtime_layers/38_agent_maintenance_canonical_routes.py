@@ -14,7 +14,7 @@ def valid_agent_token(value):
     supplied = str(value or "")
     return any(hmac.compare_digest(supplied, expected) for expected in V5057_AGENT_TOKENS)
 
-V5057_VERSION = "50.5.9-prod-r3-ui-alignment-overflow-hotfix"
+V5057_VERSION = "50.5.9-prod-r11-functional-correctness-maintenance-hotfix"
 
 def enqueue_maintenance_job(action, parameters, actor):
     payload = dict(parameters or {})
@@ -40,7 +40,7 @@ def _v5057_queue_has_pending_jobs():
 
 def _v5057_verify_current_admin_password(password):
     row = current_dashboard_user()
-    if not row or str(row[3] or "") != "admin" or not safe_int(row[4], 0):
+    if not row or str(row[3] or "") not in {"admin", "super_admin"} or not safe_int(row[4], 0):
         return False
     return bool(password) and check_password_hash(str(row[2] or ""), str(password))
 
@@ -52,7 +52,7 @@ def admin_cancel_maintenance_v5057():
     job_id = safe_int(request.form.get("job_id"), 0)
     actor = dashboard_username() or get_admin_username()
     if job_id <= 0:
-        return redirect(url_for("admin_page", dberr="Invalid maintenance job id") + "#maintenance-queue")
+        return redirect(url_for("admin_page", section="maintenance", dberr="Invalid maintenance job id") + "#maintenance-queue")
     changed = maintenance_queue.cancel_queued_job(job_id, actor)
     message = f"Cancelled waiting maintenance job #{job_id}." if changed else f"Job #{job_id} is no longer waiting and was not cancelled."
     log_account_event(
@@ -60,14 +60,20 @@ def admin_cancel_maintenance_v5057():
         username=actor, realm="admin", role="admin", detail=message,
     )
     maintenance_queue.wake_dispatcher()
-    return redirect(url_for("admin_page", dbmsg=message) + "#maintenance-queue")
+    return redirect(url_for("admin_page", section="maintenance", dbmsg=message) + "#maintenance-queue")
 
 _v5057_admin_database_maintenance_base = app.view_functions.get("admin_database_maintenance")
 
 def admin_database_maintenance_v5057():
     action = str(request.form.get("action") or "").strip().lower()
+    role = current_role() if "current_role" in globals() else dashboard_role()
+    routine_actions = {"retention", "vacuum", "delete_history", "delete_compact"}
     if action not in {"reset_app_data_preview", "reset_app_data"}:
+        if role == "admin" and action not in routine_actions:
+            return Response("Forbidden: super_admin role required for destructive maintenance\n", status=403, mimetype="text/plain")
         return _v5057_admin_database_maintenance_base()
+    if role != "super_admin":
+        return Response("Forbidden: super_admin role required for nuclear reset\n", status=403, mimetype="text/plain")
 
     deny = require_admin()
     if deny:
@@ -107,7 +113,7 @@ def admin_database_maintenance_v5057():
                     f"estimated_bytes={preview.get('estimated_bytes', 0)}"
                 ),
             )
-            return redirect(url_for("admin_page", dbmsg="Nuclear preview created. Review it and confirm within 5 minutes.") + "#maintenance-queue")
+            return redirect(url_for("admin_page", section="maintenance", dbmsg="Nuclear preview created. Review it and confirm within 5 minutes.") + "#maintenance-queue")
 
         preview = session.get("v5057_nuclear_preview") or {}
         if not isinstance(preview, dict):
@@ -155,14 +161,14 @@ def admin_database_maintenance_v5057():
             "nuclear_reset_queued", username=actor, realm="admin", role="admin",
             detail=f"job={job_id};unit={unit_name}",
         )
-        return redirect(url_for("admin_page", dbmsg=message) + "#maintenance-queue")
+        return redirect(url_for("admin_page", section="maintenance", dbmsg=message) + "#maintenance-queue")
     except Exception as exc:
         error = f"Nuclear reset was not started: {exc}"
         log_account_event(
             "nuclear_reset_rejected", username=actor, realm="admin", role="admin",
             detail=error[:500],
         )
-        return redirect(url_for("admin_page", dberr=error) + "#maintenance-queue")
+        return redirect(url_for("admin_page", section="maintenance", dberr=error) + "#maintenance-queue")
 
 app.view_functions["admin_database_maintenance"] = admin_database_maintenance_v5057
 
@@ -209,6 +215,13 @@ def database_maintenance_card(message="", error=""):
             <button class="btn-danger" type="submit">Create reset preview</button>
           </form>
         </div>
+      </div>'''
+
+    if clean_role(dashboard_role()) != "super_admin":
+        nuclear = '''
+      <div class="card maint-nuclear">
+        <h3>Nuclear operational reset</h3>
+        <div class="admin-note"><b>Super Admin only.</b> Routine retention, 2/7-day history cleanup, online VACUUM and queue monitoring remain available to Admin accounts.</div>
       </div>'''
 
     start_marker = '<div class="card maint-nuclear">\n        <h3>Reset ALL app data + queue</h3>'

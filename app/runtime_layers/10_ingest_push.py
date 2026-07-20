@@ -175,7 +175,7 @@ def _rollup_and_delete_legacy_usage(conn, raw_cutoff):
 
 def delete_history_older_than(days):
     """Delete old detailed metrics while preserving billing/latest state."""
-    allowed_days = {1, 3, 7}
+    allowed_days = {1, 2, 3, 7}
     days = safe_int(days, 0)
     if days not in allowed_days:
         raise ValueError("Unsupported history age")

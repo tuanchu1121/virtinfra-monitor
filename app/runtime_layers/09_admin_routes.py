@@ -5,7 +5,7 @@ def admin_setup():
     if admin_is_configured() and not emergency_mode and not admin_allowed():
         return redirect(url_for("admin_login"))
     if admin_is_configured() and not emergency_mode and admin_allowed():
-        return redirect(url_for("admin_page"))
+        return redirect(url_for("admin_page", section="vms"))
 
     error = ""
     username_value = (request.form.get("username") or "admin").strip() or "admin"
@@ -31,7 +31,7 @@ def admin_setup():
             session["admin_username"] = username_value
             session["csrf_token"] = secrets.token_urlsafe(32)
             log_account_event("setup_admin", username=username_value, realm="admin", role="admin")
-            return redirect(url_for("admin_page"))
+            return redirect(url_for("admin_page", section="vms"))
 
     error_html = f'<div class="error-box">{escape(error)}</div>' if error else ""
     content = f"""
@@ -202,7 +202,7 @@ def admin_users_page():
     if deny:
         return deny
 
-    users = get_dashboard_users()
+    users = [row for row in get_dashboard_users() if clean_role(dashboard_role()) == "super_admin" or clean_role(row[2]) != "super_admin"]
     body = ""
     current_id = current_dashboard_user_id()
     for user_id, username, role, is_active, created_at, updated_at, last_login in users:
@@ -233,6 +233,7 @@ def admin_users_page():
                     <select name="role">
                         <option value="viewer" {'selected' if role == 'viewer' else ''}>viewer</option>
                         <option value="admin" {'selected' if role == 'admin' else ''}>admin</option>
+                        {"<option value=\"super_admin\" selected>super_admin</option>" if role == "super_admin" and clean_role(dashboard_role()) == "super_admin" else ""}
                     </select>
                     <button class="btn" type="submit">Reset</button>
                 </form>
@@ -312,6 +313,8 @@ def admin_create_user():
     username = clean_username(request.form.get("username"))
     password = request.form.get("password") or ""
     role = clean_role(request.form.get("role"))
+    if role == "super_admin" and not clean_role(dashboard_role()) == "super_admin":
+        return Response("Forbidden role assignment\n", status=403, mimetype="text/plain")
     if not username or len(username) < 3:
         return Response("Username must be at least 3 characters\n", status=400, mimetype="text/plain")
     if len(password) < 10:
@@ -339,6 +342,8 @@ def admin_user_action():
     if not row:
         return Response("User not found\n", status=404, mimetype="text/plain")
     username, old_role, old_is_active = row
+    if clean_role(dashboard_role()) == "admin" and clean_role(old_role) == "super_admin":
+        return Response("User not found\n", status=404, mimetype="text/plain")
     current_id = current_dashboard_user_id()
 
     if action in ("disable", "delete") and int(user_id) == int(current_id or 0):
@@ -359,6 +364,8 @@ def admin_user_action():
     elif action == "reset_password":
         new_password = request.form.get("new_password") or ""
         role = clean_role(request.form.get("role") or old_role)
+        if role == "super_admin" and not clean_role(dashboard_role()) == "super_admin":
+            return Response("Forbidden role assignment\n", status=403, mimetype="text/plain")
         if len(new_password) < 10:
             return Response("New password must be at least 10 characters\n", status=400, mimetype="text/plain")
         if clean_role(old_role) == "admin" and role != "admin" and is_last_enabled_admin(user_id):
@@ -725,7 +732,7 @@ def admin_database_maintenance():
             if (request.form.get("confirm_text") or "").strip() != required:
                 raise ValueError(f"Confirmation text must be {required}")
             days = safe_int(request.form.get("days"), 7)
-            if days not in {1, 3, 7}:
+            if days not in {1, 2, 3, 7}:
                 raise ValueError("Unsupported history age")
             parameters["days"] = days
         elif action == "vacuum":
@@ -1042,7 +1049,7 @@ def admin_run_cleanup():
     if deny:
         return deny
     auto_cleanup_inventory()
-    return redirect(url_for("admin_page"))
+    return redirect(url_for("admin_page", section="nodes"))
 
 @app.route("/admin/delete_vm", methods=["POST"])
 def admin_delete_vm():
@@ -1058,15 +1065,30 @@ def admin_delete_vm():
 
     actor = session.get("admin_username") or dashboard_username()
     if mode == "purge":
+        conn = db()
+        previous = None
+        try:
+            previous = conn.execute("SELECT status,hidden_at FROM vm_inventory WHERE node=? AND vm_uuid=?", (node, vm_uuid)).fetchone()
+            conn.execute("UPDATE vm_inventory SET status='hidden', hidden_at=COALESCE(hidden_at, ?) WHERE node=? AND vm_uuid=?", (now_ts(), node, vm_uuid))
+            conn.commit()
+        finally:
+            conn.close()
         try:
             jobs = enqueue_batched_purge_jobs("purge_vms", [{"node": node, "vm_uuid": vm_uuid}], actor)
             msg = f"Queued VM purge job #{jobs[0][0]} for {node}/{vm_uuid}."
             log_account_event("vm_purge_queued", username=actor, realm="admin", role="admin", detail=msg)
-            return redirect(url_for("admin_page", dbmsg=msg))
+            return redirect(url_for("admin_page", section="vms", dbmsg=msg))
         except Exception as exc:
+            conn = db()
+            try:
+                if previous:
+                    conn.execute("UPDATE vm_inventory SET status=?, hidden_at=? WHERE node=? AND vm_uuid=?", (previous[0], previous[1], node, vm_uuid))
+                conn.commit()
+            finally:
+                conn.close()
             err = f"Could not queue VM purge: {exc}"
             log_account_event("vm_purge_queue_failed", username=actor, realm="admin", role="admin", detail=err[:500])
-            return redirect(url_for("admin_page", dberr=err))
+            return redirect(url_for("admin_page", section="vms", dberr=err))
 
     conn = db()
     try:
@@ -1078,7 +1100,7 @@ def admin_delete_vm():
         conn.commit()
     finally:
         conn.close()
-    return redirect(url_for("admin_page"))
+    return redirect(url_for("admin_page", section="vms"))
 
 @app.route("/admin/restore_vm", methods=["POST"])
 def admin_restore_vm():
@@ -1098,7 +1120,7 @@ def admin_restore_vm():
         conn.commit()
     finally:
         conn.close()
-    return redirect(url_for("admin_page"))
+    return redirect(url_for("admin_page", section="vms"))
 
 @app.route("/admin/delete_node", methods=["POST"])
 def admin_delete_node():
@@ -1113,15 +1135,30 @@ def admin_delete_node():
 
     actor = session.get("admin_username") or dashboard_username()
     if mode == "purge":
+        conn = db()
+        previous = None
+        try:
+            previous = conn.execute("SELECT status,hidden_at FROM node_inventory WHERE node=?", (node,)).fetchone()
+            conn.execute("UPDATE node_inventory SET status='hidden', hidden_at=COALESCE(hidden_at, ?) WHERE node=?", (now_ts(), node))
+            conn.commit()
+        finally:
+            conn.close()
         try:
             jobs = enqueue_batched_purge_jobs("purge_nodes", [node], actor)
             msg = f"Queued node purge job #{jobs[0][0]} for {node}."
             log_account_event("node_purge_queued", username=actor, realm="admin", role="admin", detail=msg)
-            return redirect(url_for("admin_page", dbmsg=msg))
+            return redirect(url_for("admin_page", section="nodes", dbmsg=msg))
         except Exception as exc:
+            conn = db()
+            try:
+                if previous:
+                    conn.execute("UPDATE node_inventory SET status=?, hidden_at=? WHERE node=?", (previous[0], previous[1], node))
+                conn.commit()
+            finally:
+                conn.close()
             err = f"Could not queue node purge: {exc}"
             log_account_event("node_purge_queue_failed", username=actor, realm="admin", role="admin", detail=err[:500])
-            return redirect(url_for("admin_page", dberr=err))
+            return redirect(url_for("admin_page", section="nodes", dberr=err))
 
     conn = db()
     try:
@@ -1133,7 +1170,7 @@ def admin_delete_node():
         conn.commit()
     finally:
         conn.close()
-    return redirect(url_for("admin_page"))
+    return redirect(url_for("admin_page", section="nodes"))
 
 @app.route("/admin/restore_node", methods=["POST"])
 def admin_restore_node():
@@ -1152,7 +1189,7 @@ def admin_restore_node():
         conn.commit()
     finally:
         conn.close()
-    return redirect(url_for("admin_page"))
+    return redirect(url_for("admin_page", section="nodes"))
 
 @app.route("/admin/purge_node_vms", methods=["POST"])
 def admin_purge_node_vms():
@@ -1164,15 +1201,29 @@ def admin_purge_node_vms():
     if not node:
         return Response("Missing node\n", status=400, mimetype="text/plain")
     actor = session.get("admin_username") or dashboard_username()
+    conn = db(); previous = []
+    try:
+        previous = conn.execute("SELECT vm_uuid,status,hidden_at FROM vm_inventory WHERE node=?", (node,)).fetchall()
+        conn.execute("UPDATE vm_inventory SET status='hidden', hidden_at=COALESCE(hidden_at, ?) WHERE node=?", (now_ts(), node))
+        conn.commit()
+    finally:
+        conn.close()
     try:
         jobs = enqueue_batched_purge_jobs("purge_node_vms", [node], actor)
         msg = f"Queued purge-all-VM job #{jobs[0][0]} for node {node}."
         log_account_event("node_vms_purge_queued", username=actor, realm="admin", role="admin", detail=msg)
-        return redirect(url_for("admin_page", dbmsg=msg))
+        return redirect(url_for("admin_page", section="nodes", dbmsg=msg))
     except Exception as exc:
+        conn = db()
+        try:
+            for vm_uuid, old_status, old_hidden_at in previous:
+                conn.execute("UPDATE vm_inventory SET status=?, hidden_at=? WHERE node=? AND vm_uuid=?", (old_status, old_hidden_at, node, vm_uuid))
+            conn.commit()
+        finally:
+            conn.close()
         err = f"Could not queue node VM purge: {exc}"
         log_account_event("node_vms_purge_queue_failed", username=actor, realm="admin", role="admin", detail=err[:500])
-        return redirect(url_for("admin_page", dberr=err))
+        return redirect(url_for("admin_page", section="nodes", dberr=err))
 
 @app.route("/admin/bulk_nodes", methods=["POST"])
 def admin_bulk_nodes():
@@ -1189,23 +1240,47 @@ def admin_bulk_nodes():
             nodes.append(node)
     action = (request.form.get("action") or "hide").strip()
     if not nodes:
-        return redirect(url_for("admin_page"))
+        return redirect(url_for("admin_page", section="nodes"))
     if action not in {"hide", "restore", "purge_vms", "purge"}:
         return Response("Invalid node action\n", status=400, mimetype="text/plain")
 
     actor = session.get("admin_username") or dashboard_username()
     if action in {"purge", "purge_vms"}:
+        conn = db(); previous_nodes = []; previous_vms = []
+        try:
+            if action == "purge":
+                placeholders = ",".join("?" for _ in nodes)
+                previous_nodes = conn.execute(f"SELECT node,status,hidden_at FROM node_inventory WHERE node IN ({placeholders})", nodes).fetchall()
+                for node in nodes:
+                    conn.execute("UPDATE node_inventory SET status='hidden', hidden_at=COALESCE(hidden_at, ?) WHERE node=?", (now_ts(), node))
+            else:
+                placeholders = ",".join("?" for _ in nodes)
+                previous_vms = conn.execute(f"SELECT node,vm_uuid,status,hidden_at FROM vm_inventory WHERE node IN ({placeholders})", nodes).fetchall()
+                for node in nodes:
+                    conn.execute("UPDATE vm_inventory SET status='hidden', hidden_at=COALESCE(hidden_at, ?) WHERE node=?", (now_ts(), node))
+            conn.commit()
+        finally:
+            conn.close()
         queue_action = "purge_nodes" if action == "purge" else "purge_node_vms"
         try:
             jobs = enqueue_batched_purge_jobs(queue_action, nodes, actor)
             job_list = ", ".join(f"#{job_id}" for job_id, _unit, _count in jobs)
             msg = f"Queued {len(nodes)} node item(s) in exclusive purge job #{jobs[0][0]}. Internal batch size: {MAX_PURGE_ITEMS_PER_JOB}."
             log_account_event("bulk_node_purge_queued", username=actor, realm="admin", role="admin", detail=f"action={action};nodes={len(nodes)};jobs={job_list}")
-            return redirect(url_for("admin_page", dbmsg=msg))
+            return redirect(url_for("admin_page", section="nodes", dbmsg=msg))
         except Exception as exc:
+            conn = db()
+            try:
+                for old_node, old_status, old_hidden_at in previous_nodes:
+                    conn.execute("UPDATE node_inventory SET status=?, hidden_at=? WHERE node=?", (old_status, old_hidden_at, old_node))
+                for old_node, old_uuid, old_status, old_hidden_at in previous_vms:
+                    conn.execute("UPDATE vm_inventory SET status=?, hidden_at=? WHERE node=? AND vm_uuid=?", (old_status, old_hidden_at, old_node, old_uuid))
+                conn.commit()
+            finally:
+                conn.close()
             err = f"Could not queue bulk node purge: {exc}"
             log_account_event("bulk_node_purge_queue_failed", username=actor, realm="admin", role="admin", detail=err[:500])
-            return redirect(url_for("admin_page", dberr=err))
+            return redirect(url_for("admin_page", section="nodes", dberr=err))
 
     conn = db()
     try:
@@ -1231,7 +1306,7 @@ def admin_bulk_nodes():
         conn.close()
 
     log_account_event("bulk_node_action", username=actor, realm="admin", role="admin", detail=f"action={action};nodes={','.join(nodes[:100])}")
-    return redirect(url_for("admin_page"))
+    return redirect(url_for("admin_page", section="nodes"))
 
 @app.route("/admin/bulk_vms", methods=["POST"])
 def admin_bulk_vms():
@@ -1254,22 +1329,38 @@ def admin_bulk_vms():
 
     action = (request.form.get("action") or "hide").strip()
     if not selected:
-        return redirect(url_for("admin_page"))
+        return redirect(url_for("admin_page", section="vms"))
     if action not in {"hide", "restore", "purge"}:
         return Response("Invalid VM action\n", status=400, mimetype="text/plain")
 
     actor = session.get("admin_username") or dashboard_username()
     if action == "purge":
+        conn = db(); previous = []
+        try:
+            for item in selected:
+                row = conn.execute("SELECT status,hidden_at FROM vm_inventory WHERE node=? AND vm_uuid=?", (item["node"], item["vm_uuid"])).fetchone()
+                if row: previous.append((item["node"], item["vm_uuid"], row[0], row[1]))
+                conn.execute("UPDATE vm_inventory SET status='hidden', hidden_at=COALESCE(hidden_at, ?) WHERE node=? AND vm_uuid=?", (now_ts(), item["node"], item["vm_uuid"]))
+            conn.commit()
+        finally:
+            conn.close()
         try:
             jobs = enqueue_batched_purge_jobs("purge_vms", selected, actor)
             job_list = ", ".join(f"#{job_id}" for job_id, _unit, _count in jobs)
             msg = f"Queued {len(selected)} VM purge(s) in exclusive purge job #{jobs[0][0]}. Internal batch size: {MAX_PURGE_ITEMS_PER_JOB}."
             log_account_event("bulk_vm_purge_queued", username=actor, realm="admin", role="admin", detail=f"vms={len(selected)};jobs={job_list}")
-            return redirect(url_for("admin_page", dbmsg=msg))
+            return redirect(url_for("admin_page", section="vms", dbmsg=msg))
         except Exception as exc:
+            conn = db()
+            try:
+                for old_node, old_uuid, old_status, old_hidden_at in previous:
+                    conn.execute("UPDATE vm_inventory SET status=?, hidden_at=? WHERE node=? AND vm_uuid=?", (old_status, old_hidden_at, old_node, old_uuid))
+                conn.commit()
+            finally:
+                conn.close()
             err = f"Could not queue bulk VM purge: {exc}"
             log_account_event("bulk_vm_purge_queue_failed", username=actor, realm="admin", role="admin", detail=err[:500])
-            return redirect(url_for("admin_page", dberr=err))
+            return redirect(url_for("admin_page", section="vms", dberr=err))
 
     conn = db()
     try:
@@ -1298,7 +1389,7 @@ def admin_bulk_vms():
 
     affected_nodes = sorted({item["node"] for item in selected})
     log_account_event("bulk_vm_action", username=actor, realm="admin", role="admin", detail=f"action={action};selected={len(selected)};nodes={','.join(affected_nodes[:100])}")
-    return redirect(url_for("admin_page"))
+    return redirect(url_for("admin_page", section="vms"))
 
 @app.route("/admin/api/system-health")
 def admin_api_system_health():

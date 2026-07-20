@@ -686,9 +686,9 @@ def _v48120_admin_database_maintenance():
             parameters['compact']=False
         job_id,unit_name=enqueue_maintenance_job(action,parameters,actor); msg=f'Started maintenance job #{job_id} ({action}) as {unit_name}.'
         log_account_event('database_maintenance_queued',username=actor,realm='admin',role='admin',detail=msg)
-        return redirect(url_for('admin_page',dbmsg=msg)+'#maintenance-queue')
+        return redirect(url_for('admin_page',section='maintenance',dbmsg=msg)+'#maintenance-queue')
     except Exception as exc:
-        err=f'Could not start maintenance: {exc}'; log_account_event('database_maintenance_queue_failed',username=actor,realm='admin',role='admin',detail=err[:500]); return redirect(url_for('admin_page',dberr=err)+'#maintenance-queue')
+        err=f'Could not start maintenance: {exc}'; log_account_event('database_maintenance_queue_failed',username=actor,realm='admin',role='admin',detail=err[:500]); return redirect(url_for('admin_page',section='maintenance',dberr=err)+'#maintenance-queue')
 
 app.view_functions['admin_database_maintenance'] = _v48120_admin_database_maintenance
 
@@ -815,7 +815,7 @@ def database_maintenance_card(message="", error=""):
         <div class="maint-actions">
           <form method="post" action="{endpoint}" onsubmit="return confirm('Delete old history only?')">
             <input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="action" value="delete_history">
-            <label>Older than<select name="days"><option value="1">1 day</option><option value="3">3 days</option><option value="7" selected>7 days</option></select></label>
+            <label>Older than<select name="days"><option value="1">1 day</option><option value="2">2 days</option><option value="3">3 days</option><option value="7" selected>7 days</option></select></label>
             <label>Type <b>DELETE HISTORY</b><input name="confirm_text" placeholder="DELETE HISTORY" required></label>
             <button class="btn" type="submit">Delete history</button>
           </form>
@@ -828,7 +828,7 @@ def database_maintenance_card(message="", error=""):
         <div class="maint-actions">
           <form method="post" action="{endpoint}" onsubmit="return confirm('Delete old history and then run online VACUUM ANALYZE?')">
             <input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="action" value="delete_compact">
-            <label>Older than<select name="days"><option value="1">1 day</option><option value="3">3 days</option><option value="7" selected>7 days</option></select></label>
+            <label>Older than<select name="days"><option value="1">1 day</option><option value="2">2 days</option><option value="3">3 days</option><option value="7" selected>7 days</option></select></label>
             <label>Type <b>DELETE AND VACUUM</b><input name="confirm_text" placeholder="DELETE AND VACUUM" required></label>
             <button class="btn" type="submit">Delete + VACUUM</button>
           </form>

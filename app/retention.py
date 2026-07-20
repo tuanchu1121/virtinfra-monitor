@@ -47,7 +47,7 @@ def active_manual_jobs(db_path: str) -> int:
         if not exists:
             return 0
         return int(conn.execute(
-            "SELECT COUNT(*) FROM maintenance_jobs WHERE status IN ('queued','running')"
+            "SELECT COUNT(*) FROM maintenance_jobs WHERE status IN ('queued','starting','running')"
         ).fetchone()[0] or 0)
     finally:
         conn.close()
@@ -74,7 +74,7 @@ def main() -> int:
         result = module.run_retention(dry_run=False)
         print(json.dumps({
             "ok": True,
-            "version": "50.5.9-prod-r10-fresh-install-update-split",
+            "version": "50.5.9-prod-r11-functional-correctness-maintenance-hotfix",
             "started_at": started,
             "finished_at": int(time.time()),
             "result": result,

@@ -17,7 +17,7 @@ MODULE = ROOT / "app" / "node_groups.py"
 MIGRATION = ROOT / "postgres" / "sql" / "011_node_groups.sql"
 R6_MIGRATION = ROOT / "postgres" / "sql" / "012_node_groups_r6_safety.sql"
 RUNTIME_TOOL = ROOT / "tools" / "node-groups-runtime-validation.py"
-EXPECTED_RELEASE = "50.5.9-prod-r10-fresh-install-update-split"
+EXPECTED_RELEASE = "50.5.9-prod-r11-functional-correctness-maintenance-hotfix"
 
 
 @pytest.fixture(scope="module")
@@ -123,10 +123,13 @@ def test_runtime_role_crud_assignment_inheritance_and_filters(runtime_result):
     expected = {
         "role_migration_idempotent", "super_admin_preserved", "node_group_crud",
         "ungrouped_protection", "occupied_group_delete_block", "new_node_ungrouped",
-        "bulk_assign", "vm_inheritance", "audit_events", "page_filters",
-        "group_all_html_equivalence", "group_all_delegation",
-        "admin_permission_boundary", "super_admin_stealth", "viewer_read_only",
-        "push_view_untouched", "node_groups_monitoring", "route_contract",
+        "bulk_assign", "move_all_ungrouped", "vm_inheritance", "audit_events", "page_filters",
+        "group_all_html_equivalence", "group_all_effective_visibility",
+        "admin_permission_boundary", "maintenance_2d_7d_queue", "super_admin_stealth",
+        "own_password_only", "nuclear_super_admin_flow", "hidden_group_effective_visibility",
+        "node_flag_exact_link_only", "purge_immediate_visibility", "viewer_read_only",
+        "push_view_untouched", "node_groups_monitoring", "admin_inventory_alignment_sort",
+        "consumption_group_alignment_sort", "route_contract",
     }
     assert {key for key, value in result.items() if value == "PASS"} == expected
     assert result["route_count"] == 83

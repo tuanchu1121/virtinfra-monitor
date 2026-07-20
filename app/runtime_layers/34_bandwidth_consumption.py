@@ -707,7 +707,7 @@ _v5030_delete_history_base = delete_history_older_than
 
 def delete_history_older_than(days):
     result = dict(_v5030_delete_history_base(days) or {})
-    # The feature has a strict 7-day maximum. Manual 1/3/7-day cleanup follows
+    # The feature has a strict 7-day maximum. Manual 1/2/3/7-day cleanup follows
     # the selected age for consistency with the existing Admin operation.
     cutoff = now_ts() - safe_int(days, 7) * 86400
     result["node_bandwidth_consumption_2h"] = _v5030_cleanup_bandwidth_consumption(cutoff=cutoff)

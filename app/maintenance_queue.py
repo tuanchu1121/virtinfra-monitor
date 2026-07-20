@@ -43,18 +43,19 @@ def connect(*, autocommit: bool = False) -> psycopg.Connection:
     )
 
 
-def wake_dispatcher() -> None:
+def wake_dispatcher() -> tuple[bool, str]:
     try:
-        subprocess.run(
+        proc = subprocess.run(
             ["systemctl", "--no-block", "start", DISPATCH_SERVICE],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
             timeout=10,
             check=False,
         )
-    except (OSError, subprocess.SubprocessError):
-        # The watchdog timer will retry.  The queued row is deliberately kept.
-        pass
+        return proc.returncode == 0, (proc.stdout or "").strip()
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, f"{type(exc).__name__}: {exc}"
 
 
 def enqueue_job(
@@ -128,7 +129,15 @@ def enqueue_job(
         raise
     finally:
         conn.close()
-    wake_dispatcher()
+    woke, detail = wake_dispatcher()
+    if not woke:
+        conn = connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE public.maintenance_jobs SET message=%s WHERE id=%s AND status='queued'", ("Queued; immediate dispatcher wake failed, watchdog will retry: " + detail[:500], job_id))
+            conn.commit()
+        finally:
+            conn.close()
     return job_id, unit_name
 
 

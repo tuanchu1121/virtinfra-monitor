@@ -45,7 +45,7 @@
     "file": "07_page_shell_auth_hook.py",
     "start_line": 4950,
     "end_line": 6077,
-    "sha256": "01b0cdba836f9ad8e6ac85f3de1744624082b26763c94ec902ed691ec04c25f2"
+    "sha256": "254ad0bcaa7b70aead00eb0738d60f4b1231f34028ffeb77e6d4b61180e3a41e"
   },
   {
     "file": "08_public_routes.py",
@@ -56,211 +56,211 @@
   {
     "file": "09_admin_routes.py",
     "start_line": 7368,
-    "end_line": 8683,
-    "sha256": "fda3e64127961fce1cc11042d5c732f361c246f930011b02d9111901923ee055"
+    "end_line": 8774,
+    "sha256": "f953052a1ebd4ec13f118f0ec44b52460a3fdea2d22aec51b81760b0c0daccc6"
   },
   {
     "file": "10_ingest_push.py",
-    "start_line": 8684,
-    "end_line": 9773,
-    "sha256": "aaa2307e7594ff95f6b75056cdaa3f2bd5cb1f887fe6abd4eac8ace89b9020a7"
+    "start_line": 8775,
+    "end_line": 9864,
+    "sha256": "3c78bbadaea1c2624785faaf1ab0c52001a13f472463b98797b7732174e02fe6"
   },
   {
     "file": "11_fast_current_abuse.py",
-    "start_line": 9774,
-    "end_line": 10444,
+    "start_line": 9865,
+    "end_line": 10535,
     "sha256": "437e361f154d005b3f8fc6e2ec912392269f1ebf9651ff1edc7261d9da351a6c"
   },
   {
     "file": "12_abuse_policy.py",
-    "start_line": 10445,
-    "end_line": 10784,
+    "start_line": 10536,
+    "end_line": 10875,
     "sha256": "5dd51302c74addf48178fe21e911b32d6976bf88a54bf3a0b88647c7af37ea60"
   },
   {
     "file": "13_admin_abuse_queue.py",
-    "start_line": 10785,
-    "end_line": 11310,
+    "start_line": 10876,
+    "end_line": 11401,
     "sha256": "7edceefca659ff0ede2fc6db39ab0f43a7a48fddb62759ef1d6389664828c0ba"
   },
   {
     "file": "14_abuse_metrics_ui.py",
-    "start_line": 11311,
-    "end_line": 12206,
+    "start_line": 11402,
+    "end_line": 12297,
     "sha256": "d3addd104e72e469b23d935b81b8a371b5c65144827af4f7663a3bee02ae1e4c"
   },
   {
     "file": "15_admin_ui_refresh.py",
-    "start_line": 12207,
-    "end_line": 12655,
+    "start_line": 12298,
+    "end_line": 12746,
     "sha256": "0fb096876bb011011aed0c2098f090fdaeaad4aed85fd7d42c3b7cb4b07b6535"
   },
   {
     "file": "16_abuse_engine.py",
-    "start_line": 12656,
-    "end_line": 13684,
+    "start_line": 12747,
+    "end_line": 13775,
     "sha256": "889af8ee1eca4e340f73f9518748f20b47f3907593e65958a84139f03ce55aab"
   },
   {
     "file": "17_responsive_shell.py",
-    "start_line": 13685,
-    "end_line": 13789,
+    "start_line": 13776,
+    "end_line": 13880,
     "sha256": "b64814332095299716c76cf15407cb8ed110f3a677892757c1d61bf79e43de5b"
   },
   {
     "file": "18_operations_reset.py",
-    "start_line": 13790,
-    "end_line": 14059,
+    "start_line": 13881,
+    "end_line": 14150,
     "sha256": "872a25a498fa485a960d6188a307939574472fc3d6c3dea586c1c0eea7611ad6"
   },
   {
     "file": "19_guest_ram.py",
-    "start_line": 14060,
-    "end_line": 14619,
+    "start_line": 14151,
+    "end_line": 14710,
     "sha256": "3862a3dbdfce24eb812d493d3e21e57372df9555bc19cc26dba7b9ff057390c5"
   },
   {
     "file": "20_vm_ui_auth_polish.py",
-    "start_line": 14620,
-    "end_line": 15120,
+    "start_line": 14711,
+    "end_line": 15211,
     "sha256": "eff21ffa352f1fbf2606d591b43272f97fd65ff864d967349412f5fd05f9d1e7"
   },
   {
     "file": "21_api_v1.py",
-    "start_line": 15121,
-    "end_line": 16257,
+    "start_line": 15212,
+    "end_line": 16348,
     "sha256": "ca4863c546576656519a3625022279f04a38cc6c65bc8e024261aa3e3ee612b5"
   },
   {
     "file": "22_api_hub_logs.py",
-    "start_line": 16258,
-    "end_line": 17256,
-    "sha256": "19cdb52bf54bda129d22e4677ac101a10fceb945f4c0c8578d32e5c18a276e77"
+    "start_line": 16349,
+    "end_line": 17347,
+    "sha256": "37acea3195b299d86c1fc81dd65b6d3df900cef73caf12b14fbaea32bd965e77"
   },
   {
     "file": "23_admin_api_maintenance_ui.py",
-    "start_line": 17257,
-    "end_line": 17657,
+    "start_line": 17348,
+    "end_line": 17748,
     "sha256": "90c77eaf943e842aed44126f7ce83051386068f5ebb68d2feda556638778d525"
   },
   {
     "file": "24_maintenance_guard.py",
-    "start_line": 17658,
-    "end_line": 17983,
+    "start_line": 17749,
+    "end_line": 18074,
     "sha256": "bd72233183c5fc5c35abaf350578fea7746be5001fcbea9079268ff78cb7b65b"
   },
   {
     "file": "25_retention_runtime.py",
-    "start_line": 17984,
-    "end_line": 18086,
+    "start_line": 18075,
+    "end_line": 18177,
     "sha256": "d525fa259b0135746a31c953216db029f88722fe8a937e11ef20bf732357d574"
   },
   {
     "file": "26_abuse_intelligence.py",
-    "start_line": 18087,
-    "end_line": 19174,
+    "start_line": 18178,
+    "end_line": 19265,
     "sha256": "5b2887faf4f2c216db7a85bcf878a709e768e64d1fcad99f1b6a1d5be9d9722b"
   },
   {
     "file": "27_abuse_dashboard.py",
-    "start_line": 19175,
-    "end_line": 20840,
+    "start_line": 19266,
+    "end_line": 20931,
     "sha256": "7c73d4dcd7c4c1e9c012b8b9bd35d16593b61cb05563482d6e0fbbe40476fa69"
   },
   {
     "file": "28_disk_abuse.py",
-    "start_line": 20841,
-    "end_line": 21307,
+    "start_line": 20932,
+    "end_line": 21398,
     "sha256": "67f2ff2c615ad0c517f6fb5406bf3bd0953eab91bfddb69410edf4cca9612747"
   },
   {
     "file": "29_storage_integration.py",
-    "start_line": 21308,
-    "end_line": 21813,
+    "start_line": 21399,
+    "end_line": 21904,
     "sha256": "362eabe39446cb1932c5b9984fed1bf94014169aef2fb21f3074c983b5ef3eb3"
   },
   {
     "file": "30_inventory_storage_precision.py",
-    "start_line": 21814,
-    "end_line": 22572,
+    "start_line": 21905,
+    "end_line": 22663,
     "sha256": "cf19ae80865192d2a657d39e9ac93a3d314d2bd472b3ce713ef6e5c7537225e9"
   },
   {
     "file": "31_storage_snapshots_ui.py",
-    "start_line": 22573,
-    "end_line": 23807,
+    "start_line": 22664,
+    "end_line": 23898,
     "sha256": "560802a13135b8e2cd57c92a9703913266f693f283e79108d63885628845ab53"
   },
   {
     "file": "32_performance_runtime.py",
-    "start_line": 23808,
-    "end_line": 24686,
+    "start_line": 23899,
+    "end_line": 24777,
     "sha256": "dfa8ee3c6809d3d34b505043e39916a9ff1b989d983698000622377a6bf738fc"
   },
   {
     "file": "33_dashboard_snapshot.py",
-    "start_line": 24687,
-    "end_line": 24867,
+    "start_line": 24778,
+    "end_line": 24958,
     "sha256": "1c4b3d987e95e032e736274674a628e711b4cc932132dfe82a8cb906262a91f0"
   },
   {
     "file": "34_bandwidth_consumption.py",
-    "start_line": 24868,
-    "end_line": 26067,
-    "sha256": "b929667b51f0b3687a97718ac66e719c68c0fc494efa134e3bc75871cea6ad20"
+    "start_line": 24959,
+    "end_line": 26158,
+    "sha256": "5bf0b28710256eba3408cb228eb4246d84d07fead8a583d3610b02138a2408c0"
   },
   {
     "file": "35_theme_runtime.py",
-    "start_line": 26068,
-    "end_line": 26538,
+    "start_line": 26159,
+    "end_line": 26629,
     "sha256": "ec331442f2229006f80e4bf51657727017e02905bf72bde2a91b7d22447c2b68"
   },
   {
     "file": "36_batched_ingest.py",
-    "start_line": 26539,
-    "end_line": 27030,
+    "start_line": 26630,
+    "end_line": 27121,
     "sha256": "3fe9bd0157c0e6507db3adf659c93ceab1ff84143ea8a925114c41774a0f7d43"
   },
   {
     "file": "37_native_copy_ingest.py",
-    "start_line": 27031,
-    "end_line": 28050,
+    "start_line": 27122,
+    "end_line": 28141,
     "sha256": "3df9d2bf3a2214b38f4913930274c9b83c6b196b0629a7c9688ab80bf05f09ad"
   },
   {
     "file": "38_agent_maintenance_canonical_routes.py",
-    "start_line": 28051,
-    "end_line": 28868,
-    "sha256": "1863c2f16019508aec6410f400ddb5bf19ab85ee3ada9f8dafb4e24dcbf7d0d8"
+    "start_line": 28142,
+    "end_line": 28972,
+    "sha256": "02062292fe98793586f4889fb7974fab15c3596028ce607cdd989a3997e2a28a"
   },
   {
     "file": "39_inventory_consumption_views.py",
-    "start_line": 28869,
-    "end_line": 29400,
+    "start_line": 28973,
+    "end_line": 29504,
     "sha256": "df8ef4b399f07b0dc43a2f54557234eb2b1b33e7164e7f49da052e61f8d45252"
   },
   {
     "file": "40_consumption_cleanup_r4.py",
-    "start_line": 29401,
-    "end_line": 30245,
+    "start_line": 29505,
+    "end_line": 30349,
     "sha256": "bb2647f6e888cffb6b427de9c6ef1b02660600d0f6dca70f2ee496906c72fb4a"
   },
   {
     "file": "41_ui_layout_r2.py",
-    "start_line": 30246,
-    "end_line": 30952,
+    "start_line": 30350,
+    "end_line": 31056,
     "sha256": "5c3777ef2d4d44aa026d618826b5207d5078217a3e546544d59f0c6446d816e9"
   },
   {
     "file": "42_ui_alignment_r3.py",
-    "start_line": 30953,
-    "end_line": 31283,
+    "start_line": 31057,
+    "end_line": 31387,
     "sha256": "dfc0c94f61a6f9bb0cc9e6961c48458941525fd7fb26d1dbd63149322db660fd"
   },
   {
     "file": "43_node_groups_loader.py",
-    "start_line": 31284,
-    "end_line": 31305,
-    "sha256": "42e07d36162e7fd967439c96a0ee0ed2e86605483f3415542c535de563c68890"
+    "start_line": 31388,
+    "end_line": 31409,
+    "sha256": "e791954aca3a6655db2039368d87cf27413b11deefec87cb260fd2dfc8bb3cf1"
   }
 ]

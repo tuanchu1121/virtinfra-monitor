@@ -1,6 +1,6 @@
 # VirtInfra Monitor - Toàn bộ command triển khai và bảo trì từ A đến Z
 
-> Release: `50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix`
+> Release: `50.5.9-prod-r19-production-readiness-audit-hotfix`
 >
 > Chạy command Monitor bằng `root`. Với node KVM, chạy Agent bằng `root` để Agent đọc được libvirt, interface, disk và host metrics.
 
@@ -105,7 +105,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Kết quả mong đợi:
 
 ```text
-50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix
+50.5.9-prod-r19-production-readiness-audit-hotfix
 ```
 
 ## 2.2 Update chuẩn, có backup trước
@@ -698,7 +698,7 @@ journalctl \
 
 ```bash
 grep -E \
-'^(VIRTINFRA_AGENT_API|VIRTINFRA_AGENT_SAMPLE_SECONDS|VIRTINFRA_AGENT_PUSH_SECONDS|BW_AGENT_BRIDGE_ROLES)=' \
+'^(VIRTINFRA_AGENT_API|VIRTINFRA_AGENT_SAMPLE_SECONDS|VIRTINFRA_AGENT_PUSH_SECONDS|BW_AGENT_BRIDGE_ROLES|BW_AGENT_BANDWIDTH_CONSUMPTION_ENABLED|BW_AGENT_BANDWIDTH_CONSUMPTION_JITTER_SECONDS)=' \
 /etc/virtinfra-agent.env
 ```
 
@@ -707,6 +707,8 @@ Kỳ vọng:
 ```text
 VIRTINFRA_AGENT_SAMPLE_SECONDS='15'
 VIRTINFRA_AGENT_PUSH_SECONDS='300'
+BW_AGENT_BANDWIDTH_CONSUMPTION_ENABLED='1'
+BW_AGENT_BANDWIDTH_CONSUMPTION_JITTER_SECONDS='240'
 ```
 
 ## 9.5 Kiểm tra systemd hardening
@@ -1005,7 +1007,7 @@ ansible all \
 -i test.txt \
 -m shell \
 -a '
-grep -E "^(VIRTINFRA_AGENT_API|VIRTINFRA_AGENT_SAMPLE_SECONDS|VIRTINFRA_AGENT_PUSH_SECONDS|BW_AGENT_BRIDGE_ROLES)=" /etc/virtinfra-agent.env
+grep -E "^(VIRTINFRA_AGENT_API|VIRTINFRA_AGENT_SAMPLE_SECONDS|VIRTINFRA_AGENT_PUSH_SECONDS|BW_AGENT_BRIDGE_ROLES|BW_AGENT_BANDWIDTH_CONSUMPTION_ENABLED|BW_AGENT_BANDWIDTH_CONSUMPTION_JITTER_SECONDS)=" /etc/virtinfra-agent.env
 ' \
 -f 20
 ```
@@ -1053,74 +1055,157 @@ bash ansible/remove-agent.sh \
 
 ---
 
-# 15. Consumption: kiểm tra rollup và retention
+# 15. Consumption: kiểm tra dữ liệu, bucket và retention
 
 ## 15.1 Hành vi đúng
 
+Agent hiện tại:
+
 ```text
-15 giây: Agent sample local
-5 phút: một payload /push
-Monitor: raw + hourly + daily rollup
+15 giây: sample local
+5 phút: /push operational
+2 giờ: /push/bandwidth-consumption
 ```
 
-Không còn payload Agent 2 giờ riêng. Nút `2H` trên giao diện chỉ chọn khoảng
-thời gian hiển thị.
+Mỗi bucket chỉ có tổng theo node:
 
-## 15.2 Kiểm tra bảng rollup
+```text
+Physical Public RX/TX
+Physical Private RX/TX
+Aggregate VM Public RX/TX
+Aggregate VM Private RX/TX
+```
+
+Không có UUID VM.
+
+## 15.2 Sau khi cài Agent mới
+
+Lần đầu Agent lấy baseline. Dữ liệu Consumption không xuất hiện ngay.
+
+Ví dụ cài lúc `13:20`:
+
+```text
+13:20 → bắt đầu baseline/partial
+14:00 → kết thúc phần bucket hiện tại
+14:00–14:04 → có thể gửi do jitter
+16:00–16:04 → bucket 14:00–16:00 đầy đủ đầu tiên
+```
+
+Bucket đầu có thể hiện:
+
+```text
+Partial
+Incomplete Coverage
+```
+
+Đây là bình thường.
+
+## 15.3 Kiểm tra Agent Consumption state
+
+```bash
+virtinfra-agent-doctor
+```
+
+Hoặc:
+
+```bash
+python3 - <<'PY'
+import json
+from pathlib import Path
+p=Path('/var/lib/virtinfra-agent/runtime.json')
+d=json.loads(p.read_text())
+s=d.get('bandwidth_consumption') or {}
+print('pending=', len(s.get('pending') or []))
+print('partial_buckets=', len(s.get('buckets') or {}))
+print('last_sent_bucket=', s.get('last_sent_bucket'))
+PY
+```
+
+## 15.4 Kiểm tra bảng trên Monitor
 
 ```bash
 virtinfra-monitorctl psql
 ```
 
+Trong `psql`:
+
 ```sql
-SELECT 'physical_hourly' AS source, COUNT(*) FROM node_consumption_hourly
-UNION ALL SELECT 'physical_daily', COUNT(*) FROM node_consumption_daily
-UNION ALL SELECT 'vm_node_hourly', COUNT(*) FROM node_vm_consumption_hourly
-UNION ALL SELECT 'vm_node_daily', COUNT(*) FROM node_vm_consumption_daily;
+SELECT
+    COUNT(*) AS rows,
+    COUNT(DISTINCT node) AS nodes,
+    to_timestamp(MIN(bucket_start)) AS oldest,
+    to_timestamp(MAX(bucket_end)) AS newest,
+    to_timestamp(MAX(received_at)) AS last_received
+FROM node_bandwidth_consumption_2h;
 ```
 
-Xem Node mới ingest:
+Thoát:
+
+```text
+\q
+```
+
+## 15.5 Xem 20 bucket mới nhất
 
 ```sql
-SELECT node,
-       to_timestamp(MAX(last_push)) AS last_ingestion,
-       COUNT(*) AS hourly_rows
-FROM node_vm_consumption_hourly
+SELECT
+    node,
+    to_timestamp(bucket_start) AS bucket_start,
+    to_timestamp(bucket_end) AS bucket_end,
+    coverage_seconds,
+    sample_count,
+    estimated,
+    to_timestamp(received_at) AS received_at
+FROM node_bandwidth_consumption_2h
+ORDER BY bucket_start DESC, node
+LIMIT 20;
+```
+
+## 15.6 Xem dung lượng bảng
+
+```sql
+SELECT
+    pg_size_pretty(
+        pg_total_relation_size(
+            'node_bandwidth_consumption_2h'
+        )
+    ) AS total_size;
+```
+
+## 15.7 Kiểm tra node nào mới gửi
+
+```sql
+SELECT
+    node,
+    COUNT(*) AS buckets,
+    to_timestamp(MAX(bucket_end)) AS newest_bucket,
+    to_timestamp(MAX(received_at)) AS last_received
+FROM node_bandwidth_consumption_2h
 GROUP BY node
-ORDER BY MAX(last_push) DESC
-LIMIT 30;
+ORDER BY MAX(received_at) DESC;
 ```
 
-Bảng `node_bandwidth_consumption_2h` chỉ còn để tương thích upgrade và không
-nhận dữ liệu mới. Endpoint cũ trả HTTP 410.
+## 15.8 Cleanup
 
-## 15.3 Kiểm tra một Node
+Dữ liệu quá 7 ngày được retention tự xóa.
 
-```sql
-SELECT p.node,
-       pg_size_pretty(SUM(p.physical_public_rx_bytes+p.physical_public_tx_bytes)::bigint) AS physical_public,
-       pg_size_pretty(SUM(v.vm_public_rx_bytes+v.vm_public_tx_bytes)::bigint) AS all_vm_public,
-       to_timestamp(MAX(GREATEST(p.last_push,v.last_push))) AS latest
-FROM node_consumption_hourly p
-JOIN node_vm_consumption_hourly v
-  ON v.node=p.node AND v.hour_start=p.hour_start
-WHERE p.node='NODE-NAME'
-  AND p.hour_start >= EXTRACT(EPOCH FROM NOW()-INTERVAL '24 hours')::bigint
-GROUP BY p.node;
-```
-
-## 15.4 Cleanup và Clear
-
-Dữ liệu hiển thị quá 7 ngày được retention xóa. Chạy thủ công:
+Chạy retention thủ công:
 
 ```bash
 virtinfra-monitorctl retention
 ```
 
-Maintenance chỉ có cleanup và trạng thái rollup. Không có nút Clear
-Consumption riêng. Muốn bắt đầu lại toàn bộ số liệu, dùng `Clear All Monitoring
-Data`; thao tác này xóa đồng bộ raw và mọi rollup nhưng giữ inventory, Node
-Groups, users và settings.
+Command sẽ theo dõi journal retention. Thoát bằng `Ctrl + C` sau khi thấy hoàn tất.
+
+Trong Admin cũng có:
+
+```text
+Consumption
+→ Run cleanup now
+→ Clear history
+```
+
+`Nuclear operational reset` cũng xóa dữ liệu Consumption và đặt cả `operational_push_accept_after` lẫn `bandwidth_consumption_accept_after`, nên payload retry cũ của Agent được xác nhận nhưng không thể làm dữ liệu đã xóa sống lại.
 
 ---
 
@@ -1798,21 +1883,23 @@ Nếu không đúng, redeploy Agent.
 
 ## 25.5 Consumption chưa có dữ liệu
 
-Kiểm tra Agent và payload 5 phút:
+Kiểm tra:
 
 ```bash
 virtinfra-agent-doctor
-journalctl -u virtinfra-agent.service -n 100 --no-pager
 ```
 
 ```bash
 grep -E \
-'^(VIRTINFRA_AGENT_API|VIRTINFRA_AGENT_SAMPLE_SECONDS|VIRTINFRA_AGENT_PUSH_SECONDS|BW_AGENT_BRIDGE_ROLES)=' \
+'^(BW_AGENT_BRIDGE_ROLES|BW_AGENT_BANDWIDTH_CONSUMPTION_ENABLED|BW_AGENT_BANDWIDTH_CONSUMPTION_JITTER_SECONDS)=' \
 /etc/virtinfra-agent.env
 ```
 
-Kiểm tra `node_consumption_hourly` và `node_vm_consumption_hourly`. Sau cài mới,
-lần push đầu tạo baseline nên cần thêm một chu kỳ để thấy delta Consumption.
+```bash
+timedatectl status
+```
+
+Dữ liệu chỉ gửi sau khi hoàn thành bucket 2 giờ, cộng jitter tối đa 240 giây. Bucket đầu sau cài có thể partial.
 
 ## 25.6 Bridge sai
 

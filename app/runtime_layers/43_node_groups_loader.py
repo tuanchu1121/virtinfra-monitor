@@ -1,4 +1,4 @@
-# Release: 50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix
+# Release: 50.5.9-prod-r19-production-readiness-audit-hotfix
 # Installed only after all existing append-only runtime implementations are
 # registered, so baseline wrappers and view functions remain intact.
 import sys as _node_groups_sys

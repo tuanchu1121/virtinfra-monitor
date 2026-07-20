@@ -611,8 +611,8 @@ def main() -> int:
             "(SELECT '',0,0,0,0 WHERE 0) ", []
         )
         app_module._v5058c_node_ctes = lambda *_a, **_k: (
-            "WITH node_rows(node,node_ip,public_configured,private_configured,physical_public_rx,physical_public_tx,physical_public_total,vm_public_rx,vm_public_tx,vm_public_total,public_difference,physical_private_rx,physical_private_tx,physical_private_total,vm_private_rx,vm_private_tx,vm_private_total,private_difference,vm_count,coverage_percent,latest_sample) AS "
-            "(SELECT '','',0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 WHERE 0) ", []
+            "WITH node_rows(node,physical_public_rx,physical_public_tx,physical_private_rx,physical_private_tx) AS "
+            "(SELECT '',0,0,0,0 WHERE 0) ", []
         )
         try:
             group_consumption = client.get('/bandwidth-consumption?tab=group&sort=physical_public&order=desc')
@@ -624,40 +624,6 @@ def main() -> int:
         assert 'v5058c-node-table' in group_consumption_html
         assert group_consumption_html.count('<th>') >= 7
         assert 'sort=physical_public' not in group_consumption_html
-
-        # R20 fixes the Node and Node Group Consumption grids to an explicit
-        # column contract. Validate rendered colgroups and body rows rather
-        # than relying only on CSS/source-string checks.
-        group_table = re.search(
-            r'<table class="[^"]*v5060-group-table[^"]*">(.*?)</table>',
-            group_consumption_html,
-            flags=re.S,
-        )
-        assert group_table, group_consumption_html[:2000]
-        assert len(re.findall(r'<col\b', group_table.group(1))) == 19
-        group_body_row = re.search(r'<tbody>\s*<tr>(.*?)</tr>', group_table.group(1), flags=re.S)
-        assert group_body_row and len(re.findall(r'<td\b', group_body_row.group(1))) == 19
-
-        with app_module.app.test_request_context('/bandwidth-consumption?tab=node&period=24h'):
-            node_table_html = app_module._v5058c_node_table(
-                [(
-                    'node-vn', '203.0.113.10', 1, 1,
-                    100, 200, 300, 90, 180, 270, 30,
-                    40, 50, 90, 35, 45, 80, 10,
-                    200, 100.0, NOW,
-                )],
-                {'tab': 'node', 'period': '24h', 'limit': 100},
-                'physical_public_total', 'desc',
-            )
-        node_table = re.search(
-            r'<table class="[^"]*v5060-node-table[^"]*">(.*?)</table>',
-            node_table_html,
-            flags=re.S,
-        )
-        assert node_table, node_table_html[:2000]
-        assert len(re.findall(r'<col\b', node_table.group(1))) == 18
-        node_body_row = re.search(r'<tbody>\s*<tr>(.*?)</tr>', node_table.group(1), flags=re.S)
-        assert node_body_row and len(re.findall(r'<td\b', node_body_row.group(1))) == 18
         session_as(client, "legacy-root", "super_admin", user_ids["legacy-root"])
         assert client.post("/admin/node-groups/action", data={
             "csrf_token": "fixed-csrf", "group_id": vn_id, "action": "hide",
@@ -830,8 +796,8 @@ def main() -> int:
                 "(SELECT '',0,0,0,0 WHERE 0) ", []
             )
             app_module._v5058c_node_ctes = lambda *_a, **_k: (
-                "WITH node_rows(node,node_ip,public_configured,private_configured,physical_public_rx,physical_public_tx,physical_public_total,vm_public_rx,vm_public_tx,vm_public_total,public_difference,physical_private_rx,physical_private_tx,physical_private_total,vm_private_rx,vm_private_tx,vm_private_total,private_difference,vm_count,coverage_percent,latest_sample) AS "
-                "(SELECT '','',0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 WHERE 0) ", []
+                "WITH node_rows(node,physical_public_rx,physical_public_tx,physical_private_rx,physical_private_tx) AS "
+                "(SELECT '',0,0,0,0 WHERE 0) ", []
             )
             try:
                 response = client.get('/bandwidth-consumption?tab=group')

@@ -1,17 +1,5 @@
 # Changelog
 
-## 50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix
-
-- Added compact hourly and daily **All VM per Node** Consumption rollups, written from the accepted normal 5-minute push in the same database transaction as the existing raw/per-VM data.
-- Extended **Consumption → Node** with Physical Public/Private, All VM Public/Private, observed differences, VM reporting count, coverage and latest ingestion without changing the Dashboard.
-- Rebuilt **Consumption → Node Group** on the same compact Node rollups and gave Node/Node Group tables explicit fixed column contracts to eliminate header/body drift.
-- Preserved the performance tiering used at large scale: raw data for partial-hour edges, hourly rollups for complete hours and daily rollups for complete days.
-- Retired the legacy Agent-side 2-hour writer with HTTP 410 while retaining its route/table contract as dormant upgrade compatibility; normal `/push` is the only active ingestion path.
-- Removed the separate Consumption clear operation from the rendered Maintenance UI. **Clear All Monitoring Data** now remains the single synchronized destructive action for raw data and every Consumption rollup.
-- Extended Node, all-VM-on-Node and individual-VM purge lifecycles so compact Node VM totals cannot remain stale after inventory cleanup.
-- Added migration `014_node_vm_consumption_rollups.sql`, standalone backfill support and R20 regression/runtime validation.
-- Preserved 83 Flask routes, Dashboard snapshots, Agent cadence/payload, CPU/RAM/network/disk formulas, Abuse, Storage I/O, Queue, RBAC, Node Groups and retention behavior outside the Consumption scope.
-
 ## 50.5.9-prod-r19-production-readiness-audit-hotfix
 
 - Fixed Custom/preset Theme application after PJAX navigation and 30-second refresh by using one delegated browser controller.

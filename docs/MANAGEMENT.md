@@ -81,11 +81,7 @@ The reset cannot be queued behind other work. The queue must be empty at preview
 
 If backup or verification fails, the worker stops before `TRUNCATE`. `maintenance_jobs` and `maintenance_nuclear_audit` are never included in the nuclear allow-list.
 
-A monitoring clear or nuclear reset advances `operational_push_accept_after` in
-preserved Admin settings, so queued operational payloads cannot recreate data
-from before the reset epoch. The legacy `bandwidth_consumption_accept_after`
-setting remains only for upgrade compatibility; the retired two-hour endpoint
-returns HTTP 410.
+A monitoring clear or nuclear reset also advances `operational_push_accept_after` and `bandwidth_consumption_accept_after` in preserved Admin settings. Old payloads still queued in an Agent runtime file receive HTTP 200 with `ignored=true`, but cannot recreate data from before the reset epoch.
 
 ### Queue diagnostics
 

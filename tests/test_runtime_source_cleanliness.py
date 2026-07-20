@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_VERSION = "50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix"
+EXPECTED_VERSION = "50.5.9-prod-r19-production-readiness-audit-hotfix"
 LAYER_DIR = ROOT / "app/runtime_layers"
 MANIFEST = LAYER_DIR / "manifest.json"
 
@@ -37,7 +37,7 @@ def test_runtime_layers_are_hash_pinned_and_contiguous() -> None:
         assert item["sha256"] == hashlib.sha256(data).hexdigest()
         expected_start += line_count
         total += line_count
-    assert total == 31952
+    assert total == 31461
 
 
 def test_runtime_contains_no_historical_release_banners_or_repeated_blank_runs() -> None:

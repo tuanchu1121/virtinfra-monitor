@@ -16,7 +16,8 @@ Doctor: /usr/local/sbin/virtinfra-agent-doctor
 ```text
 Local sample: 15 giây
 Operational push: 300 giây
-Consumption: được Monitor rollup từ cùng payload 5 phút
+Consumption bucket: 2 giờ
+Consumption jitter: tối đa 240 giây
 Bridge roles: public:br0,private:br1
 ```
 
@@ -41,9 +42,7 @@ journalctl -u virtinfra-agent.service -n 300 --no-pager
 
 ## Consumption
 
-Agent không còn gửi payload Consumption 2 giờ riêng. Dữ liệu VM và physical
-trong `/push` 5 phút được Monitor ghi raw và tổng hợp thành hourly/daily rollup.
-Nhờ đó VM, Node và Node Group dùng cùng một nguồn dữ liệu đã được chống trùng.
+Agent cộng local và gửi một payload tổng theo node cho mỗi bucket 2 giờ. Payload gồm Physical Public/Private RX/TX và tổng VM Public/Private RX/TX. Không gửi UUID VM.
 
 ## Update
 
@@ -90,8 +89,7 @@ sudoedit /etc/default/bw-monitor
 systemctl restart bw-monitor.service
 ```
 
-`/push` chấp nhận token chính và token legacy. Endpoint
-`/push/bandwidth-consumption` đã retired và trả HTTP 410.
+`/push` và `/push/bandwidth-consumption` cùng chấp nhận token chính và token legacy.
 
 
 ## Friendly operational logs
@@ -102,7 +100,7 @@ The Agent emits one neutral line after a successful five-minute delivery:
 virtinfra-agent cycle complete node=NODE delivery=ok interfaces=215 vms=215 host=1 load=normal collection=complete details=0 samples=good:215
 ```
 
-Words such as `ERROR` and `unavailable` are reserved for delivery failures where the operational payload remains queued for retry. A successful delivery never prints `errors=N` or a `health warnings` line.
+Words such as `ERROR` and `unavailable` are reserved for delivery failures where the payload or Consumption bucket remains queued for retry. A successful delivery never prints `errors=N` or a `health warnings` line.
 
 Bridge discovery is optional by default. Valid nodes may expose only one bridge, no `br1`, or a different topology. Missing configured bridge names are recorded as neutral Agent health notes and do not make the successful cycle partial.
 

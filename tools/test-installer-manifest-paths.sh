@@ -23,7 +23,6 @@ create_fixture() {
     app/runtime_layers/manifest.json
     app/runtime_layers/00_bootstrap_database.py
     app/runtime_layers/43_node_groups_loader.py
-    app/runtime_layers/44_consumption_node_vm_rollup.py
     app/node_groups.py
     app/static/vendor/flag-icons/node-groups.css
     app/static/vendor/flag-icons/LICENSE
@@ -44,7 +43,6 @@ create_fixture() {
     postgres/sql/011_node_groups.sql
     postgres/sql/012_node_groups_r6_safety.sql
     postgres/sql/013_maintenance_queue_boolean.sql
-    postgres/sql/014_node_vm_consumption_rollups.sql
     requirements.txt
     VERSION
     CANONICAL_REPOSITORY

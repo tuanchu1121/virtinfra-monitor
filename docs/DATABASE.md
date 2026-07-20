@@ -56,24 +56,13 @@ virtinfra-monitorctl psql -c "SELECT pg_size_pretty(pg_database_size(current_dat
 virtinfra-monitorctl psql -c "SELECT hypertable_name,num_chunks FROM timescaledb_information.hypertables ORDER BY hypertable_name;"
 ```
 
-## Consumption tables
+## Consumption table
 
-| Table | Grain | Purpose | Retention |
-|---|---|---|---:|
-| `node_stats` | VM interface / five-minute bucket | Recent raw VM network detail | 48 hours |
-| `node_physical_net_stats` | Physical interface / five-minute bucket | Recent raw physical network detail | 48 hours |
-| `bandwidth_hourly` | VM + bridge + hour | Fast per-VM rolling queries | 7 days |
-| `bandwidth_daily` | VM + bridge + day | Fast 2D–7D per-VM queries | 7 days |
-| `node_consumption_hourly` | Node + hour | Physical Public/Private totals | 7 days |
-| `node_consumption_daily` | Node + day | Physical daily totals | 7 days |
-| `node_vm_consumption_hourly` | Node + hour | Total of every VM on one Node | 7 days |
-| `node_vm_consumption_daily` | Node + day | Daily total of every VM on one Node | 7 days |
-| `node_bandwidth_consumption_2h` | Node + legacy two-hour bucket | Dormant upgrade compatibility only; no new Agent writes | legacy |
+```text
+node_bandwidth_consumption_2h
+```
 
-The active data path is the normal five-minute `/push`. The retired
-`/push/bandwidth-consumption` endpoint returns HTTP 410 and does not write data.
-Node and Node Group pages compare compact Physical totals with compact All-VM
-totals without scanning the high-cardinality per-VM tables for every request.
+Mỗi row là một node và một bucket 2 giờ. Bảng lưu 8 counter tổng, coverage, sample count, agent version và received time. Không lưu UUID VM.
 
 ## VACUUM online
 

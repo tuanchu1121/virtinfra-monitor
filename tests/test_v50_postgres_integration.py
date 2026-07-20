@@ -65,7 +65,6 @@ for migration in (
     "005_ingest_write_profile.sql", "006_postgres_native_maintenance.sql",
     "007_safe_maintenance_queue.sql", "008_mac_identity_search.sql",
     "013_maintenance_queue_boolean.sql",
-    "014_node_vm_consumption_rollups.sql",
     "009_low_io_compat.sql", "010_consumption_inventory_cleanup.sql",
     "011_node_groups.sql",
 ):

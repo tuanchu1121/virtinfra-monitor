@@ -1,6 +1,6 @@
 # Update an existing installation
 
-Release: `50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix`
+Release: `50.5.9-prod-r19-production-readiness-audit-hotfix`
 Use this path only when VirtInfra Monitor is already installed. The updater requires both `/etc/default/bw-monitor` and `/etc/default/bw-monitor-postgres`.
 
 ```bash

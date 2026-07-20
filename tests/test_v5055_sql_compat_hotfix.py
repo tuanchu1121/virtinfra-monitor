@@ -18,7 +18,7 @@ def _load_bw_pg():
 
 
 def test_release_identity_and_native_copy_clone_contract() -> None:
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r14-purge-queue-visibility-hotfix"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r11-functional-correctness-maintenance-hotfix"
     app = read_app_source()
     pg = PG_PATH.read_text(encoding="utf-8")
     assert "(LIKE public.{table} INCLUDING DEFAULTS) ON COMMIT DELETE ROWS" in app

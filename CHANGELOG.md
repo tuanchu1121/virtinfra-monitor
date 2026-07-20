@@ -1,31 +1,41 @@
 # Changelog
 
-## 50.5.9-prod-r14-purge-queue-visibility-hotfix
+## 50.5.9-prod-r11-functional-correctness-maintenance-hotfix
 
-- Fixed purge feedback visibility without changing purge semantics or inventory UI.
-- Successful Node, VM, purge-all-VM and bulk purge actions now open the existing Maintenance queue at the accepted job row area.
-- Queue insertion failures now open the same Maintenance area and display the existing error notice instead of returning silently to Nodes/VMs.
-- Hide and Restore actions keep their original Nodes/VMs navigation.
-- Added an end-to-end runtime regression that inserts purge jobs and confirms they render in Recent maintenance jobs.
+### Administration and RBAC
 
-## 50.5.9-prod-r13-conservative-refresh30-retention-verified
+- Admin can open User Management, Theme Settings, Account Logs, Node Logs, System Health and the Maintenance/Queue page.
+- Admin can manage Viewer and Admin accounts, but Super Admin accounts remain invisible and protected.
+- Change Password now updates only the currently authenticated account. It no longer changes the global/Super Admin credential.
+- Routine maintenance is available to Admin. Destructive reset and Nuclear Reset remain Super Admin only.
 
-### Scope
+### Node Groups and inventory
 
-- Preserves the current UI structure, Flask routes, endpoint names, request/response payloads, database schema, Agent protocol and all monitoring calculations.
-- Keeps the conservative Admin, Maintenance, Queue, Node Group visibility, purge and password correctness fixes already present in the source.
-- Changes only the browser live refresh interval from 5 seconds to 30 seconds, including Node Groups.
-- Fixes the release preflight reference so it invokes the test file that is actually shipped.
+- Hiding a Node Group now applies effective visibility to its Nodes and inherited VMs across monitoring pages without deleting stored metrics.
+- Admin inventory shows `hidden by group` while preserving the Node or VM's own inventory state for safe restore.
+- Fixed `Move all to Ungrouped` returning `Select a Node Group`.
+- Node and VM inventory tables have aligned headers/cells and sortable columns.
+- Removed the `Selected nodes / All matching nodes` scope control; bulk actions operate only on checked rows.
+- Node Groups uses one search field for group name, Node name and Node IP, refreshes every 15 seconds and reuses existing RAM percentage thresholds for warning/critical color.
 
-### Retention verification
+### Purge, Queue and Maintenance
 
-- Latest 48 hours retain every real five-minute Agent push.
-- From 48 hours through day 7, one real retained snapshot per Node and local hour is preserved.
-- Historical metric rows older than 7 days are deleted while current inventory/state remains preserved.
-- The release includes an executable regression test that populates points across days 1, 3, 6 and 8 and verifies the effective retention function end to end.
+- Node/VM purge targets are hidden immediately after a FIFO job is accepted, preventing stale search/monitoring results while the worker is waiting.
+- Purge queue failures restore the previous inventory state and return a visible error.
+- Maintenance jobs now treat `starting` as active consistently.
+- Dispatcher wake failures are written into the queued job message; the watchdog retries every minute.
+- Manual history deletion accepts 1, 2, 3 and 7 days.
+- Nuclear Reset verifies the active Super Admin account and returns to the Maintenance/Queue panel after preview, execution or error.
+
+### UI correctness
+
+- Global live-page refresh changes from 5 seconds to 30 seconds. Node Groups refresh remains independent at 15 seconds.
+- Node Group flags are injected only into exact Node links, not VM UUIDs, VM detail metrics or sortable column labels.
+- Node Group Consumption has fixed seven-column alignment and sorting for group, Node/VM counts and Public/Private totals.
+- Existing Storage and Consumption toolbar order is preserved: `Search` then `Clear`, and `Apply` then `Reset`.
 
 ### Compatibility boundary
 
-- CPU, RAM, network Mbps/PPS, disk throughput/IOPS, Consumption, Abuse, snapshot selection, Queue batching and retention formulas are unchanged.
-- Static UI assets are unchanged.
-- Fresh installation remains `install.sh`; update with backup preservation remains `update.sh`.
+- Flask route count, endpoint names, Agent payload, API payload, PostgreSQL schema, SQL migrations and static assets are unchanged.
+- CPU, RAM, network Mbps/PPS, disk throughput/IOPS, bandwidth Consumption, Abuse, snapshot, retention and queue calculation formulas are unchanged.
+- Fresh installation remains `install.sh`; update and backup preservation remain isolated in `update.sh`.

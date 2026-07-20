@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.9-prod-r14-purge-queue-visibility-hotfix`
+Release: `50.5.9-prod-r11-functional-correctness-maintenance-hotfix`
 
 ## Final data path
 

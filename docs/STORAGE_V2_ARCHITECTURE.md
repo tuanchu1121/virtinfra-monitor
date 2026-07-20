@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.9-prod-r19-production-readiness-audit-hotfix`
+Release: `50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix`
 
 ## Final data path
 
@@ -8,7 +8,7 @@ Release: `50.5.9-prod-r19-production-readiness-audit-hotfix`
 VirtInfra Agent
   15s local sampling
   300s operational push
-  2h Consumption push
+  Consumption rollup from the same 5-minute push
           |
           v
 POST /push
@@ -27,7 +27,7 @@ POST /push
           +-- vm_raw_detail_5m -> interface/bridge raw detail for 48 hours
           +-- node_chart_5m -> exact 5-minute physical-host charts for 7 days
           +-- Abuse tables -> unchanged, independent retention
-          +-- Consumption table -> unchanged, 2-hour node buckets
+          +-- Consumption rollups -> per-VM and compact Node hourly/daily tables
 ```
 
 ## Why existing Latest is reused

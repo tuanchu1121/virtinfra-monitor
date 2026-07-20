@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app"
-VERSION = "50.5.9-prod-r19-production-readiness-audit-hotfix"
+VERSION = "50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix"
 
 
 def test_release_identity() -> None:
@@ -24,19 +24,23 @@ def test_clear_monitoring_covers_current_consumption_rollups() -> None:
         if isinstance(node, ast.AnnAssign) and getattr(node.target, "id", "") == "MONITORING_TABLES"
     )
     values = {elt.value for elt in monitoring.value.elts if isinstance(elt, ast.Constant)}
-    assert {"node_consumption_hourly", "node_consumption_daily"} <= values
+    assert {"node_consumption_hourly", "node_consumption_daily", "node_vm_consumption_hourly", "node_vm_consumption_daily"} <= values
 
 
 def test_consumption_maintenance_card_uses_current_rollups() -> None:
-    route = (APP / "runtime_layers/38_agent_maintenance_canonical_routes.py").read_text(encoding="utf-8")
+    route = (APP / "runtime_layers/44_consumption_node_vm_rollup.py").read_text(encoding="utf-8")
     action = (APP / "runtime_layers/34_bandwidth_consumption.py").read_text(encoding="utf-8")
-    assert "Node Consumption Rollup Storage" in route
-    assert "HOURLY ROWS" in route and "DAILY ROWS" in route
+    assert "Consumption Rollup Storage" in route
+    assert "PHYSICAL HOURLY" in route and "VM NODE HOURLY" in route
     assert "MISSING RECENT ROLLUP" in route
     assert "2-hour Node Accounting Storage" not in route
-    assert "CLEAR CONSUMPTION HISTORY" in route
+    assert "Consumption has no separate clear button" in route
+    assert "CLEAR CONSUMPTION HISTORY" not in route
     assert 'DELETE FROM node_consumption_hourly' in action
     assert 'DELETE FROM node_consumption_daily' in action
+    assert 'DELETE FROM node_vm_consumption_hourly' in action
+    assert 'DELETE FROM node_vm_consumption_daily' in action
+    assert "Use Clear All Monitoring Data" in action
 
 
 def test_custom_theme_controller_is_pjax_safe() -> None:

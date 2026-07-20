@@ -18,7 +18,7 @@ MIGRATION = ROOT / "postgres" / "sql" / "011_node_groups.sql"
 R6_MIGRATION = ROOT / "postgres" / "sql" / "012_node_groups_r6_safety.sql"
 QUEUE_BOOLEAN_MIGRATION = ROOT / "postgres" / "sql" / "013_maintenance_queue_boolean.sql"
 RUNTIME_TOOL = ROOT / "tools" / "node-groups-runtime-validation.py"
-EXPECTED_RELEASE = "50.5.9-prod-r19-production-readiness-audit-hotfix"
+EXPECTED_RELEASE = "50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix"
 
 
 @pytest.fixture(scope="module")
@@ -71,7 +71,7 @@ def test_node_groups_loader_and_required_runtime_sections_are_present():
 def test_existing_postgresql_migrations_are_byte_identical():
     baseline = _manifest_entries()
     for path in sorted((ROOT / "postgres/sql").glob("0[0-1][0-9]_*.sql")):
-        if path.name in {"011_node_groups.sql", "012_node_groups_r6_safety.sql", "013_maintenance_queue_boolean.sql"}:
+        if path.name in {"011_node_groups.sql", "012_node_groups_r6_safety.sql", "013_maintenance_queue_boolean.sql", "014_node_vm_consumption_rollups.sql"}:
             continue
         rel = path.relative_to(ROOT).as_posix()
         assert rel in baseline, rel
@@ -212,6 +212,7 @@ def test_installer_copies_and_applies_additive_files():
         "app/node_groups.py", "postgres/sql/011_node_groups.sql",
         "postgres/sql/012_node_groups_r6_safety.sql",
         "postgres/sql/013_maintenance_queue_boolean.sql",
+        "postgres/sql/014_node_vm_consumption_rollups.sql",
         "app/static/flags/node-groups.css",
         "app/static/flags/neutral.svg",
         "app/static/flags/vn.svg",
@@ -222,6 +223,7 @@ def test_installer_copies_and_applies_additive_files():
     assert '< "$APP_DIR/postgres/sql/011_node_groups.sql"' in installer
     assert '< "$APP_DIR/postgres/sql/012_node_groups_r6_safety.sql"' in installer
     assert '< "$APP_DIR/postgres/sql/013_maintenance_queue_boolean.sql"' in installer
+    assert '< "$APP_DIR/postgres/sql/014_node_vm_consumption_rollups.sql"' in installer
 
 
 def test_no_runtime_cdn_or_npm_dependency():

@@ -694,40 +694,27 @@ def admin_bandwidth_consumption_action():
         try:
             hourly = conn.execute("DELETE FROM node_consumption_hourly WHERE hour_start<?", (cutoff,))
             daily = conn.execute("DELETE FROM node_consumption_daily WHERE day_start<?", (cutoff,))
+            vm_hourly = conn.execute("DELETE FROM node_vm_consumption_hourly WHERE hour_start<?", (cutoff,))
+            vm_daily = conn.execute("DELETE FROM node_vm_consumption_daily WHERE day_start<?", (local_day_start(cutoff),))
             deleted_hourly = max(0, safe_int(hourly.rowcount, 0))
             deleted_daily = max(0, safe_int(daily.rowcount, 0))
+            deleted_vm_hourly = max(0, safe_int(vm_hourly.rowcount, 0))
+            deleted_vm_daily = max(0, safe_int(vm_daily.rowcount, 0))
             conn.commit()
         finally:
             conn.close()
-        deleted = deleted_legacy + deleted_hourly + deleted_daily
+        deleted = deleted_legacy + deleted_hourly + deleted_daily + deleted_vm_hourly + deleted_vm_daily
         log_account_event(
             "bandwidth_consumption_cleanup", username=actor, realm="admin", role=role,
-            detail="legacy=%s hourly=%s daily=%s" % (deleted_legacy, deleted_hourly, deleted_daily),
+            detail="legacy=%s physical_hourly=%s physical_daily=%s vm_node_hourly=%s vm_node_daily=%s" % (deleted_legacy, deleted_hourly, deleted_daily, deleted_vm_hourly, deleted_vm_daily),
         )
         _v48140_bump_cache_generation()
         return redirect(url_for("admin_page", section="system", message="Consumption cleanup deleted %s expired rows." % deleted))
     if action == "clear":
-        if str(request.form.get("confirm_text") or "").strip() != "CLEAR CONSUMPTION HISTORY":
-            return Response("Confirmation text mismatch\n", status=400, mimetype="text/plain")
-        conn = db()
-        try:
-            counts = {}
-            for table in ("node_consumption_hourly", "node_consumption_daily", "node_bandwidth_consumption_2h"):
-                cur = conn.execute("DELETE FROM %s" % table)
-                counts[table] = max(0, safe_int(cur.rowcount, 0))
-            conn.commit()
-        finally:
-            conn.close()
-        epoch = _v5030_set_bandwidth_accept_after(now_ts())
-        log_account_event(
-            "bandwidth_consumption_clear", username=actor, realm="admin", role=role,
-            detail="hourly=%s daily=%s legacy=%s accept_after=%s" % (
-                counts["node_consumption_hourly"], counts["node_consumption_daily"],
-                counts["node_bandwidth_consumption_2h"], epoch,
-            ),
+        return Response(
+            "Use Clear All Monitoring Data so raw metrics and every Consumption rollup are cleared together.\n",
+            status=409, mimetype="text/plain",
         )
-        _v48140_bump_cache_generation()
-        return redirect(url_for("admin_page", section="system", message="Consumption history cleared."))
     return Response("Unsupported action\n", status=400, mimetype="text/plain")
 
 # Existing retention and manual history cleanup now include the dedicated table.

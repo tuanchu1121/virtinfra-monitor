@@ -32,7 +32,7 @@ def _function_source(source: str, name: str) -> str:
 
 
 def test_release_and_native_copy_contract() -> None:
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r19-production-readiness-audit-hotfix"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix"
     assert "def copy_rows(" in PG
     assert "cursor.copy(statement)" in PG
     assert "copy.write_row(values)" in PG

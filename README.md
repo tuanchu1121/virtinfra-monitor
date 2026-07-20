@@ -1,6 +1,6 @@
 # VirtInfra Monitor
 
-**Release:** `50.5.9-prod-r19-production-readiness-audit-hotfix`
+**Release:** `50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix`
 
 VirtInfra Monitor is a PostgreSQL 17 and TimescaleDB monitoring platform for KVM/libvirt nodes and virtual machines. PostgreSQL is the authoritative datastore for inventory, users, settings, current metrics, historical metrics, Abuse events, Storage I/O and Consumption.
 
@@ -97,8 +97,11 @@ Core retention contracts:
 
 - `vm_chart_5m` and `node_chart_5m`: exact five-minute points for seven days;
 - `vm_raw_detail_5m`: per-interface raw detail for 48 hours;
-- `node_bandwidth_consumption_2h`: compatibility Consumption history used by existing readers;
-- `/bandwidth-consumption`: VM and physical Public/Private RX/TX views;
+- `bandwidth_hourly` / `bandwidth_daily`: per-VM Consumption rollups for fast 24-hour and 7-day filters;
+- `node_consumption_hourly` / `node_consumption_daily`: compact physical Node rollups;
+- `node_vm_consumption_hourly` / `node_vm_consumption_daily`: compact totals of all VMs per Node;
+- `node_bandwidth_consumption_2h`: dormant legacy compatibility table; its writer endpoint returns HTTP 410;
+- `/bandwidth-consumption`: VM, Node and Node Group views with Physical, All VM and observed-difference columns;
 - `VIRTINFRA_READ_CHART_V2` and `VIRTINFRA_RAW_V2`: controlled Storage V2 readers and raw detail switches.
 
 The application keeps the existing CPU, RAM, network, PPS, disk, bandwidth, Abuse, retention and queue calculations unchanged.

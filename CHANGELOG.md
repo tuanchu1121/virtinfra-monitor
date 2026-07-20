@@ -1,5 +1,12 @@
 # Changelog
 
+## 50.5.9-prod-r17-operations-single-shell-hotfix
+
+- Fixed the duplicated Operations header and tab navigation caused by stacked legacy Admin and retention page wrappers.
+- Final `/admin` rendering now removes every legacy/canonical Admin hero and Admin tab block, then inserts exactly one shared Operations shell.
+- Preserved the retention policy strip, all page content, forms, query parameters, Queue actions, redirects, routes and monitoring behavior.
+- Retained the R16 role-aware Operations entry, Admin/Super Admin permission split and Node-only flag scope.
+
 ## 50.5.9-prod-r16-operations-node-flag-scope-hotfix
 
 - Added a role-aware **Operations** navigation item beside VM Abuse. Viewer sessions do not see it; Admin and Super Admin do.

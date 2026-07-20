@@ -74,7 +74,7 @@ def main() -> int:
         result = module.run_retention(dry_run=False)
         print(json.dumps({
             "ok": True,
-            "version": "50.5.9-prod-r16-operations-node-flag-scope-hotfix",
+            "version": "50.5.9-prod-r17-operations-single-shell-hotfix",
             "started_at": started,
             "finished_at": int(time.time()),
             "result": result,

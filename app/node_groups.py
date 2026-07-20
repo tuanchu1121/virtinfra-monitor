@@ -1,4 +1,4 @@
-"""50.5.9-r16 Operations shell, operator RBAC and node-flag scope hotfix.
+"""50.5.9-r17 single Operations shell, operator RBAC and node-flag scope hotfix.
 
 This module is installed after the existing append-only app.py runtime has
 finished registering its final implementations. It keeps the original call
@@ -689,28 +689,62 @@ def _remove_card_containing_action(text: str, action: str) -> str:
     return text
 
 
+def _remove_div_blocks_with_class(text: str, class_name: str) -> str:
+    """Remove complete DIV blocks whose class list contains *class_name*."""
+    class_re = re.compile(
+        r'<div\b[^>]*\bclass=["\'][^"\']*\b%s\b[^"\']*["\'][^>]*>'
+        % re.escape(class_name),
+        flags=re.I,
+    )
+    while True:
+        match = class_re.search(text)
+        if not match:
+            return text
+        depth = 0
+        end = -1
+        for tag in re.finditer(r'<div\b[^>]*>|</div>', text[match.start():], flags=re.I):
+            if tag.group(0).lower().startswith('<div'):
+                depth += 1
+            else:
+                depth -= 1
+                if depth == 0:
+                    end = match.start() + tag.end()
+                    break
+        if end < 0:
+            return text
+        text = text[:match.start()] + text[end:]
+
+
 def _normalize_operations_shell(text: str) -> str:
-    """Standardize only the /admin presentation shell; forms and actions stay unchanged."""
+    """Render exactly one shared /admin shell; preserve all page actions and content."""
     m = _m()
     endpoint = str(m.request.endpoint or "")
     if not admin_allowed() or not str(m.request.path or "").startswith("/admin"):
         return text
     if endpoint in {"admin_login", "admin_setup", "admin_logout"}:
         return text
-    text = text.replace("<h2>Administration</h2>", "<h2>Operations</h2>")
     text = text.replace("Back to Admin", "Back to Operations")
     text = text.replace("Administration ·", "Operations ·")
     if current_role() == "admin":
         for action in ("clear_monitoring_data", "clear_api_logs", "clear_api_data"):
             text = _remove_card_containing_action(text, action)
-    if 'class="admin-hero' not in text:
-        marker = '<div class="wrap" id="bw-content">'
-        if marker in text:
-            text = text.replace(marker, marker + _operations_shell_html(), 1)
-    elif 'class="admin-tabs"' not in text:
-        hero = re.search(r'<div class="card admin-hero[^>]*>.*?</div>\s*</div>', text, flags=re.I | re.S)
-        if hero:
-            text = text[:hero.end()] + admin_nav(_operations_active_section()) + text[hero.end():]
+
+    # Legacy runtime layers prepend retention content before their own Admin hero.
+    # Remove every old/canonical shell first, then add one canonical Operations
+    # shell at the final render boundary. This is idempotent and prevents the
+    # duplicated title/navigation seen when wrappers are composed.
+    text = _remove_div_blocks_with_class(text, "admin-hero")
+    text = re.sub(
+        r'<nav\b[^>]*\bclass=["\'][^"\']*\badmin-tabs\b[^"\']*["\'][^>]*>.*?</nav>',
+        '',
+        text,
+        flags=re.I | re.S,
+    )
+    marker = '<div class="wrap" id="bw-content">'
+    if marker in text:
+        text = text.replace(marker, marker + _operations_shell_html(), 1)
+    else:
+        text = _operations_shell_html() + text
     return text
 
 

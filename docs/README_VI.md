@@ -1,6 +1,6 @@
 # Tài liệu VirtInfra Monitor
 
-Release: `50.5.9-prod-r16-operations-node-flag-scope-hotfix`
+Release: `50.5.9-prod-r17-operations-single-shell-hotfix`
 
 Runtime dùng PostgreSQL 17 + TimescaleDB làm nguồn dữ liệu duy nhất.
 

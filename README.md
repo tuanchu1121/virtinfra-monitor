@@ -1,6 +1,6 @@
 # VirtInfra Monitor
 
-**Release:** `50.5.9-prod-r16-operations-node-flag-scope-hotfix`
+**Release:** `50.5.9-prod-r17-operations-single-shell-hotfix`
 
 VirtInfra Monitor is a PostgreSQL 17 and TimescaleDB monitoring platform for KVM/libvirt nodes and virtual machines. PostgreSQL is the authoritative datastore for inventory, users, settings, current metrics, historical metrics, Abuse events, Storage I/O and Consumption.
 

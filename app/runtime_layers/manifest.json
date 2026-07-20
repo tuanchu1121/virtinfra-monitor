@@ -231,7 +231,7 @@
     "file": "38_agent_maintenance_canonical_routes.py",
     "start_line": 28142,
     "end_line": 28969,
-    "sha256": "780c725935819b17a0bd3d99ad3033a51a04ad29f14e0eb267230676855e6d90"
+    "sha256": "fcf7b78a19e3eec14e58aadba860bc6a01fad288deeafe153a00d8ee2863c2bd"
   },
   {
     "file": "39_inventory_consumption_views.py",
@@ -261,6 +261,6 @@
     "file": "43_node_groups_loader.py",
     "start_line": 31385,
     "end_line": 31406,
-    "sha256": "e465dddbe73d9aea8f6ea01b86f48d6b72500c1a9efdde1cbb5992116789a9da"
+    "sha256": "2fbd5473f5b121838f7c92573576fc35cdbb71ef823d05c9efae0036c0a14d9f"
   }
 ]

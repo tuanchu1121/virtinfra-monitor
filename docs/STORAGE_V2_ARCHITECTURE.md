@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.9-prod-r16-operations-node-flag-scope-hotfix`
+Release: `50.5.9-prod-r17-operations-single-shell-hotfix`
 
 ## Final data path
 

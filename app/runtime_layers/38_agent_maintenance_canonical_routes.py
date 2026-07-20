@@ -14,7 +14,7 @@ def valid_agent_token(value):
     supplied = str(value or "")
     return any(hmac.compare_digest(supplied, expected) for expected in V5057_AGENT_TOKENS)
 
-V5057_VERSION = "50.5.9-prod-r16-operations-node-flag-scope-hotfix"
+V5057_VERSION = "50.5.9-prod-r17-operations-single-shell-hotfix"
 
 def enqueue_maintenance_job(action, parameters, actor):
     payload = dict(parameters or {})

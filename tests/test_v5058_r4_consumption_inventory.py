@@ -11,7 +11,7 @@ VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 
 def test_release_identity():
-    assert VERSION == "50.5.9-prod-r16-operations-node-flag-scope-hotfix"
+    assert VERSION == "50.5.9-prod-r17-operations-single-shell-hotfix"
     assert VERSION in APP
     assert VERSION in INSTALLER
 

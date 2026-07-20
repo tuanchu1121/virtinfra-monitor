@@ -18,7 +18,7 @@ MIGRATION = ROOT / "postgres" / "sql" / "011_node_groups.sql"
 R6_MIGRATION = ROOT / "postgres" / "sql" / "012_node_groups_r6_safety.sql"
 QUEUE_BOOLEAN_MIGRATION = ROOT / "postgres" / "sql" / "013_maintenance_queue_boolean.sql"
 RUNTIME_TOOL = ROOT / "tools" / "node-groups-runtime-validation.py"
-EXPECTED_RELEASE = "50.5.9-prod-r16-operations-node-flag-scope-hotfix"
+EXPECTED_RELEASE = "50.5.9-prod-r17-operations-single-shell-hotfix"
 
 
 @pytest.fixture(scope="module")

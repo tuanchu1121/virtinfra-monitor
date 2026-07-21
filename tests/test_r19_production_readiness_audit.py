@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app"
-VERSION = "50.5.9-prod-r22.8-consumption-sort-alignment-hotfix"
+VERSION = "50.5.9-prod-r22.9-consumption-sort-regression-hotfix"
 
 
 def test_release_identity() -> None:

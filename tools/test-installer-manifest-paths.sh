@@ -25,7 +25,6 @@ create_fixture() {
     app/runtime_layers/43_node_groups_loader.py
     app/runtime_layers/44_consumption_node_vm_rollup.py
     app/runtime_layers/45_consumption_ingest_preaggregation.py
-    app/runtime_layers/46_consumption_sort_alignment_hotfix.py
     app/node_groups.py
     app/static/vendor/flag-icons/node-groups.css
     app/static/vendor/flag-icons/LICENSE

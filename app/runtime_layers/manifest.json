@@ -267,7 +267,7 @@
     "file": "44_consumption_node_vm_rollup.py",
     "start_line": 32055,
     "end_line": 33013,
-    "sha256": "76b5a36e8347c7171c1de871e5f5a9d68c677f3457c41c6e0ac5a0199d6880f3"
+    "sha256": "cc0c9ab9e1ef7873536b7ffbd73d57c5d33f453201164ab2e1773174436c92ca"
   },
   {
     "file": "45_consumption_ingest_preaggregation.py",
@@ -278,7 +278,7 @@
   {
     "file": "46_consumption_sort_alignment_hotfix.py",
     "start_line": 33016,
-    "end_line": 33463,
-    "sha256": "9e512a89bc799997ef6cd9aa25e517664b3ddc3f529075be5c2eb0c6d15e71dc"
+    "end_line": 33288,
+    "sha256": "d6d892fcc15ed1ea0efd1c58e0a145c87aa5e654a628bedde53c8ddee7a3475d"
   }
 ]

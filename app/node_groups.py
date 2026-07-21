@@ -1,4 +1,4 @@
-"""50.5.9-prod-r22.8-consumption-sort-alignment-hotfix.
+"""50.5.9-prod-r22.9-consumption-sort-regression-hotfix.
 
 Operations single-shell, Node flag scope and user/RBAC/session hardening.
 

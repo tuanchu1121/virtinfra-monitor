@@ -1,4 +1,4 @@
-# 50.5.9-prod-r22.8-consumption-sort-alignment-hotfix
+# 50.5.9-prod-r22.9-consumption-sort-regression-hotfix
 
 - VM Consumption is now rollup-only at render time.
 - Removed raw VM/NIC edge scans from `/bandwidth-consumption?tab=vm`.
@@ -135,13 +135,3 @@
 - Default `/bandwidth-consumption` to the compact Node tab; per-VM aggregation is opt-in through `tab=vm`.
 - Constrain raw VM edge reads by the Timescale `node_stats.bucket` partition column as well as `last_push`, enabling chunk exclusion and preventing full retained-history scans.
 - Preserve VM/Node formulas, hourly/daily rollups, routes and response contracts.
-
-## 50.5.9-prod-r22.8-consumption-sort-alignment-hotfix
-
-- Fixed Node Consumption sort validation for VMs, VM Public/Private, and Public/Private Difference columns.
-- Added deterministic sorting for all Node Group Consumption columns.
-- Made first-click text sorting ascending and numeric sorting descending.
-- Removed `COUNT(*) OVER()` from the common unfiltered VM sort query and cached the visible VM count.
-- Applied Node Group scope before VM rollup/NIC aggregation to reduce sort work.
-- Fixed VM, Node, and Group Consumption column widths and alignment for VMs and Difference columns.
-- No schema, migration, ingest, API, formula, retention, or non-Consumption UI change.

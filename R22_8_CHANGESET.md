@@ -1,34 +1,41 @@
 # R22.8 Change Set
 
-Release: `50.5.9-prod-r22.8-consumption-sort-alignment-hotfix`
+Version: `50.5.9-prod-r22.8-vm-consumption-exact-window-sort-alignment`
 
-## Scope
+## Base release
 
-Focused Consumption-only hotfix. No database schema, migration, Agent payload,
-ingest formula, API endpoint, retention, Backup/Restore, Nuclear Reset, Top VM,
-Storage I/O, Abuse, authentication, or non-Consumption UI behavior is changed.
+R22.8 is developed directly on top of R22.7. It does not replace the source with the older 50.5.9-r3 tree. All R22.7 maintenance, backup, RBAC, Node Group, retention, ingest and hardening behavior remains present.
 
-## Fixes
+## VM Consumption changes
 
-1. Node sort validation now accepts every column rendered by the R22 Node table:
-   VMs, All VM Public/Private RX/TX/Total, Public Diff, and Private Diff.
-2. Text columns start with ascending order on the first click; numeric columns
-   start descending. Repeated clicks toggle deterministically.
-3. Node sorting uses stable Node-name tie ordering.
-4. Node Group Consumption now supports deterministic sort links for counts,
-   physical/VM traffic, differences, coverage, and latest sample.
-5. The common VM sort path no longer uses `COUNT(*) OVER()`. The visible VM
-   count is cached separately, allowing PostgreSQL to use a bounded top-N sort.
-6. Selected Node Group scope is applied before VM per-bridge/per-VM and NIC
-   configuration aggregation.
-7. VM table receives a fixed colgroup. Node and Group VMs count columns are
-   centered, while Public Diff and Private Diff remain right-aligned with
-   tabular numerals.
+- Restores the accurate hybrid range planner proven in 50.5.9 for the VM tab only.
+- Complete local days read `vm_consumption_daily`.
+- Complete local hours read `vm_consumption_hourly`.
+- Only the two incomplete hour edges read `node_stats`.
+- Raw edge SQL filters both `bucket` and `last_push`, preserving exact range semantics while enabling Timescale chunk pruning.
+- Node and Node Group scope is applied together inside raw/hourly/daily source branches before aggregation; selecting a Node cannot bypass the selected Group.
+- All-VM merges historical active-Node segments by `vm_uuid`; a Group view merges segments that remain inside its selected current scope.
+- An explicit Node filter remains Node-attributed and includes only traffic recorded on that Node.
+- Overall coverage uses the least-complete configured bridge. A complete private bridge can no longer hide missing public samples, or vice versa.
+- Historical bridge data remains visible if a NIC was removed after the selected period.
 
-## Compatibility
+## Sorting and UI
 
-- Route count remains 83.
-- Existing sort query parameter names remain unchanged.
-- Existing URLs and endpoint names remain unchanged.
-- Existing RX/TX guest-perspective normalization is unchanged.
-- Existing hourly/daily VM rollup-only architecture is unchanged.
+- VM UUID, Node, Public RX, Public TX, Public Total, Private RX, Private TX, Private Total, Coverage and Latest Sample all sort the complete filtered VM set.
+- Aggregation, visibility, Group, Node, search and coverage filters run before `ORDER BY`.
+- `LIMIT/OFFSET` remains the final operation, so sorting is system-wide rather than page-local.
+- The R22.7 query-time normalization is preserved, allowing the bounded 5–15 second VM cache to reuse equivalent requests instead of missing on every second.
+- The VM Node dropdown is restricted to active Nodes in the selected Group.
+- Retains the 50.5.9 fixed-column Consumption layout and adds a final VM-only alignment contract for numeric columns, headers, coverage and latest sample.
+- The VM information note now describes the exact daily/hourly/two-edge planner instead of the R22.7 rollup-only/current-hour behavior.
+
+## Explicitly unchanged
+
+- Agent source and payload.
+- Five-minute Agent cadence.
+- `/push` ingest and transactions.
+- `vm_consumption_hourly` and `vm_consumption_daily` write behavior.
+- Node, Node Group and Summary Consumption pipelines.
+- RX/TX direction formulas.
+- Database schema and migrations.
+- Retention, Maintenance, Queue, Dashboard, Top VM, Abuse and Storage I/O.

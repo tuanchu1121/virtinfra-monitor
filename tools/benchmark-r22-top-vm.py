@@ -255,7 +255,7 @@ def main() -> int:
 
     report = {
         "ok": True,
-        "release": "50.5.9-prod-r22.9-consumption-sort-regression-hotfix",
+        "release": "50.5.9-prod-r22.8-vm-consumption-exact-window-sort-alignment",
         "synthetic": bool(args.synthetic),
         "vm_rows": row_count,
         "target_vm_rows": args.vms if args.synthetic else None,

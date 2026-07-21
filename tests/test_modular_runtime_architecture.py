@@ -36,7 +36,7 @@ def test_runtime_manifest_is_complete_ordered_and_hash_pinned() -> None:
     assert names == sorted(names)
     assert len(names) == len(set(names))
     assert names[0] == "00_bootstrap_database.py"
-    assert names[-1] == "46_consumption_sort_alignment_hotfix.py"
+    assert names[-1] == "46_vm_consumption_exact_window.py"
 
     previous_end = 0
     for item in manifest:

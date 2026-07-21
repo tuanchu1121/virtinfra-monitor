@@ -1,6 +1,6 @@
 # VirtInfra Monitor
 
-**Release:** `50.5.9-prod-r22.9-consumption-sort-regression-hotfix`
+**Release:** `50.5.9-prod-r22.8-vm-consumption-exact-window-sort-alignment`
 
 VirtInfra Monitor is a PostgreSQL 17 and TimescaleDB monitoring platform for KVM/libvirt nodes and virtual machines. PostgreSQL is the authoritative datastore for inventory, users, settings, current metrics, historical metrics, Abuse events, Storage I/O and Consumption.
 
@@ -25,6 +25,8 @@ There is no automatic install-to-update fallback.
 
 ## R22 hardening highlights
 
+- R22.8 keeps R22.7 as the base and makes VM ranges exact with daily rows for complete days, hourly rows for complete hours and bounded raw rows only at the two partial-hour edges.
+- VM migration segments are merged by UUID for All VM/Group views, coverage follows the weakest configured bridge, Group/Node filters are pushed into the source, and every displayed metric sorts globally before pagination.
 - Consumption business logic is canonical in runtime Layer 44; Layer 45 is only a compatibility marker.
 - Node, Node Group and Summary continue to read only compact Node rollups. VM Consumption remains separate and reads only canonical hourly/daily VM rollups.
 - Top VM RAM and disk sorting now ranks the complete filtered VM set in PostgreSQL before `LIMIT`; no second current-state table or dual-write path was added.

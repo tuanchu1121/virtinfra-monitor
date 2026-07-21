@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.9-prod-r22.9-consumption-sort-regression-hotfix`
+Release: `50.5.9-prod-r22.8-vm-consumption-exact-window-sort-alignment`
 
 ## Final data path
 

@@ -1,6 +1,6 @@
 # Consumption architecture
 
-**Release:** `50.5.9-prod-r22.9-consumption-sort-regression-hotfix`
+**Release:** `50.5.9-prod-r22.8-vm-consumption-exact-window-sort-alignment`
 
 R21 introduced high-cardinality network aggregation from page render time to the accepted five-minute `/push` transaction. Dashboard snapshots, Agent cadence and all non-Consumption features remain unchanged.
 
@@ -57,13 +57,22 @@ At 350 Nodes, the complete-hour portion reads roughly `350 × 23 = 8,050` rows i
 
 ## VM pipeline
 
-VM Consumption remains separate and is rollup-only at render time:
+R22.8 keeps VM Consumption separate from Node/Group/Summary and uses the exact bounded hybrid planner from the 50.5.9 Consumption path:
 
-- full local days from `vm_consumption_daily`;
-- partial local days, including the live current hour, from `vm_consumption_hourly`;
-- no `node_stats`, `usage` or raw NIC scan when the VM table is opened.
+- complete local days from `vm_consumption_daily`;
+- complete hours outside those days from `vm_consumption_hourly`;
+- only the two incomplete-hour edges from bounded `node_stats` rows;
+- no full-range VM/NIC raw scan.
 
-The selected range is represented by a fixed number of hourly buckets. The oldest boundary is hour-aligned and the current hour can be partial. The VM pipeline runs only when the VM tab is opened. Node and Group tabs do not call it. Search, global sorting and pagination remain server-side.
+The raw edge predicates constrain both `bucket` and `last_push`. `bucket` gives TimescaleDB a partition-pruning key while `last_push` preserves the original accepted-sample time semantics. A one-hour range can therefore be entirely raw when both boundaries fall inside incomplete hours, but a multi-day range still reads raw only at its two short edges.
+
+Node and Node Group scope is combined and pushed into all daily, hourly and raw branches before aggregation. An explicit Node selector cannot bypass the selected Group. All VM merges historical active-Node segments with the same `vm_uuid`; Group views merge segments inside the selected current scope. An explicit Node filter remains Node-attributed and includes only traffic generated on that Node.
+
+Coverage is derived from the weakest configured public/private bridge rather than the strongest one. Removed current interfaces do not erase matching historical bridge traffic. Guest direction remains guest RX = host tap TX and guest TX = host tap RX.
+
+Equivalent request timestamps are normalized by the existing R22.7 cache interval, so the bounded query cache can be reused. The Node selector lists only active Nodes inside the selected Group.
+
+All displayed columns are sortable over the complete filtered result before `LIMIT/OFFSET`: VM UUID, Node, Public RX, Public TX, Public Total, Private RX, Private TX, Private Total, Coverage and Latest Sample. Deterministic Node/UUID tie-breakers keep pagination stable. The VM pipeline runs only when the VM tab is opened; Node and Group tabs do not call it.
 
 ## Request reuse and cache
 

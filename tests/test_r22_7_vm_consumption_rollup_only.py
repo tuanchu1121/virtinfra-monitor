@@ -49,9 +49,11 @@ def test_short_ranges_do_not_duplicate_the_hourly_branch():
     assert "else:\n        sql, values = _v5058r7_vm_hourly_branch" in block
 
 
-def test_vm_ui_discloses_hourly_resolution_and_no_raw_scan():
-    assert "VM rows use hourly/daily rollups only" in VIEWS
-    assert "no raw VM/NIC history is scanned" in VIEWS
+def test_vm_ui_discloses_r228_exact_hybrid_resolution():
+    assert "VM ranges are exact to the retained five-minute samples" in VIEWS
+    assert "complete days use daily rollups" in VIEWS
+    assert "complete hours use hourly rollups" in VIEWS
+    assert "two partial-hour edges read bounded raw VM/NIC buckets" in VIEWS
 
 
 def test_vm_metric_direction_formulas_are_unchanged():

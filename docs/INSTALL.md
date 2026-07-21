@@ -1,6 +1,6 @@
 # Installation
 
-Release: `50.5.9-prod-r22.9-consumption-sort-regression-hotfix`
+Release: `50.5.9-prod-r22.8-vm-consumption-exact-window-sort-alignment`
 ## Requirements
 
 - Debian 12+ or Ubuntu 22.04+

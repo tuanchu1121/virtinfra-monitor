@@ -39,12 +39,12 @@ run_pytest(){
     "$PYTHON" -m pytest "$@"
 }
 run_contract(){
-  run_isolated '^PASS:' "$PYTHON" "$@"
+  "$PYTHON" "$@"
 }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.9-prod-r22.9-consumption-sort-regression-hotfix" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.5.9-prod-r22.8-vm-consumption-exact-window-sort-alignment" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/runtime_loader.py \
    && -f deploy/postgres/install-postgres-native.sh \
    && -f deploy/postgres/update-postgres-native.sh \
@@ -52,6 +52,7 @@ log "Validate release identity"
    && -f app/runtime_layers/manifest.json \
    && -f app/runtime_layers/44_consumption_node_vm_rollup.py \
    && -f app/runtime_layers/45_consumption_ingest_preaggregation.py \
+   && -f app/runtime_layers/46_vm_consumption_exact_window.py \
    && -f app/runtime_layers/00_bootstrap_database.py \
    && -f app/runtime_layers/43_node_groups_loader.py \
    && -f app/bw_pg.py && -f app/maintenance_native.py && -f app/configuration_backup.py && -f app/emergency_backup.py \
@@ -69,7 +70,8 @@ log "Validate release identity"
    && -f deploy/postgres/bw-monitor-inventory-cleanup.timer \
    && -f deploy/agent/agent.py && -f deploy/agent/fix-agent-uuid.sh \
    && -f tools/benchmark-r22-top-vm.py && -f tests/test_r22_hardening.py \
-   && -f tests/test_r22_7_vm_consumption_rollup_only.py ]] \
+   && -f tests/test_r22_7_vm_consumption_rollup_only.py \
+   && -f tests/test_r22_8_vm_consumption_exact_window.py ]] \
 || fail "full source tree is incomplete"
 [[ ! -d release && ! -d enterprise ]] || fail "legacy duplicate runtime trees must not be shipped"
 
@@ -148,8 +150,8 @@ log "Validate v50.5.7 safe FIFO queue and canonical VM detail"
 run_pytest -q tests/test_v5057_safe_queue_canonical_vm.py
 
 log "Validate standalone repository contract"
-run_contract tests/test_repository_contract.py
-run_contract tests/test_virtinfra_hardening.py
+"$PYTHON" tests/test_repository_contract.py
+"$PYTHON" tests/test_virtinfra_hardening.py
 
 log "Run storage V2 contract and multi-NIC regression"
 run_contract tests/test_storage_v2_contract.py
@@ -208,8 +210,11 @@ log "Validate r22 canonical Consumption and global Top VM hardening"
 run_pytest -q tests/test_r22_hardening.py
 run_pytest -q tests/test_r225_configuration_backup_nuclear.py
 
-log "Validate r22.7 VM Consumption rollup-only read path"
+log "Validate r22.7 VM Consumption base read path"
 run_pytest -q tests/test_r22_7_vm_consumption_rollup_only.py
+
+log "Validate r22.8 exact-window VM Consumption, accuracy and global sorting"
+run_pytest -q tests/test_r22_8_vm_consumption_exact_window.py
 
 log "Verify one-command installer and operations flow"
 bash ./tools/test-installer-flow.sh

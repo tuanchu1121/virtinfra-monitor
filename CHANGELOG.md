@@ -1,4 +1,16 @@
-# 50.5.9-prod-r22.9-consumption-sort-regression-hotfix
+# 50.5.9-prod-r22.8-vm-consumption-exact-window-sort-alignment
+
+- Built on the complete R22.7 source; no rollback to the older 50.5.9 tree.
+- VM Consumption now uses exact hybrid ranges: daily for complete days, hourly for complete hours and bounded raw `node_stats` only at the two partial-hour edges.
+- Raw edges use both `bucket` and `last_push` predicates for Timescale pruning without changing range semantics.
+- Group and Node filters run inside every VM source branch before aggregation.
+- All-VM and Group results merge migrated VM segments by UUID; explicit Node views remain Node-attributed.
+- Coverage uses the weakest configured bridge instead of `MAX(samples)`.
+- All ten VM table columns sort the complete filtered system before pagination.
+- Retains and hardens the 50.5.9 fixed-column Consumption alignment.
+- Agent, ingest, schema, retention, formulas and non-Consumption features are unchanged.
+
+# 50.5.9-prod-r22.7-vm-consumption-rollup-only
 
 - VM Consumption is now rollup-only at render time.
 - Removed raw VM/NIC edge scans from `/bandwidth-consumption?tab=vm`.

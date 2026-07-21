@@ -1,6 +1,6 @@
 # R22.3 Maintenance Queue + Backup Manifest Hotfix
 
-Release: `50.5.9-prod-r22.3-maintenance-queue-backup-hotfix`
+Release: `50.5.9-prod-r22.4-preflight-contract-hotfix`
 
 ## Fixed
 

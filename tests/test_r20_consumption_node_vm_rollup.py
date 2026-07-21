@@ -9,7 +9,7 @@ CANONICAL_LAYER = APP / "runtime_layers/44_consumption_node_vm_rollup.py"
 SHIM_LAYER = APP / "runtime_layers/45_consumption_ingest_preaggregation.py"
 R20_LAYER = CANONICAL_LAYER
 R21_LAYER = CANONICAL_LAYER
-RELEASE = "50.5.9-prod-r22.3-maintenance-queue-backup-hotfix"
+RELEASE = "50.5.9-prod-r22.4-preflight-contract-hotfix"
 
 
 def text(path: Path) -> str:

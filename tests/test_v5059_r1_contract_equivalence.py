@@ -124,9 +124,34 @@ def test_agent_matches_pinned_release_contract():
     assert actual == CONTRACT["agent_sha256"]
 
 
-def test_existing_postgresql_sql_is_byte_for_byte_unchanged():
-    paths = [path for path in (ROOT / "postgres" / "sql").glob("*.sql") if path.name not in {"011_node_groups.sql", "012_node_groups_r6_safety.sql", "013_maintenance_queue_boolean.sql", "014_node_vm_consumption_rollups.sql", "015_consumption_ingest_preaggregation.sql"}]
-    assert digest_tree(paths) == CONTRACT["postgres_sql_tree_sha256"]
+def test_existing_postgresql_sql_matches_approved_release_contract():
+    # The legacy aggregate digest predates the approved R22.1 fix to
+    # 002_timescale.sql. Validate each protected migration against the
+    # per-file release manifest instead, so an intentional fix does not make
+    # preflight fail while any unexpected SQL edit is still detected exactly.
+    approved = json.loads(
+        (ROOT / "tests" / "contracts" / "node_groups_sql_hashes.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    excluded = {
+        "011_node_groups.sql",
+        "012_node_groups_r6_safety.sql",
+        "013_maintenance_queue_boolean.sql",
+        "014_node_vm_consumption_rollups.sql",
+        "015_consumption_ingest_preaggregation.sql",
+    }
+    paths = [
+        path
+        for path in (ROOT / "postgres" / "sql").glob("*.sql")
+        if path.name not in excluded
+    ]
+    assert paths
+    for path in sorted(paths):
+        rel = path.relative_to(ROOT).as_posix()
+        assert rel in approved, f"missing approved SQL digest: {rel}"
+        actual = hashlib.sha256(path.read_bytes()).hexdigest()
+        assert actual == approved[rel], f"protected SQL changed: {rel}"
 
 
 def test_node_groups_schema_is_additive_migration_011():

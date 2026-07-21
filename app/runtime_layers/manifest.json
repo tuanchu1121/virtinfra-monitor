@@ -267,7 +267,7 @@
     "file": "44_consumption_node_vm_rollup.py",
     "start_line": 31843,
     "end_line": 32801,
-    "sha256": "c61637c8eb5e1fbfd04b542c1a52cfa823c99b8ecda905632c5207d42ac4f4d1"
+    "sha256": "1273b94a61b7ba07ebbee8c3eb35a6e32f23461ba1d8f53a8bf86c09d49cd3ec"
   },
   {
     "file": "45_consumption_ingest_preaggregation.py",

@@ -33,7 +33,7 @@ def _load_manifest_functions():
 
 
 def test_release_and_consumption_cleanup_use_fifo_queue():
-    assert VERSION.read_text(encoding="utf-8").strip() == "50.5.9-prod-r22.3-maintenance-queue-backup-hotfix"
+    assert VERSION.read_text(encoding="utf-8").strip() == "50.5.9-prod-r22.4-preflight-contract-hotfix"
     source = LAYER44.read_text(encoding="utf-8")
     route = source.split("def admin_bandwidth_consumption_action_r21():", 1)[1].split(
         'app.view_functions["admin_bandwidth_consumption_action"]', 1

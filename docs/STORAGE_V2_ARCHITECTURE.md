@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.9-prod-r22.3-maintenance-queue-backup-hotfix`
+Release: `50.5.9-prod-r22.4-preflight-contract-hotfix`
 
 ## Final data path
 

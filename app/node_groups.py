@@ -1,4 +1,4 @@
-"""50.5.9-prod-r22.3-maintenance-queue-backup-hotfix.
+"""50.5.9-prod-r22.4-preflight-contract-hotfix.
 
 Operations single-shell, Node flag scope and user/RBAC/session hardening.
 

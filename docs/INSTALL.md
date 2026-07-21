@@ -1,6 +1,6 @@
 # Installation
 
-Release: `50.5.9-prod-r22.3-maintenance-queue-backup-hotfix`
+Release: `50.5.9-prod-r22.4-preflight-contract-hotfix`
 ## Requirements
 
 - Debian 12+ or Ubuntu 22.04+

@@ -242,37 +242,37 @@
   {
     "file": "40_consumption_cleanup_r4.py",
     "start_line": 30085,
-    "end_line": 30967,
+    "end_line": 30972,
     "sha256": "4712720831d2119b3e3f747ec81527cf056c31224da6f190889ae0f0dd15dd8b"
   },
   {
     "file": "41_ui_layout_r2.py",
-    "start_line": 30968,
-    "end_line": 31674,
+    "start_line": 30973,
+    "end_line": 31679,
     "sha256": "5c3777ef2d4d44aa026d618826b5207d5078217a3e546544d59f0c6446d816e9"
   },
   {
     "file": "42_ui_alignment_r3.py",
-    "start_line": 31675,
-    "end_line": 32014,
+    "start_line": 31680,
+    "end_line": 32019,
     "sha256": "545466eb5be99c439ec41930cc1cde12a43d0e2031706ab1a594c1ade4e7d189"
   },
   {
     "file": "43_node_groups_loader.py",
-    "start_line": 32015,
-    "end_line": 32036,
+    "start_line": 32020,
+    "end_line": 32041,
     "sha256": "e346b747f8ff960327c4e80004d13964a3a9f7e39509d7a4b0857f403ba9c719"
   },
   {
     "file": "44_consumption_node_vm_rollup.py",
-    "start_line": 32037,
-    "end_line": 32995,
+    "start_line": 32042,
+    "end_line": 33000,
     "sha256": "c0cbf4f359bd7c317358d7306b6afeb13a880f7073aab7e43b5310f0879b6f84"
   },
   {
     "file": "45_consumption_ingest_preaggregation.py",
-    "start_line": 32996,
-    "end_line": 32997,
+    "start_line": 33001,
+    "end_line": 33002,
     "sha256": "189b8843563ae6cd09af492ffcf00315fec17f659990217d89c83f696d6dcbfe"
   }
 ]

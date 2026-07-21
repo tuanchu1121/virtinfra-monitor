@@ -1,6 +1,6 @@
 {
   "postgres/sql/001_bootstrap.sql": "5cf8ab9cf07c206d6d995d1b8577c0dc1536ee858c0fa26466f6d73ad94f1ee9",
-  "postgres/sql/002_timescale.sql": "4d731d64f1fa24c1f99c4cb39348c4f1c2b66e3a48dfa0d54a0bb2ce60593424",
+  "postgres/sql/002_timescale.sql": "0cc96d30e9fc1cb5b34c63b4544c3d53a019c076370647668ba8c52a9c0355da",
   "postgres/sql/003_native_indexes.sql": "e9c8f01d402aedc0ab71f513ec71d420e9f8b9a6a3c26f907a761a299cb5ca4b",
   "postgres/sql/004_storage_v2.sql": "34386ec8032aecb7b334dbdcf841c20631f23144660d1463cf6cdf8b46b2f5d2",
   "postgres/sql/005_ingest_write_profile.sql": "ea6345d96143030468205b9fdf5a7119482da5f004f7b9c54946c7c33a769769",

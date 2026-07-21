@@ -1,6 +1,13 @@
+# 50.5.9-prod-r22.3-maintenance-queue-backup-hotfix
+
+- Fixed update failure `ERROR: invalid relation type` when R21/R22 databases expose `bandwidth_hourly` and `bandwidth_daily` as compatibility views.
+- `002_timescale.sql` now checks PostgreSQL `relkind` and converts only real or partitioned tables to Timescale hypertables.
+- Existing views are skipped with a NOTICE; no data or schema contract is changed.
+- Failed-update recovery now restarts `bw-monitor-backup.timer` together with the other quiesced timers.
+
 # Changelog
 
-## 50.5.9-prod-r22-consumption-hardening-global-sort
+## 50.5.9-prod-r22.3-maintenance-queue-backup-hotfix
 
 - Consolidated Consumption business logic into canonical runtime Layer 44; Layer 45 is now a compatibility marker with no routes, functions or ingest/query implementation.
 - Preserved the R21 data contract: Node, Node Group and Summary read only `node_consumption_5m`, `node_consumption_hourly` and `node_consumption_daily`; VM Consumption remains independent; RX/TX formulas and Agent payload are unchanged.

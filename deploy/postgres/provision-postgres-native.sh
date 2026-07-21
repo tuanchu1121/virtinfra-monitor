@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE="50.5.9-prod-r22-consumption-hardening-global-sort"
+RELEASE="50.5.9-prod-r22.3-maintenance-queue-backup-hotfix"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 APP_SRC="$REPO_ROOT/app"

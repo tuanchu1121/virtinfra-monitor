@@ -2,7 +2,7 @@
 
 ## Release
 
-`50.5.9-prod-r22-consumption-hardening-global-sort`
+`50.5.9-prod-r22.2-installer-health-hotfix`
 
 ## Scope delivered
 

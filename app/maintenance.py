@@ -24,7 +24,7 @@ import signal
 import threading
 import hashlib
 import hmac
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import bw_pg as dbapi
 import maintenance_native
 import maintenance_queue
@@ -250,8 +250,12 @@ def verify_monitor_health(attempts: int = 30) -> dict[str, Any]:
             try:
                 with urllib.request.urlopen(url, timeout=5) as response:
                     code = int(getattr(response, "status", 0) or 0)
+                    final_url = str(getattr(response, "geturl", lambda: url)() or url)
                     body = response.read(4096).decode("utf-8", errors="replace")
-                if code < 200 or code >= 300:
+                if final_url.rstrip("/") != url.rstrip("/"):
+                    ok = False
+                    current.append(f"{url}: redirected to {final_url}")
+                elif code < 200 or code >= 300:
                     ok = False
                     current.append(f"{url}: HTTP {code}")
                 elif not body.strip():
@@ -561,8 +565,22 @@ def _verify_backup_manifest(backup_dir: Path, sums_file: Path) -> dict[str, str]
         if len(parts) != 2 or len(parts[0]) != 64:
             raise RuntimeError(f"Invalid SHA256SUMS line: {raw[:120]}")
         expected = parts[0].lower()
-        relative = parts[1].lstrip("* ")
-        target = (backup_dir / relative).resolve()
+        relative = parts[1].lstrip("* ").replace("\\", "/")
+        # GNU sha256sum commonly writes paths from ``find .`` as
+        # ``./database.dump``.  Normalize that harmless prefix so backups
+        # created by R20-R22 remain valid, while still rejecting absolute or
+        # parent-traversal paths.
+        while relative.startswith("./"):
+            relative = relative[2:]
+        manifest_path = PurePosixPath(relative)
+        if (
+            not relative
+            or manifest_path.is_absolute()
+            or any(part in {"", ".", ".."} for part in manifest_path.parts)
+        ):
+            raise RuntimeError(f"Unsafe backup manifest path: {relative}")
+        normalized = manifest_path.as_posix()
+        target = (backup_dir / Path(*manifest_path.parts)).resolve()
         try:
             target.relative_to(backup_dir.resolve())
         except ValueError as exc:
@@ -571,8 +589,11 @@ def _verify_backup_manifest(backup_dir: Path, sums_file: Path) -> dict[str, str]
             raise RuntimeError(f"Backup manifest file is missing: {target}")
         actual = _sha256_file(target)
         if not hmac.compare_digest(actual, expected):
-            raise RuntimeError(f"Backup checksum mismatch: {relative}")
-        verified[relative] = actual
+            raise RuntimeError(f"Backup checksum mismatch: {normalized}")
+        previous = verified.get(normalized)
+        if previous is not None and not hmac.compare_digest(previous, actual):
+            raise RuntimeError(f"Conflicting backup manifest entry: {normalized}")
+        verified[normalized] = actual
     if "database.dump" not in verified or "database.list" not in verified:
         raise RuntimeError("Backup manifest does not cover database.dump and database.list")
     return verified
@@ -654,7 +675,19 @@ def execute_action(module, action: str, params: dict[str, Any], *, db_path: str)
     if action == "retention":
         if module is None:
             raise RuntimeError("Retention requires the application policy module")
-        return {"action": action, "result": module.run_retention(dry_run=False)}
+        scope = str(params.get("scope") or "all").strip().lower()
+        if scope == "consumption":
+            cleanup = getattr(module, "run_consumption_retention_cleanup", None)
+            if not callable(cleanup):
+                raise RuntimeError("Consumption retention helper is unavailable")
+            return {
+                "action": action,
+                "scope": "consumption",
+                "result": cleanup(dry_run=False),
+            }
+        if scope not in {"", "all"}:
+            raise RuntimeError(f"Unsupported retention scope: {scope}")
+        return {"action": action, "scope": "all", "result": module.run_retention(dry_run=False)}
 
     if action == "delete_history":
         if module is None:

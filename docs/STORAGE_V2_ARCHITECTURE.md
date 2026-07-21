@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.9-prod-r22-consumption-hardening-global-sort`
+Release: `50.5.9-prod-r22.3-maintenance-queue-backup-hotfix`
 
 ## Final data path
 

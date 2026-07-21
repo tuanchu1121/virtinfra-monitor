@@ -1,6 +1,6 @@
 # Consumption architecture
 
-**Release:** `50.5.9-prod-r22-consumption-hardening-global-sort`
+**Release:** `50.5.9-prod-r22.3-maintenance-queue-backup-hotfix`
 
 R21 introduced high-cardinality network aggregation from page render time to the accepted five-minute `/push` transaction. Dashboard snapshots, Agent cadence and all non-Consumption features remain unchanged.
 

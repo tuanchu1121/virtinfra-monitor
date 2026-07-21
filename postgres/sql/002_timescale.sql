@@ -17,6 +17,7 @@ $$;
 DO $$
 DECLARE
     r record;
+    relation_kind "char";
 BEGIN
     FOR r IN
         SELECT * FROM (VALUES
@@ -32,7 +33,19 @@ BEGIN
             ('bandwidth_daily', 'day_start', 2592000::bigint)
         ) AS x(table_name, time_column, chunk_seconds)
     LOOP
-        IF to_regclass('public.' || r.table_name) IS NOT NULL THEN
+        relation_kind := NULL;
+        SELECT c.relkind
+          INTO relation_kind
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = 'public'
+           AND c.relname = r.table_name;
+
+        -- R21+ keeps bandwidth_hourly/bandwidth_daily as compatibility views.
+        -- to_regclass() also resolves views, but create_hypertable() accepts only
+        -- real or partitioned tables. Skip views/materialized views safely so
+        -- update remains idempotent after migration 015.
+        IF relation_kind IN ('r', 'p') THEN
             PERFORM create_hypertable(
                 'public.' || r.table_name,
                 r.time_column,
@@ -45,6 +58,10 @@ BEGIN
                 'public.bw_unix_now',
                 replace_if_exists => TRUE
             );
+        ELSIF relation_kind IS NOT NULL THEN
+            RAISE NOTICE 'relation public.% has relkind %, skipping hypertable conversion',
+                r.table_name,
+                relation_kind;
         END IF;
     END LOOP;
 END $$;

@@ -32,7 +32,7 @@ image=$BW_TIMESCALE_IMAGE
 EOF
 (
   cd "$OUT"
-  find . -maxdepth 1 -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+  find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\0' | sort -z | xargs -0 sha256sum > SHA256SUMS
   sha256sum -c SHA256SUMS >/dev/null
 )
 chmod -R go-rwx "$OUT"

@@ -1106,6 +1106,8 @@ def enforce_dashboard_login():
     endpoint = request.endpoint or ""
     public_endpoints = {
         "health",
+        "virtinfra_livez",
+        "virtinfra_healthz",
         "push",
         "push_bandwidth_consumption",
         "dashboard_login",

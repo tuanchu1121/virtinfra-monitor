@@ -1,6 +1,6 @@
 # Tài liệu VirtInfra Monitor
 
-Release: `50.5.9-prod-r22-consumption-hardening-global-sort`
+Release: `50.5.9-prod-r22.3-maintenance-queue-backup-hotfix`
 
 Runtime dùng PostgreSQL 17 + TimescaleDB làm nguồn dữ liệu duy nhất.
 

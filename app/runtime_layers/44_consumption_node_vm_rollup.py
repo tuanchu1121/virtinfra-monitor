@@ -1,4 +1,4 @@
-# Release: 50.5.9-prod-r22-consumption-hardening-global-sort
+# Release: 50.5.9-prod-r22.3-maintenance-queue-backup-hotfix
 # Canonical R22 Consumption runtime. The R20 query/ingest implementations are
 # removed; only stable rendering helpers and lifecycle bases are retained.
 
@@ -6,7 +6,7 @@ import math as _r20_math
 import threading as _r20_threading
 import node_groups as _r20_node_groups
 
-V5060_RELEASE = "50.5.9-prod-r22-consumption-hardening-global-sort"
+V5060_RELEASE = "50.5.9-prod-r22.3-maintenance-queue-backup-hotfix"
 V5060_ROLLUP_RETENTION_SECONDS = 8 * 86400
 
 # Capture the canonical pre-Consumption implementations exactly once. R21/R22
@@ -74,7 +74,7 @@ def push_bandwidth_consumption_retired():
 
 app.view_functions["push_bandwidth_consumption"] = push_bandwidth_consumption_retired
 
-# Release: 50.5.9-prod-r22-consumption-hardening-global-sort
+# Release: 50.5.9-prod-r22.3-maintenance-queue-backup-hotfix
 # Consumption-only architecture: all high-cardinality aggregation happens in
 # the accepted /push transaction. Node/Group/Summary render paths read only
 # compact node-level 5m/hour/day rows. The VM page has its own per-VM pipeline.
@@ -82,7 +82,7 @@ app.view_functions["push_bandwidth_consumption"] = push_bandwidth_consumption_re
 import threading as _r21_threading
 import time as _r21_time
 
-V5070_RELEASE = "50.5.9-prod-r22-consumption-hardening-global-sort"
+V5070_RELEASE = "50.5.9-prod-r22.3-maintenance-queue-backup-hotfix"
 V5070_QUERY_CACHE_TTL = max(5, min(15, safe_int(os.environ.get("BW_CONSUMPTION_QUERY_CACHE_TTL", "10"), 10)))
 V5070_NODE_RAW_RETENTION_SECONDS = 2 * 86400
 V5070_ROLLUP_RETENTION_SECONDS = 8 * 86400
@@ -714,36 +714,154 @@ def database_maintenance_card(message="", error=""):
     )
     return html[:start]+replacement
 
-def admin_bandwidth_consumption_action_r21():
-    deny=require_admin()
-    if deny:return deny
-    action=str(request.form.get("action") or "").strip().lower()
-    if action=="clear":
-        role=str(session.get("dashboard_role") or session.get("admin_role") or "admin")
-        if role!="super_admin":return Response("Forbidden\n",status=403,mimetype="text/plain")
-        return Response("Use Clear All Monitoring Data so raw metrics and every Consumption rollup are cleared together.\n",status=409,mimetype="text/plain")
-    if action!="cleanup":return Response("Unsupported action\n",status=400,mimetype="text/plain")
-    now=now_ts(); raw_cutoff=now-V5070_NODE_RAW_RETENTION_SECONDS; rollup_cutoff=now-7*86400
-    conn=db()
+def _r22_consumption_retention_specs(now=None, include_vm=True):
+    current = safe_int(now, 0) or now_ts()
+    raw_cutoff = current - V5070_NODE_RAW_RETENTION_SECONDS
+    rollup_cutoff = current - 7 * 86400
+    specs = [
+        ("node_consumption_5m", "bucket_start", raw_cutoff),
+        ("node_consumption_hourly", "hour_start", rollup_cutoff),
+        ("node_consumption_daily", "day_start", local_day_start(rollup_cutoff)),
+    ]
+    if include_vm:
+        specs.extend((
+            ("vm_consumption_hourly", "hour_start", rollup_cutoff),
+            ("vm_consumption_daily", "day_start", local_day_start(rollup_cutoff)),
+        ))
+    return tuple(specs)
+
+def run_consumption_retention_cleanup(dry_run=False, include_vm=True):
+    """Apply the R22 Consumption retention policy outside the web request.
+
+    The maintenance worker calls this function for ``retention`` jobs whose
+    scope is ``consumption``.  Scheduled full retention reuses it for the new
+    Node pre-aggregation tables, while the older VM pipeline remains handled
+    by the established retention chain.
+    """
+    deleted = {}
+    conn = db()
     try:
-        deleted={}
-        for table,column,cutoff in (
-            ("node_consumption_5m","bucket_start",raw_cutoff),
-            ("node_consumption_hourly","hour_start",rollup_cutoff),
-            ("node_consumption_daily","day_start",local_day_start(rollup_cutoff)),
-            ("vm_consumption_hourly","hour_start",rollup_cutoff),
-            ("vm_consumption_daily","day_start",local_day_start(rollup_cutoff)),
-        ):
-            cur=conn.execute("DELETE FROM %s WHERE %s<?"%(table,column),(cutoff,));deleted[table]=max(0,safe_int(cur.rowcount,0))
-        conn.commit()
-    finally:conn.close()
-    actor=str(session.get("admin_username") or "");role=str(session.get("dashboard_role") or session.get("admin_role") or "admin")
-    log_account_event("bandwidth_consumption_cleanup",username=actor,realm="admin",role=role,detail=" ".join("%s=%s"%item for item in sorted(deleted.items())))
-    _v48140_bump_cache_generation()
-    with _r21_query_cache_lock:_r21_query_cache.clear()
-    return redirect(url_for("admin_page",section="system",message="Consumption cleanup deleted %s expired rows."%sum(deleted.values())))
+        for table, column, cutoff in _r22_consumption_retention_specs(include_vm=include_vm):
+            if dry_run:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM %s WHERE %s<?" % (table, column),
+                    (cutoff,),
+                ).fetchone()
+                deleted[table] = max(0, safe_int((row or [0])[0], 0))
+            else:
+                cur = conn.execute(
+                    "DELETE FROM %s WHERE %s<?" % (table, column),
+                    (cutoff,),
+                )
+                deleted[table] = max(0, safe_int(cur.rowcount, 0))
+        if not dry_run:
+            conn.commit()
+    except Exception:
+        if not dry_run:
+            conn.rollback()
+        raise
+    finally:
+        conn.close()
+    if not dry_run:
+        _v48140_bump_cache_generation()
+        with _r21_query_cache_lock:
+            _r21_query_cache.clear()
+    return {
+        "scope": "consumption",
+        "dry_run": bool(dry_run),
+        "deleted": deleted,
+        "total_deleted": sum(max(0, safe_int(value, 0)) for value in deleted.values()),
+        "raw_retention_seconds": V5070_NODE_RAW_RETENTION_SECONDS,
+        "rollup_retention_seconds": 7 * 86400,
+    }
+
+# Ensure scheduled/global retention also covers the R21/R22 Node rollup tables.
+# VM hourly/daily cleanup is already provided by the established retention
+# chain, so include_vm=False avoids duplicate work.
+_r22_run_retention_base = run_retention
+
+def run_retention(dry_run=False):
+    result = dict(_r22_run_retention_base(dry_run=dry_run) or {})
+    consumption = run_consumption_retention_cleanup(
+        dry_run=dry_run,
+        include_vm=False,
+    )
+    result["consumption_preaggregation"] = consumption
+    deleted = result.setdefault("deleted", {})
+    for table, count in consumption.get("deleted", {}).items():
+        deleted[table] = max(0, safe_int(deleted.get(table), 0)) + max(0, safe_int(count, 0))
+    result["total_deleted"] = sum(max(0, safe_int(value, 0)) for value in deleted.values())
+    return result
+
+def _r22_consumption_queue_redirect(message, error=False):
+    parameter = {"dberr" if error else "dbmsg": message}
+    return redirect(
+        url_for("admin_page", section="maintenance", **parameter)
+        + "#maintenance-queue"
+    )
+
+def admin_bandwidth_consumption_action_r21():
+    deny = require_admin()
+    if deny:
+        return deny
+    action = str(request.form.get("action") or "").strip().lower()
+    if action == "clear":
+        role = str(session.get("dashboard_role") or session.get("admin_role") or "admin")
+        if role != "super_admin":
+            return Response("Forbidden\n", status=403, mimetype="text/plain")
+        return Response(
+            "Use Clear All Monitoring Data so raw metrics and every Consumption rollup are cleared together.\n",
+            status=409,
+            mimetype="text/plain",
+        )
+    if action != "cleanup":
+        return Response("Unsupported action\n", status=400, mimetype="text/plain")
+    actor = str(session.get("admin_username") or dashboard_username() or get_admin_username() or "admin")
+    role = str(session.get("dashboard_role") or session.get("admin_role") or "admin")
+    parameters = {
+        "scope": "consumption",
+        "raw_retention_seconds": V5070_NODE_RAW_RETENTION_SECONDS,
+        "rollup_retention_seconds": 7 * 86400,
+    }
+    try:
+        job_id, unit_name = enqueue_maintenance_job("retention", parameters, actor)
+        message = (
+            "Started Consumption retention job #%s as %s."
+            % (job_id, unit_name)
+        )
+        log_account_event(
+            "bandwidth_consumption_cleanup_queued",
+            username=actor,
+            realm="admin",
+            role=role,
+            detail=message,
+        )
+        return _r22_consumption_queue_redirect(message)
+    except Exception as exc:
+        message = "Could not queue Consumption retention: %s" % exc
+        log_account_event(
+            "bandwidth_consumption_cleanup_queue_failed",
+            username=actor,
+            realm="admin",
+            role=role,
+            detail=message[:500],
+        )
+        return _r22_consumption_queue_redirect(message, error=True)
 
 app.view_functions["admin_bandwidth_consumption_action"] = admin_bandwidth_consumption_action_r21
+
+# Give scoped retention jobs an explicit queue target without changing the
+# existing action name or queue schema.
+_r22_maintenance_target_summary_base = _maintenance_target_summary
+
+def _maintenance_target_summary(action, raw_parameters):
+    try:
+        params = json.loads(raw_parameters or "{}") if not isinstance(raw_parameters, dict) else raw_parameters
+    except Exception:
+        params = {}
+    if str(action or "").strip().lower() == "retention" and str(params.get("scope") or "").strip().lower() == "consumption":
+        return "Consumption raw 48h + hourly/daily rollups 7d"
+    return _r22_maintenance_target_summary_base(action, raw_parameters)
 
 # ---------------------------------------------------------------------------
 # Lifecycle, retention and destructive actions

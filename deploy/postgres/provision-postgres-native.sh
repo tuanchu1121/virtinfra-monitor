@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE="50.5.9-prod-r22.10-vm-5m-slot-rolling-window"
+RELEASE="50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 APP_SRC="$REPO_ROOT/app"
@@ -313,6 +313,7 @@ install -m 0644 "$PG_SRC/sql/014_node_vm_consumption_rollups.sql" "$APP_DIR/post
 install -m 0644 "$PG_SRC/sql/015_consumption_ingest_preaggregation.sql" "$APP_DIR/postgres/sql/015_consumption_ingest_preaggregation.sql"
 install -m 0644 "$PG_SRC/sql/016_configuration_backup_nuclear.sql" "$APP_DIR/postgres/sql/016_configuration_backup_nuclear.sql"
 install -m 0644 "$PG_SRC/sql/017_vm_consumption_5m_slots.sql" "$APP_DIR/postgres/sql/017_vm_consumption_5m_slots.sql"
+install -m 0644 "$PG_SRC/sql/018_vm_consumption_slot_boundary_semantics.sql" "$APP_DIR/postgres/sql/018_vm_consumption_slot_boundary_semantics.sql"
 
 log "Start PostgreSQL 17 + TimescaleDB"
 "${COMPOSE[@]}" --env-file "$PG_ENV" -f "$APP_DIR/postgres/docker-compose.yml" pull
@@ -544,6 +545,8 @@ log "Apply Configuration Backup and true Nuclear Reset schema"
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/016_configuration_backup_nuclear.sql"
 log "Apply packed five-minute VM Consumption slots"
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/017_vm_consumption_5m_slots.sql"
+log "Apply corrected VM five-minute slot boundary semantics"
+docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/018_vm_consumption_slot_boundary_semantics.sql"
 QUEUE_CANCEL_TYPE="$(docker exec bw-timescaledb psql -U "$PG_USER" -d "$PG_DATABASE" -Atqc "SELECT data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='maintenance_jobs' AND column_name='cancel_requested'")"
 [[ "$QUEUE_CANCEL_TYPE" == "boolean" ]] || die "maintenance_jobs.cancel_requested must be boolean; found ${QUEUE_CANCEL_TYPE:-missing}"
 log "Verify maintenance Queue accepts PostgreSQL BOOLEAN values"

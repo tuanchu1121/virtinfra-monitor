@@ -1,11 +1,11 @@
-# R22.10 exact rolling VM Consumption without raw VM/NIC history.
+# R22.11 exact rolling VM Consumption with end-of-interval slot semantics.
 #
 # The canonical vm_consumption_hourly row keeps twelve packed five-minute byte
 # slots plus a twelve-bit presence mask. Complete hours/days continue to use
 # the compact totals; only the two partial hour edges read array elements from
 # at most two hourly rows per VM/bridge.
 
-R2210_RELEASE = "50.5.9-prod-r22.10-vm-5m-slot-rolling-window"
+R2210_RELEASE = "50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix"
 R2210_SLOT_SECONDS = max(1, safe_int(CACHE_BUCKET_SECONDS, 300))
 R2210_SLOTS_PER_HOUR = 12
 
@@ -29,20 +29,23 @@ def _r2210_slot_bounds(hour_start, start, end):
     return int(first), int(last)
 
 def _r2210_slot_sum_sql(column, first, last):
-    terms = ["COALESCE(%s[%d],0)" % (column, index + 1) for index in range(first, last)]
+    terms = [
+        "CASE WHEN COALESCE(slot_5m_version,1)>=2 THEN COALESCE(%s[%d],0) ELSE 0 END" % (column, index + 1)
+        for index in range(first, last)
+    ]
     return "+".join(terms) if terms else "0"
 
 def _r2210_mask_count_sql(column, first, last):
     terms = [
-        "CASE WHEN (COALESCE(%s,0)&%d)<>0 THEN 1 ELSE 0 END" % (column, 1 << index)
+        "CASE WHEN COALESCE(slot_5m_version,1)>=2 AND (COALESCE(%s,0)&%d)<>0 THEN 1 ELSE 0 END" % (column, 1 << index)
         for index in range(first, last)
     ]
     return "+".join(terms) if terms else "0"
 
 def _r2210_latest_slot_sql(mask_column, hour_start, first, last):
     values = [
-        "CASE WHEN (COALESCE(%s,0)&%d)<>0 THEN %d ELSE 0 END" % (
-            mask_column, 1 << index, hour_start + index * R2210_SLOT_SECONDS,
+        "CASE WHEN COALESCE(slot_5m_version,1)>=2 AND (COALESCE(%s,0)&%d)<>0 THEN %d ELSE 0 END" % (
+            mask_column, 1 << index, hour_start + (index + 1) * R2210_SLOT_SECONDS,
         )
         for index in range(first, last)
     ]
@@ -90,8 +93,10 @@ def _r2210_vm_edge_branch(start, end, selected_node=""):
                   *GREATEST(%d-selected_known,0)/GREATEST(12-packed_known,1)::numeric)
               END)::bigint AS tx_bytes,
              LEAST(%d,selected_known + CASE WHEN packed_known>=12 THEN 0 ELSE
-                ROUND(GREATEST(LEAST(12,COALESCE(sample_count,0))-packed_known,0)
-                  *GREATEST(%d-selected_known,0)/GREATEST(12-packed_known,1)::numeric)
+                LEAST(
+                  GREATEST(LEAST(12,COALESCE(sample_count,0))-packed_known,0),
+                  GREATEST(%d-selected_known,0)
+                )
               END)::bigint AS sample_count,
              GREATEST(selected_latest,CASE WHEN selected_known<%d AND COALESCE(sample_count,0)>packed_known
                 THEN LEAST(COALESCE(last_push,0),%d) ELSE 0 END)::bigint AS last_push
@@ -125,9 +130,11 @@ def _r2210_vm_hourly_branch(start, end, selected_node=""):
     node_clause = " AND node=?" if selected_node else ""
     sql = """
       SELECT node,vm_uuid,bridge,rx_bytes,tx_bytes,
-             CASE WHEN COALESCE(sample_5m_mask,0)<>0
-                  THEN (%s)::bigint
-                  ELSE LEAST(12,COALESCE(sample_count,0))::bigint END AS sample_count,
+             GREATEST(
+               CASE WHEN COALESCE(slot_5m_version,1)>=2 AND COALESCE(sample_5m_mask,0)<>0
+                    THEN (%s)::bigint ELSE 0 END,
+               LEAST(12,COALESCE(sample_count,0))::bigint
+             ) AS sample_count,
              last_push
         FROM vm_consumption_hourly
        WHERE hour_start>=? AND hour_start<?%s

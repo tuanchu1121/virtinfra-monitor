@@ -51,6 +51,7 @@ create_fixture() {
     postgres/sql/015_consumption_ingest_preaggregation.sql
     postgres/sql/016_configuration_backup_nuclear.sql
     postgres/sql/017_vm_consumption_5m_slots.sql
+    postgres/sql/018_vm_consumption_slot_boundary_semantics.sql
     tools/validate-consumption-query-plans.py
     tools/benchmark-r22-top-vm.py
     requirements.txt

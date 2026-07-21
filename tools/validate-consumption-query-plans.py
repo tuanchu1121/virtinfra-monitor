@@ -207,7 +207,7 @@ def main() -> int:
 
     report = {
         "ok": True,
-        "release": "50.5.9-prod-r22.10-vm-5m-slot-rolling-window",
+        "release": "50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix",
         "window_seconds": end - start,
         "seeded_nodes": args.nodes,
         "sql_reused_by": ["node_rows", "node_totals", "group_rows", "summary", "physical_totals", "vm_totals", "difference"],

@@ -13,7 +13,7 @@ for f in "$ROOT/install.sh" "$ROOT/update.sh" "$FRESH" "$UPDATE" "$ENGINE" "$CTL
   bash -n "$f"
 done
 
-RELEASE='50.5.9-prod-r22.10-vm-5m-slot-rolling-window'
+RELEASE='50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix'
 grep -q "RELEASE=\"$RELEASE\"" "$ENGINE" || fail "release marker missing"
 [[ "$(cat "$ROOT/VERSION")" == "$RELEASE" ]] || fail "VERSION mismatch"
 CANONICAL='tuanchu1121/virtinfra-monitor'

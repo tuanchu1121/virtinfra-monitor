@@ -1,6 +1,6 @@
 # VirtInfra Monitor
 
-**Release:** `50.5.9-prod-r22.10-vm-5m-slot-rolling-window`
+**Release:** `50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix`
 
 VirtInfra Monitor is a PostgreSQL 17 and TimescaleDB monitoring platform for KVM/libvirt nodes and virtual machines. PostgreSQL is the authoritative datastore for inventory, users, settings, current metrics, historical metrics, Abuse events, Storage I/O and Consumption.
 
@@ -22,6 +22,13 @@ There is no automatic install-to-update fallback.
 - R18 and later bind each browser session to the current password hash, role and enabled state. Password resets, role changes, disable and delete actions revoke old sessions on their next request. Existing sessions from an older release must sign in again after update.
 - The final enabled Super Admin cannot be downgraded, disabled or deleted from the web UI. If an older release already left zero enabled Super Admin accounts, recover one from the server console; `/admin/setup` is reserved for a true first-user installation.
 
+
+## R22.11 slot-boundary hotfix
+
+- Agent timestamps are interpreted as interval-end timestamps, matching how deltas are collected.
+- Rolling `1H`, `2H`, `24H` and `7D` windows remain aligned to the latest closed five-minute boundary.
+- R22.10 shifted slot masks are not trusted by exact edge reads; rows transition lazily to corrected v2 slots without rewriting the high-cardinality hourly table.
+- No raw VM/NIC scan is reintroduced.
 
 ## R22 hardening highlights
 

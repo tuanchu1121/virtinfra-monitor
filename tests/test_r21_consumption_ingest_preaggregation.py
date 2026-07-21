@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app"
 LAYER = APP / "runtime_layers/44_consumption_node_vm_rollup.py"
 MIGRATION = ROOT / "postgres/sql/015_consumption_ingest_preaggregation.sql"
-RELEASE = "50.5.9-prod-r22.10-vm-5m-slot-rolling-window"
+RELEASE = "50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix"
 
 
 def read(path: Path) -> str:

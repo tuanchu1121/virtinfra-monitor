@@ -44,7 +44,7 @@ run_contract(){
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.9-prod-r22.10-vm-5m-slot-rolling-window" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/runtime_loader.py \
    && -f deploy/postgres/install-postgres-native.sh \
    && -f deploy/postgres/update-postgres-native.sh \
@@ -61,7 +61,7 @@ log "Validate release identity"
    && -f postgres/sql/011_node_groups.sql && -f postgres/sql/012_node_groups_r6_safety.sql \
    && -f postgres/sql/013_maintenance_queue_boolean.sql && -f postgres/sql/014_node_vm_consumption_rollups.sql \
    && -f postgres/sql/015_consumption_ingest_preaggregation.sql && -f postgres/sql/016_configuration_backup_nuclear.sql \
-   && -f postgres/sql/017_vm_consumption_5m_slots.sql && -f app/runtime_layers/47_vm_5m_slot_rolling_window.py && -f app/node_groups.py \
+   && -f postgres/sql/017_vm_consumption_5m_slots.sql && -f postgres/sql/018_vm_consumption_slot_boundary_semantics.sql && -f app/runtime_layers/47_vm_5m_slot_rolling_window.py && -f app/node_groups.py \
    && -f app/static/vendor/flag-icons/node-groups.css \
    && -f app/static/vendor/flag-icons/LICENSE \
    && -f app/static/vendor/flag-icons/SOURCE.md \

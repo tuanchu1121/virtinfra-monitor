@@ -1,6 +1,6 @@
 # Consumption architecture
 
-**Release:** `50.5.9-prod-r22.10-vm-5m-slot-rolling-window`
+**Release:** `50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix`
 
 R21 introduced high-cardinality network aggregation from page render time to the accepted five-minute `/push` transaction. Dashboard snapshots, Agent cadence and all non-Consumption features remain unchanged.
 

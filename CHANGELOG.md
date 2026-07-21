@@ -1,9 +1,10 @@
-# 50.5.9-prod-r22.10-vm-5m-slot-rolling-window
+# 50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix
 
-- VM Consumption is now rollup-only at render time.
-- Removed raw VM/NIC edge scans from `/bandwidth-consumption?tab=vm`.
-- A selected range uses a fixed number of hourly buckets; complete local days use `vm_consumption_daily`, while partial days use `vm_consumption_hourly`.
-- No schema, ingest, Agent, formula, retention or public API change.
+- Fixed the R22.10 five-minute slot off-by-one: Agent `data_time` is treated as the end of the sampled interval.
+- A push at `19:30` now belongs to `19:25-19:30`; a push at `20:00` belongs to slot 11 of the `19:00` hourly row.
+- Added metadata-only migration `018_vm_consumption_slot_boundary_semantics.sql` with lazy v2 slot replacement; no bulk rewrite or raw-history backfill.
+- Exact reads ignore shifted R22.10 masks, while hourly totals/sample counts provide bounded compatibility coverage during warm-up.
+- Preserved raw-free rolling VM Consumption, global sort behavior, UI, Agent payload, RX/TX formulas, retention, RBAC, Backup/Restore and Nuclear.
 
 # 50.5.9-prod-r22.6-consumption-vm-timeout-hotfix
 

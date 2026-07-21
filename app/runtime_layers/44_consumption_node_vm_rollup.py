@@ -1,4 +1,4 @@
-# Release: 50.5.9-prod-r22.10-vm-5m-slot-rolling-window
+# Release: 50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix
 # Canonical R22 Consumption runtime. The R20 query/ingest implementations are
 # removed; only stable rendering helpers and lifecycle bases are retained.
 
@@ -6,7 +6,7 @@ import math as _r20_math
 import threading as _r20_threading
 import node_groups as _r20_node_groups
 
-V5060_RELEASE = "50.5.9-prod-r22.10-vm-5m-slot-rolling-window"
+V5060_RELEASE = "50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix"
 V5060_ROLLUP_RETENTION_SECONDS = 8 * 86400
 
 # Capture the canonical pre-Consumption implementations exactly once. R21/R22
@@ -74,7 +74,7 @@ def push_bandwidth_consumption_retired():
 
 app.view_functions["push_bandwidth_consumption"] = push_bandwidth_consumption_retired
 
-# Release: 50.5.9-prod-r22.10-vm-5m-slot-rolling-window
+# Release: 50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix
 # Consumption-only architecture: all high-cardinality aggregation happens in
 # the accepted /push transaction. Node/Group/Summary render paths read only
 # compact node-level 5m/hour/day rows. The VM page has its own per-VM pipeline.
@@ -82,7 +82,7 @@ app.view_functions["push_bandwidth_consumption"] = push_bandwidth_consumption_re
 import threading as _r21_threading
 import time as _r21_time
 
-V5070_RELEASE = "50.5.9-prod-r22.10-vm-5m-slot-rolling-window"
+V5070_RELEASE = "50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix"
 V5070_QUERY_CACHE_TTL = max(5, min(15, safe_int(os.environ.get("BW_CONSUMPTION_QUERY_CACHE_TTL", "10"), 10)))
 V5070_NODE_RAW_RETENTION_SECONDS = 2 * 86400
 V5070_ROLLUP_RETENTION_SECONDS = 8 * 86400

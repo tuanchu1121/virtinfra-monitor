@@ -1,6 +1,6 @@
 # Validation Report R22.7
 
-Release: `50.5.9-prod-r22.10-vm-5m-slot-rolling-window`
+Release: `50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix`
 
 ## Scope validated
 

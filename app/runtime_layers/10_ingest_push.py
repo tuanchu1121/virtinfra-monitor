@@ -10,12 +10,22 @@ def local_hour_start(ts):
 def local_day_start(ts):
     return ((int(ts) + RETENTION_TZ_OFFSET_SECONDS) // 86400) * 86400 - RETENTION_TZ_OFFSET_SECONDS
 
+def _r2211_slot_coordinates(data_time):
+    """Map a push timestamp to the five-minute interval that just ended.
+
+    Agent data_time is the end of the sampled interval. A push at 20:00
+    therefore belongs to 19:55-20:00, which is slot 11 of the 19:00 hour.
+    """
+    slot_start = bucket_for(data_time) - CACHE_BUCKET_SECONDS
+    hour_start = local_hour_start(slot_start)
+    day_start = local_day_start(slot_start)
+    slot_no = max(0, min(11, (slot_start - hour_start) // CACHE_BUCKET_SECONDS))
+    return slot_start, hour_start, day_start, slot_no
+
 def add_bandwidth_rollup(conn, data_time, node, vm_uuid, bridge,
                          rx_delta, tx_delta, rx_packets_delta, tx_packets_delta,
                          rx_drop_delta, tx_drop_delta, rx_error_delta, tx_error_delta):
-    hour_start = local_hour_start(data_time)
-    day_start = local_day_start(data_time)
-    slot_no = max(0, min(11, (bucket_for(data_time) - hour_start) // CACHE_BUCKET_SECONDS))
+    _slot_start, hour_start, day_start, slot_no = _r2211_slot_coordinates(data_time)
     rx_slots = [0] * 12
     tx_slots = [0] * 12
     rx_slots[slot_no] = max(0, safe_int(rx_delta, 0))
@@ -32,9 +42,9 @@ def add_bandwidth_rollup(conn, data_time, node, vm_uuid, bridge,
             hour_start, node, vm_uuid, bridge,
             rx_bytes, tx_bytes, rx_packets, tx_packets,
             rx_drops, tx_drops, rx_errors, tx_errors,
-            sample_count, last_push, rx_5m_slots, tx_5m_slots, sample_5m_mask
+            sample_count, last_push, rx_5m_slots, tx_5m_slots, sample_5m_mask, slot_5m_version
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 2)
         ON CONFLICT(hour_start, node, vm_uuid, bridge)
         DO UPDATE SET
             rx_bytes=vm_consumption_hourly.rx_bytes + excluded.rx_bytes,
@@ -47,7 +57,8 @@ def add_bandwidth_rollup(conn, data_time, node, vm_uuid, bridge,
             tx_errors=vm_consumption_hourly.tx_errors + excluded.tx_errors,
             sample_count=vm_consumption_hourly.sample_count + 1,
             last_push=MAX(vm_consumption_hourly.last_push, excluded.last_push),
-            rx_5m_slots=ARRAY[
+            rx_5m_slots=CASE WHEN COALESCE(vm_consumption_hourly.slot_5m_version,1)<2
+                THEN excluded.rx_5m_slots ELSE ARRAY[
                 COALESCE(vm_consumption_hourly.rx_5m_slots[1],0)+COALESCE(excluded.rx_5m_slots[1],0),
                 COALESCE(vm_consumption_hourly.rx_5m_slots[2],0)+COALESCE(excluded.rx_5m_slots[2],0),
                 COALESCE(vm_consumption_hourly.rx_5m_slots[3],0)+COALESCE(excluded.rx_5m_slots[3],0),
@@ -60,8 +71,9 @@ def add_bandwidth_rollup(conn, data_time, node, vm_uuid, bridge,
                 COALESCE(vm_consumption_hourly.rx_5m_slots[10],0)+COALESCE(excluded.rx_5m_slots[10],0),
                 COALESCE(vm_consumption_hourly.rx_5m_slots[11],0)+COALESCE(excluded.rx_5m_slots[11],0),
                 COALESCE(vm_consumption_hourly.rx_5m_slots[12],0)+COALESCE(excluded.rx_5m_slots[12],0)
-            ]::bigint[],
-            tx_5m_slots=ARRAY[
+            ]::bigint[] END,
+            tx_5m_slots=CASE WHEN COALESCE(vm_consumption_hourly.slot_5m_version,1)<2
+                THEN excluded.tx_5m_slots ELSE ARRAY[
                 COALESCE(vm_consumption_hourly.tx_5m_slots[1],0)+COALESCE(excluded.tx_5m_slots[1],0),
                 COALESCE(vm_consumption_hourly.tx_5m_slots[2],0)+COALESCE(excluded.tx_5m_slots[2],0),
                 COALESCE(vm_consumption_hourly.tx_5m_slots[3],0)+COALESCE(excluded.tx_5m_slots[3],0),
@@ -74,8 +86,11 @@ def add_bandwidth_rollup(conn, data_time, node, vm_uuid, bridge,
                 COALESCE(vm_consumption_hourly.tx_5m_slots[10],0)+COALESCE(excluded.tx_5m_slots[10],0),
                 COALESCE(vm_consumption_hourly.tx_5m_slots[11],0)+COALESCE(excluded.tx_5m_slots[11],0),
                 COALESCE(vm_consumption_hourly.tx_5m_slots[12],0)+COALESCE(excluded.tx_5m_slots[12],0)
-            ]::bigint[],
-            sample_5m_mask=COALESCE(vm_consumption_hourly.sample_5m_mask,0)|excluded.sample_5m_mask
+            ]::bigint[] END,
+            sample_5m_mask=CASE WHEN COALESCE(vm_consumption_hourly.slot_5m_version,1)<2
+                THEN excluded.sample_5m_mask
+                ELSE COALESCE(vm_consumption_hourly.sample_5m_mask,0)|excluded.sample_5m_mask END,
+            slot_5m_version=2
     """, (hour_start,) + values)
     conn.execute("""
         INSERT INTO vm_consumption_daily(

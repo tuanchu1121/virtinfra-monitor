@@ -9,7 +9,7 @@ CANONICAL_LAYER = APP / "runtime_layers/44_consumption_node_vm_rollup.py"
 SHIM_LAYER = APP / "runtime_layers/45_consumption_ingest_preaggregation.py"
 R20_LAYER = CANONICAL_LAYER
 R21_LAYER = CANONICAL_LAYER
-RELEASE = "50.5.9-prod-r22.10-vm-5m-slot-rolling-window"
+RELEASE = "50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix"
 
 
 def text(path: Path) -> str:

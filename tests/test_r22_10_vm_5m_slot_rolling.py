@@ -40,8 +40,9 @@ def test_schema_adds_packed_slots_without_a_new_5m_table():
 def test_native_copy_updates_slots_inside_existing_hourly_upsert():
     text = INGEST.read_text(encoding="utf-8")
     assert "rx_5m_slots,tx_5m_slots,sample_5m_mask" in text
-    assert "sample_5m_mask=COALESCE(vm_consumption_hourly.sample_5m_mask,0)|excluded.sample_5m_mask" in text
-    assert "LEAST(11,GREATEST(0,((MAX(bucket)-hour_start)/300)::integer))" in text
+    assert "sample_5m_mask=CASE WHEN COALESCE(vm_consumption_hourly.slot_5m_version,1)<2" in text
+    assert "MAX(bucket)-300-hour_start" in text
+    assert "MAX(bucket)-hour_start" not in text
     assert "UPDATE vm_consumption_hourly" not in text
 
 
@@ -100,8 +101,9 @@ def test_legacy_edge_fallback_preserves_unpacked_residual_during_warmup():
     text = ROLLING.read_text(encoding="utf-8")
     assert "COALESCE(rx_bytes,0)-packed_rx" in text
     assert "COALESCE(tx_bytes,0)-packed_tx" in text
-    assert "GREATEST(%d-selected_known,0)/GREATEST(12-packed_known,1)" in text
+    assert "GREATEST(%d-selected_known,0)/GREATEST(12-packed_known,1)" in text  # byte residual only
     assert "LEAST(12,COALESCE(sample_count,0))-packed_known" in text
+    assert "LEAST(\n                  GREATEST(LEAST(12,COALESCE(sample_count,0))-packed_known,0)" in text
     assert "warm-up monotonic" in text
 
 

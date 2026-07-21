@@ -1,6 +1,6 @@
 # Storage V2 deployment and verification
 
-Release: `50.5.9-prod-r22.10-vm-5m-slot-rolling-window`
+Release: `50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix`
 
 This package is designed for a new deployment. It does not import history from another monitor. Current application functionality, Agent payload and route compatibility remain part of the release.
 
@@ -10,7 +10,7 @@ This package is designed for a new deployment. It does not import history from a
 2. Open the extracted folder in GitHub Desktop with **File > Add local repository**.
 3. Commit all files.
 4. Push to the configured repository and branch.
-5. Confirm `VERSION` contains `50.5.9-prod-r22.10-vm-5m-slot-rolling-window` and `SHA256SUMS` is included.
+5. Confirm `VERSION` contains `50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix` and `SHA256SUMS` is included.
 
 ## Database image requirement
 

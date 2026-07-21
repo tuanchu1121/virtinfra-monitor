@@ -32,7 +32,7 @@ def _function_source(source: str, name: str) -> str:
 
 
 def test_release_and_native_copy_contract() -> None:
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r22.10-vm-5m-slot-rolling-window"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix"
     assert "def copy_rows(" in PG
     assert "cursor.copy(statement)" in PG
     assert "copy.write_row(values)" in PG
@@ -72,8 +72,9 @@ def test_push_uses_copy_stages_and_stage_timings() -> None:
 
 def test_rollups_keep_configured_local_timezone_boundaries() -> None:
     block = _v5052_block()
-    assert "hour_start = local_hour_start(data_time)" in block
-    assert "day_start = local_day_start(data_time)" in block
+    assert "_r2211_slot_coordinates(data_time)" in block
+    assert "hour_start = local_hour_start(data_time)" not in block
+    assert "day_start = local_day_start(data_time)" not in block
     assert "SELECT hour_start,node,vm_uuid,bridge" in block
     assert "SELECT day_start,node,vm_uuid,bridge" in block
     assert "(last_push/3600)*3600" not in block

@@ -1,6 +1,6 @@
 # Installation
 
-Release: `50.5.9-prod-r22.10-vm-5m-slot-rolling-window`
+Release: `50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix`
 ## Requirements
 
 - Debian 12+ or Ubuntu 22.04+

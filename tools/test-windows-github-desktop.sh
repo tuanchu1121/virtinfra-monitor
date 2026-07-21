@@ -26,13 +26,15 @@ required=(
   app/static/vendor/flag-icons/LICENSE app/static/vendor/flag-icons/SOURCE.md
   app/static/vendor/flag-icons/flags/4x3/vn.svg app/static/flags/node-groups.css
   app/static/flags/neutral.svg app/static/flags/vn.svg app/bw_pg.py app/storage_v2.py
-  app/maintenance_native.py app/maintenance_queue.py app/maintenance_dispatch.py
+  app/maintenance_native.py app/configuration_backup.py app/emergency_backup.py
+  app/maintenance_queue.py app/maintenance_dispatch.py
   postgres/docker-compose.yml postgres/sql/004_storage_v2.sql
   postgres/sql/006_postgres_native_maintenance.sql postgres/sql/007_safe_maintenance_queue.sql
   postgres/sql/011_node_groups.sql postgres/sql/012_node_groups_r6_safety.sql
   postgres/sql/013_maintenance_queue_boolean.sql
     postgres/sql/014_node_vm_consumption_rollups.sql
     postgres/sql/015_consumption_ingest_preaggregation.sql
+    postgres/sql/016_configuration_backup_nuclear.sql
   tools/validate-consumption-query-plans.py tools/benchmark-r22-top-vm.py
   requirements.txt VERSION CANONICAL_REPOSITORY README.md
 )

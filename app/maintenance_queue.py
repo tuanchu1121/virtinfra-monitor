@@ -23,6 +23,7 @@ DISPATCH_SERVICE = os.environ.get(
 ALLOWED_ACTIONS = {
     "retention", "vacuum", "delete_history", "delete_compact",
     "clear_monitoring_data", "reset_app_data",
+    "configuration_backup", "configuration_restore", "full_backup", "full_backup_verify",
     "purge_nodes", "purge_node_vms", "purge_vms",
     "clear_api_logs", "clear_api_data",
 }

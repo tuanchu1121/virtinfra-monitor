@@ -60,7 +60,7 @@ def test_destructive_resets_use_explicit_complete_truncate_registries():
     assert "RESTART IDENTITY" in NATIVE
     execute = last_function(RUNNER, "execute_action")
     assert "maintenance_native.clear_monitoring_data()" in execute
-    assert "maintenance_native.reset_app_data()" in execute
+    assert "maintenance_native.reset_app_data(" in execute
 
 
 def test_purge_and_push_share_the_same_node_lock_namespace():

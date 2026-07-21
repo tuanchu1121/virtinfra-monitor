@@ -71,6 +71,7 @@ for migration in (
     "013_maintenance_queue_boolean.sql",
     "014_node_vm_consumption_rollups.sql",
     "015_consumption_ingest_preaggregation.sql",
+    "016_configuration_backup_nuclear.sql",
 ):
     apply_sql(ROOT / "postgres/sql" / migration)
 

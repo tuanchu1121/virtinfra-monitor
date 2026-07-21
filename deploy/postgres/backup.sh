@@ -36,5 +36,11 @@ EOF
   sha256sum -c SHA256SUMS >/dev/null
 )
 chmod -R go-rwx "$OUT"
-find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -mtime "+$KEEP_DAYS" -print0 2>/dev/null | xargs -0r rm -rf --
+while IFS= read -r -d '' old_backup; do
+  # Selective Configuration Backups live in a permanent catalog directory.
+  # Full-backup retention must never treat that catalog itself as an old dump.
+  [[ "$(basename -- "$old_backup")" == "configuration" ]] && continue
+  [[ -e "$old_backup/.protected" ]] && continue
+  rm -rf -- "$old_backup"
+done < <(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -mtime "+$KEEP_DAYS" -print0 2>/dev/null)
 echo "$OUT"

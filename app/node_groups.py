@@ -1,4 +1,4 @@
-"""50.5.9-prod-r22.4-preflight-contract-hotfix.
+"""50.5.9-prod-r22.5-configuration-backup-nuclear-hardening.
 
 Operations single-shell, Node flag scope and user/RBAC/session hardening.
 

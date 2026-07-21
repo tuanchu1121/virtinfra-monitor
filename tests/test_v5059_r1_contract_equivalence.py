@@ -108,14 +108,22 @@ def test_route_endpoint_query_form_sort_contract_is_unchanged():
     assert dict(actual["request_args"]) == expected_args
 
     expected_form = dict(CONTRACT["request_form"])
-    expected_form["confirm_text"] -= 1  # separate Consumption clear was removed
     expected_form["action"] += 1  # R21 cleanup override keeps the existing endpoint
+    # R22.5 intentionally extends the existing Maintenance POST endpoint. No
+    # public route/API endpoint was added; only Super Admin form fields changed.
+    expected_form["admin_password"] -= 1
+    expected_form["confirm_text"] += 2
+    expected_form["backup_id"] = 8
+    expected_form["backup_options_present"] = 1
+    expected_form["create_configuration_backup"] = 1
+    expected_form["create_full_backup"] = 1
     assert dict(actual["request_form"]) == expected_form
 
     expected_urls = dict(CONTRACT["url_for_endpoints"])
     expected_urls["admin_bandwidth_consumption_action"] += 1
     expected_urls["bandwidth_consumption_page"] += 8
     expected_urls["node_page"] += 1
+    expected_urls["admin_page"] -= 1  # consolidated Super Admin maintenance redirect
     assert dict(actual["url_for_endpoints"]) == expected_urls
 
 
@@ -140,6 +148,7 @@ def test_existing_postgresql_sql_matches_approved_release_contract():
         "013_maintenance_queue_boolean.sql",
         "014_node_vm_consumption_rollups.sql",
         "015_consumption_ingest_preaggregation.sql",
+        "016_configuration_backup_nuclear.sql",
     }
     paths = [
         path

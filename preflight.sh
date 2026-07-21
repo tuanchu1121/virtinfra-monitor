@@ -26,21 +26,25 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 log(){ printf '\n==> %s\n' "$*"; }
 fail(){ echo "ERROR: $*" >&2; exit 1; }
+run_isolated(){
+  local success_pattern="$1"
+  shift
+  "$PYTHON" tools/run-isolated-validation.py \
+    --timeout "${BW_PREFLIGHT_TEST_TIMEOUT_SECONDS:-120}" \
+    --success-pattern "$success_pattern" \
+    -- "$@"
+}
 run_pytest(){
-  local timeout_seconds="${BW_PREFLIGHT_TEST_TIMEOUT_SECONDS:-180}"
-  local first_rc
-  if timeout --signal=TERM --kill-after=10s "$timeout_seconds" "$PYTHON" -m pytest "$@"; then
-    return 0
-  else
-    first_rc=$?
-  fi
-  echo "WARN: pytest command exited rc=$first_rc; retrying once in a fresh process: $*" >&2
-  timeout --signal=TERM --kill-after=10s "$timeout_seconds" "$PYTHON" -m pytest "$@"
+  run_isolated '([0-9]+ passed|[0-9]+ skipped)(, [0-9]+ skipped)? in [0-9.]+' \
+    "$PYTHON" -m pytest "$@"
+}
+run_contract(){
+  run_isolated '^PASS:' "$PYTHON" "$@"
 }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.9-prod-r22.4-preflight-contract-hotfix" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.5.9-prod-r22.5-configuration-backup-nuclear-hardening" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/runtime_loader.py \
    && -f deploy/postgres/install-postgres-native.sh \
    && -f deploy/postgres/update-postgres-native.sh \
@@ -50,13 +54,13 @@ log "Validate release identity"
    && -f app/runtime_layers/45_consumption_ingest_preaggregation.py \
    && -f app/runtime_layers/00_bootstrap_database.py \
    && -f app/runtime_layers/43_node_groups_loader.py \
-   && -f app/bw_pg.py && -f app/maintenance_native.py \
+   && -f app/bw_pg.py && -f app/maintenance_native.py && -f app/configuration_backup.py && -f app/emergency_backup.py \
    && -f app/maintenance_queue.py && -f app/maintenance_dispatch.py \
    && -f postgres/sql/007_safe_maintenance_queue.sql \
    && -f postgres/sql/010_consumption_inventory_cleanup.sql \
    && -f postgres/sql/011_node_groups.sql && -f postgres/sql/012_node_groups_r6_safety.sql \
    && -f postgres/sql/013_maintenance_queue_boolean.sql && -f postgres/sql/014_node_vm_consumption_rollups.sql \
-   && -f postgres/sql/015_consumption_ingest_preaggregation.sql && -f app/node_groups.py \
+   && -f postgres/sql/015_consumption_ingest_preaggregation.sql && -f postgres/sql/016_configuration_backup_nuclear.sql && -f app/node_groups.py \
    && -f app/static/vendor/flag-icons/node-groups.css \
    && -f app/static/vendor/flag-icons/LICENSE \
    && -f app/static/vendor/flag-icons/SOURCE.md \
@@ -125,7 +129,7 @@ for path in sorted(Path('ansible').glob('*.yml')) + sorted(Path('.github/workflo
 PY
 
 log "Run v50 source contract"
-"$PYTHON" tests/test_v50_contract.py
+run_contract tests/test_v50_contract.py
 
 log "Validate v50.5.2 native COPY ingest contract"
 run_pytest -q tests/test_v5052_native_copy_ingest.py
@@ -143,30 +147,30 @@ log "Validate v50.5.7 safe FIFO queue and canonical VM detail"
 run_pytest -q tests/test_v5057_safe_queue_canonical_vm.py
 
 log "Validate standalone repository contract"
-"$PYTHON" tests/test_repository_contract.py
-"$PYTHON" tests/test_virtinfra_hardening.py
+run_contract tests/test_repository_contract.py
+run_contract tests/test_virtinfra_hardening.py
 
 log "Run storage V2 contract and multi-NIC regression"
-"$PYTHON" tests/test_storage_v2_contract.py
+run_contract tests/test_storage_v2_contract.py
 
 log "Validate source-accurate operations documentation"
-"$PYTHON" tests/test_docs_source_accuracy.py
+run_contract tests/test_docs_source_accuracy.py
 
 log "Validate Agent v15 single five-minute Consumption delivery path"
-"$PYTHON" tests/test_bandwidth_consumption_agent.py
+run_contract tests/test_bandwidth_consumption_agent.py
 
 log "Validate Consumption endpoint authentication contract"
-"$PYTHON" tests/test_consumption_auth_contract.py
+run_contract tests/test_consumption_auth_contract.py
 
 log "Validate Consumption neutral UI contract"
-"$PYTHON" tests/test_consumption_ui_contract.py
+run_contract tests/test_consumption_ui_contract.py
 
 log "Validate fast Consumption and deadlock-safe inventory contract"
 run_pytest -q tests/test_v5058_r4_consumption_inventory.py
 
 log "Validate protected core and simple theme selector contract"
-"$PYTHON" tests/test_theme_manager_contract.py
-"$PYTHON" tests/test_custom_theme_runtime.py
+run_contract tests/test_theme_manager_contract.py
+run_contract tests/test_custom_theme_runtime.py
 
 log "Validate v50.5.9 r1 responsive UI, theme and chart-gap contract"
 run_pytest -q tests/test_v5059_r1_ui_responsive_theme_chart_gaps.py
@@ -201,6 +205,7 @@ run_pytest -q tests/test_r21_consumption_ingest_preaggregation.py
 
 log "Validate r22 canonical Consumption and global Top VM hardening"
 run_pytest -q tests/test_r22_hardening.py
+run_pytest -q tests/test_r225_configuration_backup_nuclear.py
 
 log "Verify one-command installer and operations flow"
 bash ./tools/test-installer-flow.sh
@@ -215,7 +220,13 @@ elif [[ -n "${BW_TEST_DATABASE_URL:-}" ]]; then
   "$PYTHON" tools/benchmark-r22-top-vm.py --dsn "$BW_TEST_DATABASE_URL" --synthetic --nodes 300 --vms 60000 --repetitions 5
   log "Run full application integration against disposable PostgreSQL"
   run_pytest -q tests/test_node_groups_postgres_integration.py
-  "$PYTHON" tests/test_v50_postgres_integration.py
+  run_contract tests/test_v50_postgres_integration.py
+  if [[ "${BW_R225_DESTRUCTIVE_TEST:-0}" == "1" ]]; then
+    log "Run destructive R22.5 Configuration Restore/Nuclear integration on disposable PostgreSQL"
+    run_pytest -q tests/test_r225_postgres_integration.py
+  else
+    log "Skip destructive R22.5 integration because BW_R225_DESTRUCTIVE_TEST=1 is not set"
+  fi
 else
   log "Skip live PostgreSQL integration because BW_TEST_DATABASE_URL is not set"
 fi

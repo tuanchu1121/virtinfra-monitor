@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "app/node_groups.py"
-VERSION = "50.5.9-prod-r22.4-preflight-contract-hotfix"
+VERSION = "50.5.9-prod-r22.5-configuration-backup-nuclear-hardening"
 
 
 def _load_module():
@@ -83,8 +83,19 @@ def test_operator_and_super_admin_permission_split() -> None:
     ):
         assert f'"{action}"' in text
     canonical = (ROOT / "app/runtime_layers/38_agent_maintenance_canonical_routes.py").read_text(encoding="utf-8")
-    assert 'if action not in {"reset_app_data_preview", "reset_app_data"}' in canonical
+    assert 'sensitive = {' in canonical
+    for action in (
+        "configuration_backup", "configuration_restore", "configuration_backup_protect",
+        "configuration_backup_unprotect", "configuration_backup_delete",
+        "configuration_backup_download", "full_backup",
+        "full_backup_verify", "full_backup_protect", "full_backup_unprotect",
+        "full_backup_delete", "full_backup_download",
+        "reset_app_data_preview", "reset_app_data",
+    ):
+        assert f'"{action}"' in canonical
+    assert 'if action not in sensitive' in canonical
     assert 'if role != "super_admin"' in canonical
+    assert 'in {"reset_app_data", "configuration_restore"}' in canonical
 
 
 def test_operations_shell_is_rendered_exactly_once() -> None:

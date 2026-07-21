@@ -38,6 +38,7 @@ repo_complete() {
     app/bw_pg.py \
     app/storage_v2.py \
     app/maintenance_native.py \
+    app/configuration_backup.py app/emergency_backup.py \
     app/maintenance_queue.py \
     app/maintenance_dispatch.py \
     postgres/docker-compose.yml \
@@ -49,6 +50,7 @@ repo_complete() {
     postgres/sql/013_maintenance_queue_boolean.sql \
     postgres/sql/014_node_vm_consumption_rollups.sql \
     postgres/sql/015_consumption_ingest_preaggregation.sql \
+    postgres/sql/016_configuration_backup_nuclear.sql \
     tools/validate-consumption-query-plans.py \
     tools/benchmark-r22-top-vm.py \
     requirements.txt \

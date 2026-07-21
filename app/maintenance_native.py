@@ -6,7 +6,9 @@ route registration, cache warm-up, or Gunicorn-side database writes.
 """
 from __future__ import annotations
 
+import json
 import os
+import secrets
 import time
 from collections.abc import Iterable
 from typing import Any
@@ -317,51 +319,118 @@ def _recreate_ungrouped() -> int:
         conn.close()
 
 
-def reset_app_data() -> dict[str, Any]:
-    """Atomically perform the explicit Nuclear Reset and recreate Ungrouped.
+def _release_version() -> str:
+    for path in ("/opt/bw-monitor/DEPLOY_VERSION", os.path.join(os.path.dirname(__file__), "DEPLOY_VERSION")):
+        try:
+            value = open(path, "r", encoding="utf-8").read().strip()
+            if value:
+                return value
+        except OSError:
+            continue
+    return os.environ.get("BW_RELEASE_VERSION", "unknown")
 
-    Ordinary retention/cleanup never calls this function. Node Group rows are
-    included only in this explicit allow-list, and the immutable system group
-    is recreated before the destructive transaction commits.
+
+def reset_app_data(
+    *,
+    actor_user_id: int,
+    actor_username: str,
+    current_job_id: int,
+    backup_status: str,
+    backup_kind: str = "",
+    backup_path: str = "",
+    backup_sha256: str = "",
+) -> dict[str, Any]:
+    """Perform a true Nuclear Reset in one PostgreSQL transaction.
+
+    All public base tables are reset except the current super_admin row, the
+    currently running Nuclear job, and one permanent Nuclear audit row. Schema
+    and migration metadata live outside ``public`` and are never changed.
     """
+    actor_user_id = int(actor_user_id or 0)
+    current_job_id = int(current_job_id or 0)
+    actor_username = str(actor_username or "").strip()
+    if actor_user_id <= 0 or current_job_id <= 0 or not actor_username:
+        raise ValueError("Nuclear reset requires current super_admin and job identity")
     action = "reset_app_data"
     started = int(time.time())
+    preserved_tables = {"dashboard_users", "maintenance_jobs", "maintenance_nuclear_audit"}
     conn = dedicated_connection(
-        application_name="virtinfra-maintenance:reset-app-data",
+        application_name="virtinfra-maintenance:true-nuclear-reset",
         statement_timeout_ms=0,
         lock_timeout_ms=120_000,
     )
     try:
         with conn.cursor() as cur:
             advisory_xact_lock(cur, MAINTENANCE_GLOBAL_LOCK)
+            cur.execute("""
+                SELECT username,role,is_active
+                  FROM public.dashboard_users
+                 WHERE id=%s
+                 FOR UPDATE
+            """, (actor_user_id,))
+            actor = cur.fetchone()
+            if not actor or str(actor[0]) != actor_username or str(actor[1]) != "super_admin" or int(actor[2] or 0) != 1:
+                raise PermissionError("Nuclear actor is no longer the active current super_admin")
+            cur.execute("SELECT action,status FROM public.maintenance_jobs WHERE id=%s FOR UPDATE", (current_job_id,))
+            job = cur.fetchone()
+            if not job or str(job[0]) != "reset_app_data" or str(job[1]) not in {"starting", "running"}:
+                raise RuntimeError("Current Nuclear maintenance job is missing or not running")
+
             existing = _existing_public_tables(cur)
-            selected = tuple(name for name in RESET_APP_TABLES if name in existing)
-            missing = tuple(name for name in RESET_APP_TABLES if name not in existing)
+            selected = tuple(sorted(existing - preserved_tables))
             before = _table_stats(cur, selected)
             if selected:
                 statement = sql.SQL("TRUNCATE TABLE {} RESTART IDENTITY CASCADE").format(
-                    sql.SQL(", ").join(
-                        sql.SQL("public.{}").format(sql.Identifier(name))
-                        for name in selected
-                    )
+                    sql.SQL(", ").join(sql.SQL("public.{}").format(sql.Identifier(name)) for name in selected)
                 )
                 cur.execute(statement)
+
+            # A CASCADE must never erase the protected rows/tables.
+            cur.execute("SELECT username,role,is_active FROM public.dashboard_users WHERE id=%s", (actor_user_id,))
+            actor_after = cur.fetchone()
+            cur.execute("SELECT action,status FROM public.maintenance_jobs WHERE id=%s", (current_job_id,))
+            job_after = cur.fetchone()
+            if not actor_after or not job_after:
+                raise RuntimeError("Nuclear dependency cascade touched a protected table; transaction aborted")
+
+            cur.execute("DELETE FROM public.dashboard_users WHERE id<>%s", (actor_user_id,))
+            cur.execute("DELETE FROM public.maintenance_jobs WHERE id<>%s", (current_job_id,))
+            cur.execute("TRUNCATE TABLE public.maintenance_nuclear_audit RESTART IDENTITY")
+
             now = int(time.time())
-            cur.execute(
-                """
+            cur.execute("""
                 INSERT INTO public.node_groups(
                     name,description,country_code,is_active,is_system,
                     created_at,updated_at,hidden_at
                 ) VALUES (
-                    'Ungrouped',
-                    'Default group for nodes without an explicit assignment',
+                    'Ungrouped','Default group for nodes without an explicit assignment',
                     '',1,1,%s,%s,NULL
-                )
-                RETURNING id
-                """,
-                (now, now),
-            )
+                ) RETURNING id
+            """, (now, now))
             ungrouped_group_id = int(cur.fetchone()[0])
+            values = {
+                "app_secret_key": secrets.token_urlsafe(64),
+                "operational_push_accept_after": str(now),
+                "bandwidth_consumption_accept_after": str(now),
+            }
+            for key, value in values.items():
+                cur.execute("""
+                    INSERT INTO public.admin_settings(key,value,updated_at)
+                    VALUES (%s,%s,%s)
+                """, (key, value, now))
+
+            cur.execute("""
+                INSERT INTO public.maintenance_nuclear_audit(
+                    job_id,requested_by,created_at,backup_path,backup_sha256,
+                    release_version,result_json,actor_user_id,started_at,
+                    finished_at,status,backup_status,backup_kind
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NULL,'running',%s,%s)
+            """, (
+                current_job_id, actor_username, now, str(backup_path or ""),
+                str(backup_sha256 or ""), _release_version(), "{}",
+                actor_user_id, started, str(backup_status or "unknown"),
+                str(backup_kind or ""),
+            ))
         conn.commit()
     except BaseException:
         conn.rollback()
@@ -369,28 +438,52 @@ def reset_app_data() -> dict[str, Any]:
     finally:
         conn.close()
 
-    result = {
+    return {
         "engine": "postgresql",
         "action": action,
         "tables_truncated": list(selected),
-        "tables_missing": list(missing),
         "table_count": len(selected),
         "estimated_rows_removed": sum(item["estimated_rows"] for item in before.values()),
         "bytes_before": sum(item["bytes_before"] for item in before.values()),
         "started_at": started,
         "finished_at": int(time.time()),
-        "method": "TRUNCATE RESTART IDENTITY CASCADE",
+        "method": "dynamic public-table TRUNCATE with protected rows",
         "ungrouped_group_id": ungrouped_group_id,
+        "acceptance_epochs": {
+            "operational_push_accept_after": now,
+            "bandwidth_consumption_accept_after": now,
+        },
+        "preserved": [
+            f"dashboard_users.id={actor_user_id}",
+            f"maintenance_jobs.id={current_job_id}",
+            f"maintenance_nuclear_audit.job_id={current_job_id}",
+            "bw_meta.schema_migrations",
+        ],
     }
-    result["acceptance_epochs"] = set_reset_acceptance_epochs()
-    result["preserved"] = [
-        "dashboard_users",
-        "admin_settings",
-        "maintenance_jobs",
-        "maintenance_nuclear_audit",
-        "bw_meta",
-    ]
-    return result
+
+
+def finalize_nuclear_audit(job_id: int, *, status: str, result: dict[str, Any]) -> None:
+    finished = int(time.time())
+    conn = dedicated_connection(
+        application_name="virtinfra-maintenance:nuclear-audit-finalize",
+        statement_timeout_ms=30_000,
+        lock_timeout_ms=15_000,
+    )
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE public.maintenance_nuclear_audit
+                   SET finished_at=%s,status=%s,result_json=%s
+                 WHERE job_id=%s
+            """, (finished, str(status or "unknown")[:40], json.dumps(result, ensure_ascii=False, separators=(",", ":"), default=str), int(job_id)))
+            if cur.rowcount != 1:
+                raise RuntimeError("Nuclear audit row is missing")
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def clear_api_logs() -> dict[str, Any]:
@@ -504,12 +597,18 @@ def preview_tables(tables: Iterable[str]) -> dict[str, Any]:
 
 
 def preview_reset_app_data() -> dict[str, Any]:
-    result = preview_tables(RESET_APP_TABLES)
+    conn = dedicated_connection(application_name="virtinfra-maintenance:nuclear-preview", statement_timeout_ms=30_000, lock_timeout_ms=15_000)
+    try:
+        with conn.cursor() as cur:
+            existing = _existing_public_tables(cur)
+        selected = tuple(sorted(existing - {"dashboard_users", "maintenance_jobs", "maintenance_nuclear_audit"}))
+    finally:
+        conn.close()
+    result = preview_tables(selected)
     result["preserved"] = [
-        "dashboard_users",
-        "admin_settings",
-        "maintenance_jobs",
-        "maintenance_nuclear_audit",
-        "bw_meta",
+        "current super_admin row",
+        "current Nuclear maintenance job",
+        "one Nuclear audit row",
+        "bw_meta.schema_migrations",
     ]
     return result

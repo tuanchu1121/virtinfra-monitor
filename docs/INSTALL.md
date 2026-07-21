@@ -1,6 +1,6 @@
 # Installation
 
-Release: `50.5.9-prod-r22.4-preflight-contract-hotfix`
+Release: `50.5.9-prod-r22.5-configuration-backup-nuclear-hardening`
 ## Requirements
 
 - Debian 12+ or Ubuntu 22.04+

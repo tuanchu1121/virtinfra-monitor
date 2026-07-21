@@ -28,6 +28,8 @@ from pathlib import Path, PurePosixPath
 import bw_pg as dbapi
 import maintenance_native
 import maintenance_queue
+import configuration_backup
+import emergency_backup
 import subprocess
 import sys
 import time
@@ -599,7 +601,7 @@ def _verify_backup_manifest(backup_dir: Path, sums_file: Path) -> dict[str, str]
     return verified
 
 
-def create_verified_pre_nuclear_backup() -> dict[str, Any]:
+def create_verified_pre_nuclear_backup(*, protect: bool = False) -> dict[str, Any]:
     backup_script = Path(os.environ.get("BW_MONITOR_BACKUP_SCRIPT", "/opt/bw-monitor/backup.sh"))
     if not backup_script.is_file():
         raise RuntimeError(f"Backup script is missing: {backup_script}")
@@ -624,13 +626,23 @@ def create_verified_pre_nuclear_backup() -> dict[str, Any]:
     verified = _verify_backup_manifest(backup_dir, sums_file)
     if len(list_file.read_text(encoding="utf-8", errors="replace").splitlines()) < 2:
         raise RuntimeError(f"pg_restore catalog is unexpectedly empty: {list_file}")
+    emergency_backup.record_verified_backup(
+        backup_dir.name,
+        dump_sha256=verified["database.dump"],
+        dump_bytes=dump_file.stat().st_size,
+        manifest_files_verified=len(verified),
+    )
+    if protect:
+        emergency_backup.set_emergency_backup_protected(backup_dir.name, True)
     return {
+        "backup_id": backup_dir.name,
         "path": str(backup_dir),
         "dump": str(dump_file),
         "dump_bytes": dump_file.stat().st_size,
         "sha256": verified["database.dump"],
         "manifest_files_verified": len(verified),
         "free_bytes_before": free,
+        "protected": bool(protect),
     }
 
 
@@ -700,11 +712,29 @@ def execute_action(module, action: str, params: dict[str, Any], *, db_path: str)
             raise RuntimeError("Targeted purge requires the application purge module")
         return _transactional_purge(module, action, params)
 
+    if action == "configuration_backup":
+        return {
+            "action": action,
+            "backup": configuration_backup.create_configuration_backup(
+                str(params.get("requested_by") or params.get("actor") or "super_admin"),
+                reason=str(params.get("reason") or "manual"),
+                protect=bool(params.get("protect", False)),
+            ),
+        }
+
+    if action == "full_backup":
+        return {"action": action, "backup": create_verified_pre_nuclear_backup()}
+
+    if action == "full_backup_verify":
+        backup_id = str(params.get("backup_id") or "").strip()
+        return {"action": action, "verification": emergency_backup.verify_emergency_backup(backup_id)}
+
     if action not in {
         "vacuum",
         "delete_compact",
         "clear_monitoring_data",
         "reset_app_data",
+        "configuration_restore",
         "clear_api_logs",
         "clear_api_data",
     }:
@@ -753,30 +783,75 @@ def execute_action(module, action: str, params: dict[str, Any], *, db_path: str)
         result["vacuum_skipped"] = "TRUNCATE already releases the API relations"
         return result
 
-    # Nuclear backup is created while the Monitor is still online. Only the
-    # short allow-listed TRUNCATE phase intentionally stops ingestion.
+    # Restore and Nuclear are exclusive offline operations. Backups are
+    # created and verified while the dashboard is still online.
     current_job_id = int(params.get("_job_id", 0) or 0)
-    if action == "reset_app_data":
-        if current_job_id <= 0:
-            raise RuntimeError("reset_app_data is missing the current maintenance job id")
-        update_job(db_path, current_job_id, "running", "Creating and verifying mandatory pre-nuclear backup", heartbeat=True, progress=10)
-        result["backup"] = create_verified_pre_nuclear_backup()
-        update_job(db_path, current_job_id, "running", "Backup verified. Preparing short operational reset", heartbeat=True, progress=50)
+    if action in {"reset_app_data", "configuration_restore"} and current_job_id <= 0:
+        raise RuntimeError(f"{action} is missing the current maintenance job id")
 
-    # Destructive monitoring/application resets intentionally stop ingestion,
-    # take one global maintenance lock, TRUNCATE the complete allow-list in one
-    # short transaction, and reliably start the service again.
+    if action == "configuration_restore":
+        backup_id = str(params.get("backup_id") or "").strip()
+        sections = params.get("sections") or []
+        configuration_backup.verify_configuration_backup(backup_id)
+        update_job(db_path, current_job_id, "running", "Configuration backup verified. Creating a protected safety snapshot", heartbeat=True, progress=15)
+        result["safety_backup"] = configuration_backup.create_configuration_backup(
+            str(params.get("requested_by") or "super_admin"),
+            reason=f"pre-restore:{backup_id}",
+            protect=True,
+        )
+        update_job(db_path, current_job_id, "running", "Safety snapshot verified. Restoring selected configuration", heartbeat=True, progress=45)
+
+    if action == "reset_app_data":
+        create_config = bool(params.get("create_configuration_backup", True))
+        create_full = bool(params.get("create_full_backup", False))
+        actor = str(params.get("requested_by") or params.get("actor_username") or "super_admin")
+        backups: dict[str, Any] = {}
+        if create_config:
+            update_job(db_path, current_job_id, "running", "Creating protected Configuration Backup before Nuclear Reset", heartbeat=True, progress=10)
+            backups["configuration"] = configuration_backup.create_configuration_backup(
+                actor, reason="pre-nuclear", protect=True
+            )
+        if create_full:
+            update_job(db_path, current_job_id, "running", "Creating verified Full Emergency Database Backup", heartbeat=True, progress=25)
+            backups["full"] = create_verified_pre_nuclear_backup(protect=True)
+        result["backups"] = backups
+        if backups:
+            result["backup_status"] = "verified"
+            result["backup_kind"] = "+".join(sorted(backups))
+        else:
+            result["backup_status"] = "skipped_by_super_admin"
+            result["backup_kind"] = "none"
+        update_job(db_path, current_job_id, "running", "Backup policy complete. Preparing true Nuclear Reset", heartbeat=True, progress=50)
+
     was_active = False
     action_error: BaseException | None = None
+    nuclear_committed = False
     try:
         was_active = stop_service(app_service)
         result["service_was_active"] = bool(was_active)
         if action == "clear_monitoring_data":
             result["clear"] = maintenance_native.clear_monitoring_data()
+        elif action == "configuration_restore":
+            result["restore"] = configuration_backup.restore_configuration_backup(
+                str(params.get("backup_id") or ""),
+                actor_user_id=int(params.get("actor_user_id", 0) or 0),
+                actor_username=str(params.get("actor_username") or params.get("requested_by") or ""),
+                sections=params.get("sections") or [],
+            )
         elif action == "reset_app_data":
-            update_job(db_path, current_job_id, "running", "Verified backup complete. Resetting operational application data", heartbeat=True, progress=70)
-            result["reset"] = maintenance_native.reset_app_data()
-            result["queue_preserved"] = True
+            update_job(db_path, current_job_id, "running", "Resetting all application data except current super_admin and this Nuclear record", heartbeat=True, progress=70)
+            primary_backup = dict((result.get("backups") or {}).get("configuration") or (result.get("backups") or {}).get("full") or {})
+            result["reset"] = maintenance_native.reset_app_data(
+                actor_user_id=int(params.get("actor_user_id", 0) or 0),
+                actor_username=str(params.get("actor_username") or params.get("requested_by") or ""),
+                current_job_id=current_job_id,
+                backup_status=str(result.get("backup_status") or "unknown"),
+                backup_kind=str(result.get("backup_kind") or ""),
+                backup_path=str(primary_backup.get("path") or ""),
+                backup_sha256=str(primary_backup.get("sha256") or ""),
+            )
+            nuclear_committed = True
+            result["queue_preserved"] = "current_nuclear_job_only"
         else:  # pragma: no cover - guarded above
             raise RuntimeError(f"Unsupported destructive action: {action}")
     except BaseException as exc:
@@ -793,26 +868,15 @@ def execute_action(module, action: str, params: dict[str, Any], *, db_path: str)
                 if action_error is None:
                     action_error = restart_exc
 
-    # TRUNCATE already releases relation storage. An automatic post-reset
-    # VACUUM adds downtime and work without benefit, so compact is ignored.
-    result["compact_requested"] = bool(params.get("compact", False))
-    result["compact_skipped"] = True
-
-    # The audit table is outside the reset allow-list. Once the mandatory
-    # backup has succeeded, record the outcome even when TRUNCATE, restart or
-    # the post-restart health check fails. This prevents a destructive reset
-    # from erasing its own trail.
-    if action == "reset_app_data" and result.get("backup"):
+    if action == "reset_app_data" and nuclear_committed:
         result["completed"] = action_error is None
         if action_error is not None:
             result["error"] = f"{type(action_error).__name__}: {action_error}"
         try:
-            write_nuclear_audit(
-                db_path,
+            maintenance_native.finalize_nuclear_audit(
                 current_job_id,
-                str(params.get("requested_by") or params.get("actor") or "admin"),
-                dict(result.get("backup") or {}),
-                result,
+                status="done" if action_error is None else "reset_done_service_failed",
+                result=result,
             )
             result["nuclear_audit_written"] = True
         except BaseException as audit_exc:
@@ -820,6 +884,12 @@ def execute_action(module, action: str, params: dict[str, Any], *, db_path: str)
             result["nuclear_audit_error"] = f"{type(audit_exc).__name__}: {audit_exc}"
             if action_error is None:
                 action_error = audit_exc
+
+    # TRUNCATE already releases relation storage. An automatic post-reset
+    # VACUUM adds downtime and work without benefit, so compact is ignored.
+    result["compact_requested"] = bool(params.get("compact", False))
+    result["compact_skipped"] = True
+
 
     if action_error is not None:
         raise action_error

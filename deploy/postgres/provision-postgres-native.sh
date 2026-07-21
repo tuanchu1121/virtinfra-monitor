@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE="50.5.9-prod-r22.4-preflight-contract-hotfix"
+RELEASE="50.5.9-prod-r22.5-configuration-backup-nuclear-hardening"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 APP_SRC="$REPO_ROOT/app"
@@ -311,6 +311,7 @@ install -m 0644 "$PG_SRC/sql/012_node_groups_r6_safety.sql" "$APP_DIR/postgres/s
 install -m 0644 "$PG_SRC/sql/013_maintenance_queue_boolean.sql" "$APP_DIR/postgres/sql/013_maintenance_queue_boolean.sql"
 install -m 0644 "$PG_SRC/sql/014_node_vm_consumption_rollups.sql" "$APP_DIR/postgres/sql/014_node_vm_consumption_rollups.sql"
 install -m 0644 "$PG_SRC/sql/015_consumption_ingest_preaggregation.sql" "$APP_DIR/postgres/sql/015_consumption_ingest_preaggregation.sql"
+install -m 0644 "$PG_SRC/sql/016_configuration_backup_nuclear.sql" "$APP_DIR/postgres/sql/016_configuration_backup_nuclear.sql"
 
 log "Start PostgreSQL 17 + TimescaleDB"
 "${COMPOSE[@]}" --env-file "$PG_ENV" -f "$APP_DIR/postgres/docker-compose.yml" pull
@@ -387,6 +388,8 @@ find "$APP_SRC/static/flags" -maxdepth 1 -type f -name "*.svg" -exec install -m 
 install -m 0644 "$APP_SRC/bw_pg.py" "$APP_DIR/bw_pg.py"
 install -m 0644 "$APP_SRC/storage_v2.py" "$APP_DIR/storage_v2.py"
 install -m 0644 "$APP_SRC/maintenance_native.py" "$APP_DIR/maintenance_native.py"
+install -m 0644 "$APP_SRC/configuration_backup.py" "$APP_DIR/configuration_backup.py"
+install -m 0644 "$APP_SRC/emergency_backup.py" "$APP_DIR/emergency_backup.py"
 install -m 0644 "$APP_SRC/maintenance_queue.py" "$APP_DIR/maintenance_queue.py"
 install -m 0755 "$APP_SRC/maintenance_dispatch.py" "$APP_DIR/maintenance_dispatch.py"
 install -m 0755 "$APP_SRC/maintenance.py" "$APP_DIR/maintenance.py"
@@ -536,6 +539,8 @@ docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATA
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/014_node_vm_consumption_rollups.sql"
 log "Apply Consumption ingest-time pre-aggregation schema"
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/015_consumption_ingest_preaggregation.sql"
+log "Apply Configuration Backup and true Nuclear Reset schema"
+docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/016_configuration_backup_nuclear.sql"
 QUEUE_CANCEL_TYPE="$(docker exec bw-timescaledb psql -U "$PG_USER" -d "$PG_DATABASE" -Atqc "SELECT data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='maintenance_jobs' AND column_name='cancel_requested'")"
 [[ "$QUEUE_CANCEL_TYPE" == "boolean" ]] || die "maintenance_jobs.cancel_requested must be boolean; found ${QUEUE_CANCEL_TYPE:-missing}"
 log "Verify maintenance Queue accepts PostgreSQL BOOLEAN values"

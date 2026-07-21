@@ -310,7 +310,7 @@ def _r22_get_top_vm_rows_global(period, q="", sort_by="total", order="desc", sco
     requested_sort = clean_top_sort(str(sort_by or "").strip().lower())
     requested_order = clean_sort_order(order)
     requested_scope = clean_top_scope(scope)
-    requested_limit = max(10, min(1000, safe_int(limit, 100)))
+    requested_limit = max(10, min(2000, safe_int(limit, 100)))
     history = _request_target_ts() is not None or clean_period(period) != "5m"
     if history:
         return _r22_get_top_vm_rows_history(

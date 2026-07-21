@@ -19,7 +19,7 @@ V5057_VERSION = "50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix"
 def enqueue_maintenance_job(action, parameters, actor):
     payload = dict(parameters or {})
     payload.setdefault("requested_by", actor or "admin")
-    exclusive = str(action or "").strip().lower() == "reset_app_data"
+    exclusive = str(action or "").strip().lower() in {"reset_app_data", "configuration_restore"}
     return maintenance_queue.enqueue_job(
         action,
         payload,
@@ -51,6 +51,15 @@ def admin_cancel_maintenance_v5057():
         return deny
     job_id = safe_int(request.form.get("job_id"), 0)
     actor = dashboard_username() or get_admin_username()
+    if job_id > 0:
+        conn = db()
+        try:
+            job_row = conn.execute("SELECT action FROM maintenance_jobs WHERE id=?", (job_id,)).fetchone()
+        finally:
+            conn.close()
+        sensitive_actions = {"configuration_backup", "configuration_restore", "full_backup", "full_backup_verify", "reset_app_data"}
+        if job_row and str(job_row[0] or "") in sensitive_actions and clean_role(dashboard_role()) != "super_admin":
+            return Response("Forbidden: super_admin role required\n", status=403, mimetype="text/plain")
     if job_id <= 0:
         return redirect(url_for("admin_page", section="maintenance", dberr="Invalid maintenance job id") + "#maintenance-queue")
     changed = maintenance_queue.cancel_queued_job(job_id, actor)
@@ -64,28 +73,132 @@ def admin_cancel_maintenance_v5057():
 
 _v5057_admin_database_maintenance_base = app.view_functions.get("admin_database_maintenance")
 
+def _r225_current_super_admin_identity():
+    row = current_dashboard_user()
+    if not row or str(row[3] or "") != "super_admin" or not safe_int(row[4], 0):
+        raise PermissionError("Active super_admin account required")
+    return int(row[0]), str(row[1])
+
 def admin_database_maintenance_v5057():
     action = str(request.form.get("action") or "").strip().lower()
-    role = current_role() if "current_role" in globals() else dashboard_role()
-    if action not in {"reset_app_data_preview", "reset_app_data"}:
+    sensitive = {
+        "configuration_backup", "configuration_restore", "configuration_backup_protect",
+        "configuration_backup_unprotect", "configuration_backup_delete", "configuration_backup_download", "full_backup",
+        "full_backup_verify", "full_backup_protect", "full_backup_unprotect", "full_backup_delete", "full_backup_download",
+        "reset_app_data_preview", "reset_app_data",
+    }
+    if action not in sensitive:
         return _v5057_admin_database_maintenance_base()
+    role = clean_role(dashboard_role())
     if role != "super_admin":
         return Response("Forbidden: super_admin role required\n", status=403, mimetype="text/plain")
-
     deny = require_admin()
     if deny:
         return deny
-    actor = dashboard_username() or get_admin_username()
+    actor_user_id, actor = _r225_current_super_admin_identity()
     try:
-        if action == "reset_app_data_preview":
-            if not _v5057_verify_current_admin_password(request.form.get("admin_password") or ""):
-                raise ValueError("Admin password verification failed")
+        if not _v5057_verify_current_admin_password(request.form.get("admin_password") or ""):
+            raise ValueError("Super Admin password verification failed")
+
+        if action == "configuration_backup":
+            job_id, unit_name = maintenance_queue.enqueue_job(
+                "configuration_backup", {"requested_by": actor, "reason": "manual"}, actor
+            )
+            message = f"Configuration Backup job #{job_id} queued."
+        elif action == "full_backup":
+            job_id, unit_name = maintenance_queue.enqueue_job(
+                "full_backup", {"requested_by": actor}, actor
+            )
+            message = f"Full Emergency Database Backup job #{job_id} queued. No web restore is provided."
+        elif action == "full_backup_verify":
+            backup_id = str(request.form.get("backup_id") or "").strip()
+            emergency_backup.emergency_dump_path(backup_id)
+            job_id, unit_name = maintenance_queue.enqueue_job(
+                "full_backup_verify", {"requested_by": actor, "backup_id": backup_id}, actor
+            )
+            message = f"Full Emergency Backup verification job #{job_id} queued for {backup_id}."
+        elif action in {"full_backup_protect", "full_backup_unprotect"}:
+            backup_id = str(request.form.get("backup_id") or "").strip()
+            protected = action == "full_backup_protect"
+            emergency_backup.set_emergency_backup_protected(backup_id, protected)
+            message = f"Full Emergency Backup {backup_id} is now {'protected' if protected else 'unprotected'}."
+        elif action == "full_backup_download":
+            backup_id = str(request.form.get("backup_id") or "").strip()
+            path = emergency_backup.emergency_dump_path(backup_id)
+            log_account_event(
+                "super_admin_maintenance_action", username=actor, realm="admin", role="super_admin",
+                detail=f"action={action};backup_id={backup_id}",
+            )
+            return send_file(
+                path,
+                as_attachment=True,
+                download_name=f"{backup_id}-database.dump",
+                mimetype="application/octet-stream",
+                conditional=True,
+                max_age=0,
+            )
+        elif action == "full_backup_delete":
+            backup_id = str(request.form.get("backup_id") or "").strip()
+            if str(request.form.get("confirm_text") or "").strip() != "DELETE FULL EMERGENCY BACKUP":
+                raise ValueError("Confirmation text must be DELETE FULL EMERGENCY BACKUP")
+            emergency_backup.delete_emergency_backup(backup_id)
+            message = f"Full Emergency Backup {backup_id} deleted."
+        elif action == "configuration_restore":
+            if str(request.form.get("confirm_text") or "").strip() != "RESTORE CONFIGURATION":
+                raise ValueError("Confirmation text must be RESTORE CONFIGURATION")
+            backup_id = str(request.form.get("backup_id") or "").strip()
+            configuration_backup.verify_configuration_backup(backup_id)
+            sections = [name for name in sorted(configuration_backup.VALID_SECTIONS) if request.form.get(f"section_{name}") == "1"]
+            if not sections:
+                raise ValueError("Select at least one configuration section")
+            job_id, unit_name = maintenance_queue.enqueue_job(
+                "configuration_restore",
+                {
+                    "requested_by": actor,
+                    "actor_user_id": actor_user_id,
+                    "actor_username": actor,
+                    "backup_id": backup_id,
+                    "sections": sections,
+                },
+                actor,
+                exclusive=True,
+            )
+            message = f"Configuration Restore job #{job_id} accepted. A protected safety snapshot will be created first."
+        elif action in {"configuration_backup_protect", "configuration_backup_unprotect"}:
+            backup_id = str(request.form.get("backup_id") or "").strip()
+            protected = action == "configuration_backup_protect"
+            configuration_backup.set_configuration_backup_protected(backup_id, protected)
+            message = f"Configuration backup {backup_id} is now {'protected' if protected else 'unprotected'}."
+        elif action == "configuration_backup_download":
+            backup_id = str(request.form.get("backup_id") or "").strip()
+            path = configuration_backup.configuration_backup_path(backup_id)
+            payload = path.read_bytes()
+            log_account_event(
+                "super_admin_maintenance_action", username=actor, realm="admin", role="super_admin",
+                detail=f"action={action};backup_id={backup_id}",
+            )
+            return Response(
+                payload, status=200, mimetype="application/zip",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{path.name}"',
+                    "Content-Length": str(len(payload)),
+                    "Cache-Control": "no-store",
+                    "X-Content-Type-Options": "nosniff",
+                },
+            )
+        elif action == "configuration_backup_delete":
+            backup_id = str(request.form.get("backup_id") or "").strip()
+            if str(request.form.get("confirm_text") or "").strip() != "DELETE CONFIGURATION BACKUP":
+                raise ValueError("Confirmation text must be DELETE CONFIGURATION BACKUP")
+            configuration_backup.delete_configuration_backup(backup_id)
+            message = f"Configuration backup {backup_id} deleted."
+        elif action == "reset_app_data_preview":
             pending = _v5057_queue_has_pending_jobs()
             if pending:
-                raise RuntimeError(
-                    f"Queue must be empty before nuclear preview: job #{pending[0]} "
-                    f"({pending[1]}) is {pending[2]}"
-                )
+                raise RuntimeError(f"Queue must be empty before Nuclear preview: job #{pending[0]} ({pending[1]}) is {pending[2]}")
+            options_present = request.form.get("backup_options_present") == "1"
+            create_config = request.form.get("create_configuration_backup") == "1" if options_present else True
+            create_full = request.form.get("create_full_backup") == "1" if options_present else False
             preview = maintenance_native.preview_reset_app_data()
             nonce = secrets.token_urlsafe(24)
             code = f"{secrets.randbelow(900000) + 100000:06d}"
@@ -100,70 +213,54 @@ def admin_database_maintenance_v5057():
                 "estimated_rows": safe_int(preview.get("estimated_rows"), 0),
                 "estimated_bytes": safe_int(preview.get("estimated_bytes"), 0),
                 "database_bytes": safe_int(preview.get("database_bytes"), 0),
+                "create_configuration_backup": create_config,
+                "create_full_backup": create_full,
             }
-            log_account_event(
-                "nuclear_reset_preview",
-                username=actor, realm="admin", role="admin",
-                detail=(
-                    f"tables={preview.get('table_count', 0)};"
-                    f"estimated_rows={preview.get('estimated_rows', 0)};"
-                    f"estimated_bytes={preview.get('estimated_bytes', 0)}"
-                ),
-            )
-            return redirect(url_for("admin_page", section="maintenance", dbmsg="Nuclear preview created. Review it and confirm within 5 minutes.") + "#maintenance-queue")
-
-        preview = session.get("v5057_nuclear_preview") or {}
-        if not isinstance(preview, dict):
-            preview = {}
-        request_now = now_ts()
-        if safe_int(preview.get("expires_at"), 0) < request_now:
+            message = "Nuclear preview created. Review and confirm within 5 minutes."
+        else:
+            preview = session.get("v5057_nuclear_preview") or {}
+            request_now = now_ts()
+            if not isinstance(preview, dict) or safe_int(preview.get("expires_at"), 0) < request_now:
+                session.pop("v5057_nuclear_preview", None)
+                raise ValueError("Nuclear preview expired. Create a new preview")
+            if request_now < safe_int(preview.get("not_before"), 0):
+                raise ValueError(f"Nuclear safety delay is active for {safe_int(preview.get('not_before'),0)-request_now} second(s)")
+            nonce = str(request.form.get("preview_nonce") or "")
+            if not nonce or not secrets.compare_digest(nonce, str(preview.get("nonce") or "")):
+                raise ValueError("Nuclear preview token mismatch")
+            create_config = bool(preview.get("create_configuration_backup"))
+            create_full = bool(preview.get("create_full_backup"))
+            prefix = "RESET VIRTINFRA" if (create_config or create_full) else "RESET VIRTINFRA WITHOUT BACKUP"
+            required = f"{prefix} {preview.get('code', '')}"
+            if str(request.form.get("confirm_text") or "").strip() != required:
+                raise ValueError(f"Confirmation text must be {required}")
+            pending = _v5057_queue_has_pending_jobs()
+            if pending:
+                raise RuntimeError(f"Nuclear reset cannot wait in FIFO: job #{pending[0]} ({pending[1]}) is {pending[2]}")
+            parameters = {
+                "requested_by": actor,
+                "actor_user_id": actor_user_id,
+                "actor_username": actor,
+                "preview_created_at": safe_int(preview.get("created_at"), 0),
+                "preview_table_count": safe_int(preview.get("table_count"), 0),
+                "preview_estimated_rows": safe_int(preview.get("estimated_rows"), 0),
+                "create_configuration_backup": create_config,
+                "create_full_backup": create_full,
+            }
+            job_id, unit_name = maintenance_queue.enqueue_job("reset_app_data", parameters, actor, exclusive=True)
             session.pop("v5057_nuclear_preview", None)
-            raise ValueError("Nuclear preview expired. Create a new preview")
-        not_before = safe_int(preview.get("not_before"), 0)
-        if not_before and request_now < not_before:
-            raise ValueError(
-                f"Nuclear safety delay is still active for {not_before - request_now} second(s)"
-            )
-        nonce = str(request.form.get("preview_nonce") or "")
-        if not nonce or not secrets.compare_digest(nonce, str(preview.get("nonce") or "")):
-            raise ValueError("Nuclear preview token mismatch")
-        if not _v5057_verify_current_admin_password(request.form.get("admin_password") or ""):
-            raise ValueError("Admin password verification failed")
-        required = f"RESET VIRTINFRA {preview.get('code', '')}"
-        if str(request.form.get("confirm_text") or "").strip() != required:
-            raise ValueError(f"Confirmation text must be {required}")
-        pending = _v5057_queue_has_pending_jobs()
-        if pending:
-            raise RuntimeError(
-                f"Nuclear reset cannot wait in FIFO: job #{pending[0]} "
-                f"({pending[1]}) is {pending[2]}"
-            )
-        parameters = {
-            "requested_by": actor,
-            "preview_created_at": safe_int(preview.get("created_at"), 0),
-            "preview_table_count": safe_int(preview.get("table_count"), 0),
-            "preview_estimated_rows": safe_int(preview.get("estimated_rows"), 0),
-            "mandatory_verified_backup": True,
-            "preserve_queue_audit": True,
-        }
-        job_id, unit_name = maintenance_queue.enqueue_job(
-            "reset_app_data", parameters, actor, exclusive=True
-        )
-        session.pop("v5057_nuclear_preview", None)
-        message = (
-            f"Nuclear reset job #{job_id} accepted for immediate execution. "
-            "It will abort before TRUNCATE unless a verified backup succeeds."
-        )
+            message = f"True Nuclear Reset job #{job_id} accepted. Only this super_admin, this job and one Nuclear audit will remain."
+
         log_account_event(
-            "nuclear_reset_queued", username=actor, realm="admin", role="admin",
-            detail=f"job={job_id};unit={unit_name}",
+            "super_admin_maintenance_action", username=actor, realm="admin", role="super_admin",
+            detail=f"action={action};message={message[:300]}",
         )
         return redirect(url_for("admin_page", section="maintenance", dbmsg=message) + "#maintenance-queue")
     except Exception as exc:
-        error = f"Nuclear reset was not started: {exc}"
+        error = f"Super Admin maintenance action was not started: {exc}"
         log_account_event(
-            "nuclear_reset_rejected", username=actor, realm="admin", role="admin",
-            detail=error[:500],
+            "super_admin_maintenance_rejected", username=actor, realm="admin", role="super_admin",
+            detail=f"action={action};error={error[:400]}",
         )
         return redirect(url_for("admin_page", section="maintenance", dberr=error) + "#maintenance-queue")
 
@@ -171,55 +268,130 @@ app.view_functions["admin_database_maintenance"] = admin_database_maintenance_v5
 
 _v5057_database_maintenance_card_base = database_maintenance_card
 
+def _r225_configuration_backup_card(csrf, endpoint):
+    try:
+        backups = configuration_backup.list_configuration_backups()
+        list_error = ""
+    except Exception as exc:
+        backups = []
+        list_error = str(exc)
+    rows = []
+    for item in backups[:50]:
+        backup_id = str(item.get("backup_id") or "")
+        status = str(item.get("status") or "unknown")
+        counts = item.get("counts") or {}
+        protected = bool(item.get("protected"))
+        actions = []
+        if status == "verified":
+            restore_checks = "".join(
+                f'<label><input type="checkbox" name="section_{name}" value="1" checked> {label}</label>'
+                for name, label in (
+                    ("users", "Users & roles"), ("api_keys", "API keys"),
+                    ("settings", "Theme & policies"), ("groups", "Node Groups"),
+                    ("node_group_mapping", "Node to Group mapping"),
+                )
+            )
+            actions.append(f"""<details><summary>Restore</summary><form method="post" action="{endpoint}" onsubmit="return confirm('Restore selected configuration from {escape(backup_id)}? Current monitoring data is not touched.');"><input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="action" value="configuration_restore"><input type="hidden" name="backup_id" value="{escape(backup_id,quote=True)}"><div class="restore-sections">{restore_checks}</div><label>Super Admin password<input type="password" name="admin_password" required autocomplete="current-password"></label><label>Type RESTORE CONFIGURATION<input name="confirm_text" required></label><button type="submit">Restore Configuration</button></form></details>""")
+            actions.append(f"""<details><summary>Download</summary><form method="post" action="{endpoint}"><input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="action" value="configuration_backup_download"><input type="hidden" name="backup_id" value="{escape(backup_id,quote=True)}"><label>Super Admin password<input type="password" name="admin_password" required autocomplete="current-password"></label><button type="submit">Download</button></form></details>""")
+        protect_action = "configuration_backup_unprotect" if protected else "configuration_backup_protect"
+        protect_label = "Unprotect" if protected else "Protect"
+        actions.append(f"""<details><summary>{protect_label}</summary><form method="post" action="{endpoint}"><input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="action" value="{protect_action}"><input type="hidden" name="backup_id" value="{escape(backup_id,quote=True)}"><label>Super Admin password<input type="password" name="admin_password" required autocomplete="current-password"></label><button type="submit">{protect_label}</button></form></details>""")
+        if not protected:
+            actions.append(f"""<details><summary>Delete</summary><form method="post" action="{endpoint}" onsubmit="return confirm('Delete configuration backup {escape(backup_id)}?');"><input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="action" value="configuration_backup_delete"><input type="hidden" name="backup_id" value="{escape(backup_id,quote=True)}"><label>Super Admin password<input type="password" name="admin_password" required autocomplete="current-password"></label><label>Type DELETE CONFIGURATION BACKUP<input name="confirm_text" required></label><button class="btn-danger" type="submit">Delete</button></form></details>""")
+        rows.append(
+            f'<tr><td><b>{escape(backup_id)}</b><small>{escape(str(item.get("app_version") or ""))}</small></td>'
+            f'<td>{fmt_full(item.get("created_at"))}<small>{escape(str(item.get("created_by") or ""))}</small></td>'
+            f'<td>{escape(status.upper())}<small>{human(safe_int(item.get("size_bytes"),0))} | users {safe_int(counts.get("users"),0)} | groups {safe_int(counts.get("groups"),0)}</small></td>'
+            f'<td>{"PROTECTED" if protected else "Normal"}</td><td><div class="maint-actions compact-actions">{"".join(actions)}</div></td></tr>'
+        )
+    config_body = "".join(rows) or '<tr><td colspan="5"><div class="empty-state">No Configuration Backup has been created.</div></td></tr>'
+    config_error_html = f'<div class="alert error">{escape(list_error)}</div>' if list_error else ''
+
+    try:
+        full_backups = emergency_backup.list_emergency_backups()
+        full_error = ""
+    except Exception as exc:
+        full_backups = []
+        full_error = str(exc)
+    full_rows = []
+    for item in full_backups[:30]:
+        backup_id = str(item.get("backup_id") or "")
+        status = str(item.get("status") or "unknown")
+        protected = bool(item.get("protected"))
+        metadata = item.get("metadata") or {}
+        actions = []
+        actions.append(f"""<details><summary>Verify</summary><form method="post" action="{endpoint}"><input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="action" value="full_backup_verify"><input type="hidden" name="backup_id" value="{escape(backup_id,quote=True)}"><label>Super Admin password<input type="password" name="admin_password" required autocomplete="current-password"></label><button type="submit">Verify</button></form></details>""")
+        if status == "verified":
+            actions.append(f"""<details><summary>Download DB dump</summary><form method="post" action="{endpoint}"><input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="action" value="full_backup_download"><input type="hidden" name="backup_id" value="{escape(backup_id,quote=True)}"><label>Super Admin password<input type="password" name="admin_password" required autocomplete="current-password"></label><button type="submit">Download DB dump</button></form></details>""")
+        protect_action = "full_backup_unprotect" if protected else "full_backup_protect"
+        protect_label = "Unprotect" if protected else "Protect"
+        actions.append(f"""<details><summary>{protect_label}</summary><form method="post" action="{endpoint}"><input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="action" value="{protect_action}"><input type="hidden" name="backup_id" value="{escape(backup_id,quote=True)}"><label>Super Admin password<input type="password" name="admin_password" required autocomplete="current-password"></label><button type="submit">{protect_label}</button></form></details>""")
+        if not protected:
+            actions.append(f"""<details><summary>Delete</summary><form method="post" action="{endpoint}" onsubmit="return confirm('Delete Full Emergency Backup {escape(backup_id)}?');"><input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="action" value="full_backup_delete"><input type="hidden" name="backup_id" value="{escape(backup_id,quote=True)}"><label>Super Admin password<input type="password" name="admin_password" required autocomplete="current-password"></label><label>Type DELETE FULL EMERGENCY BACKUP<input name="confirm_text" required></label><button class="btn-danger" type="submit">Delete</button></form></details>""")
+        if status != "verified":
+            actions.append(f"""<details><summary>Status detail</summary><pre>{escape(str(item.get('error') or 'Verification has not been run'))}</pre></details>""")
+        full_rows.append(
+            f'<tr><td><b>{escape(backup_id)}</b><small>{escape(str(metadata.get("release") or "unknown"))}</small></td>'
+            f'<td>{fmt_full(item.get("created_at"))}<small>{escape(str(metadata.get("hostname") or ""))}</small></td>'
+            f'<td>{escape(status.upper())}<small>{human(safe_int(item.get("dump_bytes"),0))} database.dump</small></td>'
+            f'<td>{"PROTECTED" if protected else "Normal"}</td><td><div class="maint-actions compact-actions">{"".join(actions)}</div></td></tr>'
+        )
+    full_body = "".join(full_rows) or '<tr><td colspan="5"><div class="empty-state">No Full Emergency Backup has been created.</div></td></tr>'
+    full_error_html = f'<div class="alert error">{escape(full_error)}</div>' if full_error else ''
+
+    return f"""
+      <div class="card admin-section" id="configuration-backup-restore">
+        <div class="section-head"><div><span class="eyebrow">SUPER ADMIN ONLY</span><h3>Backup & Restore</h3><p>Configuration Restore never brings back Node/VM inventory, metrics, Consumption, logs or maintenance history.</p></div></div>
+        {config_error_html}
+        <div class="maint-actions">
+          <form method="post" action="{endpoint}"><input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="action" value="configuration_backup"><label>Super Admin password<input type="password" name="admin_password" required autocomplete="current-password"></label><button type="submit">Create Configuration Backup</button></form>
+        </div>
+        <h4>Configuration Backups</h4>
+        <div class="table-wrap"><table><thead><tr><th>Backup</th><th>Created</th><th>Status</th><th>Protection</th><th>Actions</th></tr></thead><tbody>{config_body}</tbody></table></div>
+        <hr>
+        <div class="section-head"><div><h4>Full Emergency Database Backups</h4><p>Disaster recovery artifact only. There is no direct web restore.</p></div></div>
+        {full_error_html}
+        <div class="maint-actions"><form method="post" action="{endpoint}"><input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="action" value="full_backup"><label>Super Admin password<input type="password" name="admin_password" required autocomplete="current-password"></label><button type="submit">Create Full Emergency Backup</button></form></div>
+        <div class="table-wrap"><table><thead><tr><th>Backup</th><th>Created</th><th>Status</th><th>Protection</th><th>Actions</th></tr></thead><tbody>{full_body}</tbody></table></div>
+      </div>"""
+
 def database_maintenance_card(message="", error=""):
     html = _v5057_database_maintenance_card_base(message, error)
     preview = session.get("v5057_nuclear_preview") or {}
     valid_preview = isinstance(preview, dict) and safe_int(preview.get("expires_at"), 0) >= now_ts()
     csrf = escape(csrf_token(), quote=True)
     endpoint = escape(url_for("admin_database_maintenance"), quote=True)
-    if valid_preview:
+    is_super_admin = clean_role(dashboard_role()) == "super_admin"
+    if valid_preview and is_super_admin:
         code = str(preview.get("code") or "")
-        nuclear = f'''
+        create_config = bool(preview.get("create_configuration_backup"))
+        create_full = bool(preview.get("create_full_backup"))
+        prefix = "RESET VIRTINFRA" if (create_config or create_full) else "RESET VIRTINFRA WITHOUT BACKUP"
+        policy = []
+        if create_config:
+            policy.append("Protected Configuration Backup")
+        if create_full:
+            policy.append("Verified Full Emergency Backup")
+        if not policy:
+            policy.append("NO BACKUP, permanently irreversible")
+        required = f"{prefix} {code}"
+        nuclear = f"""
       <div class="card maint-nuclear">
-        <h3>Nuclear reset preview ready</h3>
-        <div class="admin-note"><b>No data has been deleted.</b> Final confirmation is accepted after {fmt_full(preview.get('not_before'))} and expires at {fmt_full(preview.get('expires_at'))}. The job cannot wait behind another task and must create a verified PostgreSQL backup before any TRUNCATE.</div>
-        <div class="maint-policy">
-          <div><b>{safe_int(preview.get('table_count'),0)} tables</b><small>Explicit allow-list only</small></div>
-          <div><b>{safe_int(preview.get('estimated_rows'),0):,} rows</b><small>PostgreSQL estimate</small></div>
-          <div><b>{human(safe_int(preview.get('estimated_bytes'),0))}</b><small>Estimated relation size</small></div>
-        </div>
-        <div class="maint-actions">
-          <form method="post" action="{endpoint}" onsubmit="return confirm('Final confirmation: create a verified backup and permanently reset operational app data?')">
-            <input type="hidden" name="csrf_token" value="{csrf}">
-            <input type="hidden" name="action" value="reset_app_data">
-            <input type="hidden" name="preview_nonce" value="{escape(str(preview.get('nonce') or ''), quote=True)}">
-            <label>Admin password<input type="password" name="admin_password" autocomplete="current-password" required></label>
-            <label>Type <b>RESET VIRTINFRA {escape(code)}</b><input name="confirm_text" placeholder="RESET VIRTINFRA {escape(code)}" required></label>
-            <button class="btn-danger" type="submit">Backup, verify, then reset</button>
-          </form>
-        </div>
-      </div>'''
+        <h3>True Nuclear Reset preview ready</h3>
+        <div class="admin-note"><b>No data has been deleted.</b> This resets every application table and account. Only the current super_admin, this Nuclear job, one Nuclear audit and schema metadata remain.</div>
+        <div class="maint-policy"><div><b>{safe_int(preview.get('table_count'),0)} tables</b><small>All public application tables</small></div><div><b>{safe_int(preview.get('estimated_rows'),0):,} rows</b><small>PostgreSQL estimate</small></div><div><b>{human(safe_int(preview.get('estimated_bytes'),0))}</b><small>Estimated relation size</small></div></div>
+        <div class="alert {'error' if not (create_config or create_full) else 'success'}">Backup policy: {escape(' + '.join(policy))}</div>
+        <div class="maint-actions"><form method="post" action="{endpoint}" onsubmit="return confirm('Final Nuclear Reset confirmation. This permanently deletes all application data.');"><input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="action" value="reset_app_data"><input type="hidden" name="preview_nonce" value="{escape(str(preview.get('nonce') or ''),quote=True)}"><label>Super Admin password<input type="password" name="admin_password" required autocomplete="current-password"></label><label>Type <b>{escape(required)}</b><input name="confirm_text" placeholder="{escape(required,quote=True)}" required></label><button class="btn-danger" type="submit">Execute True Nuclear Reset</button></form></div>
+      </div>"""
+    elif is_super_admin:
+        nuclear = f"""
+      <div class="card maint-nuclear">
+        <h3>True Nuclear Reset</h3>
+        <div class="admin-note"><b>Super Admin only.</b> Deletes all users except the current super_admin, all API keys, settings, Groups, inventory, metrics, Consumption, Abuse data, logs and previous queue history. Only one Nuclear audit remains.</div>
+        <div class="maint-actions"><form method="post" action="{endpoint}"><input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="action" value="reset_app_data_preview"><input type="hidden" name="backup_options_present" value="1"><label><input type="checkbox" name="create_configuration_backup" value="1" checked> Create protected Configuration Backup</label><label><input type="checkbox" name="create_full_backup" value="1"> Create Full Emergency Database Backup</label><label>Super Admin password<input type="password" name="admin_password" required autocomplete="current-password"></label><button class="btn-danger" type="submit">Create Nuclear preview</button></form></div>
+      </div>"""
     else:
-        nuclear = f'''
-      <div class="card maint-nuclear">
-        <h3>Nuclear operational reset</h3>
-        <div class="admin-note"><b>Two-step safety workflow.</b> First re-enter the Admin password to create a read-only preview. Final execution requires a new one-time phrase, an empty queue and a verified backup. Dashboard users, Admin settings, queue history, nuclear audit and schema metadata are preserved.</div>
-        <div class="maint-actions">
-          <form method="post" action="{endpoint}">
-            <input type="hidden" name="csrf_token" value="{csrf}">
-            <input type="hidden" name="action" value="reset_app_data_preview">
-            <label>Admin password<input type="password" name="admin_password" autocomplete="current-password" required></label>
-            <button class="btn-danger" type="submit">Create reset preview</button>
-          </form>
-        </div>
-      </div>'''
-
-    if clean_role(dashboard_role()) != "super_admin":
-        nuclear = '''
-      <div class="card maint-nuclear">
-        <h3>Nuclear operational reset</h3>
-        <div class="admin-note"><b>Super Admin only.</b> Routine retention, 2/7-day history cleanup, online VACUUM and queue monitoring remain available to Admin accounts.</div>
-      </div>'''
+        nuclear = ""
 
     start_marker = '<div class="card maint-nuclear">\n        <h3>Reset ALL app data + queue</h3>'
     end_marker = '<div class="card maint-danger">\n        <h3>API logs</h3>'
@@ -228,30 +400,22 @@ def database_maintenance_card(message="", error=""):
     if start >= 0 and end > start:
         html = html[:start] + nuclear + "\n\n      " + html[end:]
 
-    # Add a Cancel button only for waiting jobs. The dispatcher/worker state is
-    # immutable once execution starts.
+    if clean_role(dashboard_role()) == "super_admin":
+        config_card = _r225_configuration_backup_card(csrf, endpoint)
+        marker = '<div class="maint-grid">'
+        pos = html.find(marker)
+        html = html[:pos] + config_card + "\n" + html[pos:] if pos >= 0 else config_card + html
+
     def add_cancel(match):
         job_id = match.group(1)
         block = match.group(0)
         if "queue-queued" not in block:
             return block
-        form = (
-            f'<form method="post" action="{escape(url_for("admin_cancel_maintenance_v5057"), quote=True)}" '
-            f'onsubmit="return confirm(\'Cancel waiting job #{job_id}?\')" style="margin-top:6px">'
-            f'<input type="hidden" name="csrf_token" value="{csrf}">'
-            f'<input type="hidden" name="job_id" value="{job_id}">'
-            f'<button class="btn-danger" type="submit">Cancel waiting job</button></form>'
-        )
+        form = f'<form method="post" action="{escape(url_for("admin_cancel_maintenance_v5057"),quote=True)}" onsubmit="return confirm(\'Cancel waiting job #{job_id}?\')" style="margin-top:6px"><input type="hidden" name="csrf_token" value="{csrf}"><input type="hidden" name="job_id" value="{job_id}"><button class="btn-danger" type="submit">Cancel waiting job</button></form>'
         return block.replace("</td>\n        </tr>", form + "</td>\n        </tr>", 1)
-
     try:
         import re as _re_v5057
-        html = _re_v5057.sub(
-            r'<tr class="queue-row queue-[^"]+">.*?<td class="num"><b>#(\d+)</b></td>.*?</tr>',
-            add_cancel,
-            html,
-            flags=_re_v5057.S,
-        )
+        html = _re_v5057.sub(r'<tr class="queue-row queue-[^"]+">.*?<td class="num"><b>#(\d+)</b></td>.*?</tr>', add_cancel, html, flags=_re_v5057.S)
     except Exception:
         pass
     try:
@@ -262,9 +426,7 @@ def database_maintenance_card(message="", error=""):
         <div class="section-head"><div><span class="eyebrow">MAINTENANCE</span><h3>Node Consumption Rollup Storage</h3><p>Current hourly/daily physical Node rollups created from normal 5-minute Agent pushes. No per-VM accounting rows.</p></div><a class="btn" href="%s">Open Consumption</a></div>
         <div class="admin-kpis"><div><small>RETENTION</small><b>7 days</b></div><div><small>HOURLY ROWS</small><b>%s</b></div><div><small>DAILY ROWS</small><b>%s</b></div><div><small>LEGACY 2H ROWS</small><b>%s</b></div><div><small>TABLE + INDEX</small><b>%s</b></div><div><small>REPORTING VISIBLE NODES</small><b>%s / %s</b></div><div><small>MISSING RECENT ROLLUP</small><b>%s</b></div><div><small>LAST INGESTION</small><b>%s</b></div><div><small>OLDEST BUCKET</small><b>%s</b></div><div><small>NEWEST BUCKET</small><b>%s</b></div></div>
         <div class="bulk-bar"><form method="post" action="%s"><input type="hidden" name="csrf_token" value="%s"><input type="hidden" name="action" value="cleanup"><button type="submit">Run 7-day Consumption cleanup</button></form><form method="post" action="%s" onsubmit="return confirm('Delete all hourly, daily and legacy Consumption history?');"><input type="hidden" name="csrf_token" value="%s"><input type="hidden" name="action" value="clear"><input name="confirm_text" placeholder="CLEAR CONSUMPTION HISTORY"><button class="btn-danger" type="submit">Clear Consumption history</button></form></div>
-        <div class="table-hint">Clear Monitoring Data also clears these rollups. Node/VM inventory, Node Groups, memberships and user settings are preserved.</div>
-      </div>
-        """ % (url_for("bandwidth_consumption_page"), f"{item['hourly_rows']:,}", f"{item['daily_rows']:,}", f"{item['legacy_rows']:,}", human(item["size"]), item["reporting"], item["visible_nodes"], item["missing"], fmt_full(item["last_received"]), fmt_full(item["oldest"]), fmt_full(item["newest"]), url_for("admin_bandwidth_consumption_action"), token, url_for("admin_bandwidth_consumption_action"), token)
+      </div>""" % (url_for("bandwidth_consumption_page"), f"{item['hourly_rows']:,}", f"{item['daily_rows']:,}", f"{item['legacy_rows']:,}", human(item["size"]), item["reporting"], item["visible_nodes"], item["missing"], fmt_full(item["last_received"]), fmt_full(item["oldest"]), fmt_full(item["newest"]), url_for("admin_bandwidth_consumption_action"), token, url_for("admin_bandwidth_consumption_action"), token)
         html += accounting
     except Exception:
         app.logger.exception("Could not render accounting maintenance card")

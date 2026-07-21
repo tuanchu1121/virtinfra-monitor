@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_VERSION = "50.5.9-prod-r22.4-preflight-contract-hotfix"
+EXPECTED_VERSION = "50.5.9-prod-r22.5-configuration-backup-nuclear-hardening"
 LAYER_DIR = ROOT / "app/runtime_layers"
 MANIFEST = LAYER_DIR / "manifest.json"
 

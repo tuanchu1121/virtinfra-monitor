@@ -376,8 +376,10 @@ def _maintenance_action_label(action):
     return {
         "retention":"Retention cleanup", "checkpoint":"WAL checkpoint", "vacuum":"VACUUM database",
         "delete_history":"Delete old history", "delete_compact":"Delete + optimize",
-        "clear_monitoring_data":"Clear monitoring data", "reset_app_data":"Reset all app data + queue", "purge_nodes":"Purge node",
+        "clear_monitoring_data":"Clear monitoring data", "reset_app_data":"True Nuclear Reset", "purge_nodes":"Purge node",
         "purge_node_vms":"Purge all VM on node", "purge_vms":"Purge VM",
+        "configuration_backup":"Configuration Backup", "configuration_restore":"Restore Configuration",
+        "full_backup":"Full Emergency Database Backup", "full_backup_verify":"Verify Full Emergency Backup",
     }.get(str(action or ""), str(action or "-").replace("_", " ").title())
 
 def _maintenance_target_summary(action, raw_parameters):
@@ -397,7 +399,20 @@ def _maintenance_target_summary(action, raw_parameters):
     if action == "clear_monitoring_data":
         return "Full monitoring reset" + (" + VACUUM" if params.get("compact") else "")
     if action == "reset_app_data":
-        return "All operational data, logs and maintenance queue" + (" + VACUUM" if params.get("compact") else "")
+        policy = []
+        if params.get("create_configuration_backup"):
+            policy.append("Configuration Backup")
+        if params.get("create_full_backup"):
+            policy.append("Full Emergency Backup")
+        return "All application data; preserve current super_admin" + ((" | " + " + ".join(policy)) if policy else " | no backup")
+    if action == "configuration_backup":
+        return str(params.get("reason") or "Selective users/API/theme/Groups")
+    if action == "configuration_restore":
+        return str(params.get("backup_id") or "Configuration Backup")
+    if action == "full_backup":
+        return "Disaster recovery only; no web restore"
+    if action == "full_backup_verify":
+        return str(params.get("backup_id") or "Full Emergency Backup")
     return "Database maintenance"
 
 def _maintenance_elapsed(started_at, finished_at, created_at, status):
@@ -435,6 +450,9 @@ def _maintenance_friendly_message(action, status, message):
                 return "Monitoring data cleared successfully"
             if action == "reset_app_data":
                 return "All operational data and maintenance queue cleared"
+            if action == "full_backup_verify":
+                verification = data.get("verification", data.get("result", {}))
+                return f"Full Emergency Backup verified: {human(safe_int(verification.get('dump_bytes'),0))}"
             if action == "vacuum":
                 return "Database VACUUM completed"
             if action == "checkpoint":
@@ -449,11 +467,23 @@ def _maintenance_friendly_message(action, status, message):
 def database_maintenance_card(message="", error=""):
     s = get_database_maintenance_stats()
     jobs = get_maintenance_jobs(30)
+    sensitive_queue_actions = {"configuration_backup", "configuration_restore", "full_backup", "full_backup_verify", "reset_app_data"}
+    if clean_role(dashboard_role()) != "super_admin":
+        jobs = [row for row in jobs if str(row[4] or "") not in sensitive_queue_actions]
     conn = db()
     try:
-        status_rows = conn.execute("SELECT status,COUNT(*) FROM maintenance_jobs GROUP BY status").fetchall()
-        status_counts = {str(k or "queued"): safe_int(v,0) for k,v in status_rows}
-        queued_ids = [safe_int(r[0],0) for r in conn.execute("SELECT id FROM maintenance_jobs WHERE status='queued' ORDER BY id ASC").fetchall()]
+        if clean_role(dashboard_role()) == "super_admin":
+            status_rows = conn.execute("SELECT status,COUNT(*) FROM maintenance_jobs GROUP BY status").fetchall()
+            status_counts = {str(k or "queued"): safe_int(v,0) for k,v in status_rows}
+            queued_ids = [safe_int(r[0],0) for r in conn.execute("SELECT id FROM maintenance_jobs WHERE status='queued' ORDER BY id ASC").fetchall()]
+        else:
+            status_counts = {}
+            queued_ids = []
+            for row in jobs:
+                row_status = str(row[6] or "queued")
+                status_counts[row_status] = status_counts.get(row_status, 0) + 1
+                if row_status == "queued":
+                    queued_ids.append(safe_int(row[0], 0))
     finally:
         conn.close()
     queue_pos = {job_id: idx+1 for idx,job_id in enumerate(queued_ids)}

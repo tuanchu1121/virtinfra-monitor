@@ -1,4 +1,12 @@
-# 50.5.9-prod-r22.4-preflight-contract-hotfix
+# 50.5.9-prod-r22.5-configuration-backup-nuclear-hardening
+
+- Added Super Admin-only selective Configuration Backup and Restore.
+- Added protected pre-restore snapshots and checksum-verified archives.
+- Reworked Nuclear Reset to preserve only current super_admin, current Nuclear job and one audit.
+- Added optional Configuration/Full Emergency backup or strong no-backup reset.
+- Added pending Node-to-Group mapping restore and Top VM 2,000-row option.
+
+# 50.5.9-prod-r22.5-configuration-backup-nuclear-hardening
 
 - Fixed update failure `ERROR: invalid relation type` when R21/R22 databases expose `bandwidth_hourly` and `bandwidth_daily` as compatibility views.
 - `002_timescale.sql` now checks PostgreSQL `relkind` and converts only real or partitioned tables to Timescale hypertables.
@@ -7,7 +15,7 @@
 
 # Changelog
 
-## 50.5.9-prod-r22.4-preflight-contract-hotfix
+## 50.5.9-prod-r22.5-configuration-backup-nuclear-hardening
 
 - Consolidated Consumption business logic into canonical runtime Layer 44; Layer 45 is now a compatibility marker with no routes, functions or ingest/query implementation.
 - Preserved the R21 data contract: Node, Node Group and Summary read only `node_consumption_5m`, `node_consumption_hourly` and `node_consumption_daily`; VM Consumption remains independent; RX/TX formulas and Agent payload are unchanged.

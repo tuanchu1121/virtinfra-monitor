@@ -1,6 +1,6 @@
 # VirtInfra Monitor
 
-**Release:** `50.5.9-prod-r22.4-preflight-contract-hotfix`
+**Release:** `50.5.9-prod-r22.5-configuration-backup-nuclear-hardening`
 
 VirtInfra Monitor is a PostgreSQL 17 and TimescaleDB monitoring platform for KVM/libvirt nodes and virtual machines. PostgreSQL is the authoritative datastore for inventory, users, settings, current metrics, historical metrics, Abuse events, Storage I/O and Consumption.
 
@@ -17,7 +17,7 @@ There is no automatic install-to-update fallback.
 
 - `viewer` keeps the existing read-only monitoring dashboard and does not see the **Operations** navigation entry.
 - `admin` is the day-to-day operator: Node Groups, Node/VM Hide/Restore/Purge, Queue monitoring/cancel, retention, bounded history cleanup and online VACUUM.
-- `super_admin` has every Admin capability plus API management, Super Admin account control, Clear Monitoring Data, Clear API Data and Nuclear Reset.
+- `super_admin` has every Admin capability plus API management, Super Admin account control, Configuration Backup/Restore, Full Emergency Backup management, Clear Monitoring Data, Clear API Data and Nuclear Reset.
 - UI visibility and backend authorization use the same role boundary; direct forged requests remain denied.
 - R18 and later bind each browser session to the current password hash, role and enabled state. Password resets, role changes, disable and delete actions revoke old sessions on their next request. Existing sessions from an older release must sign in again after update.
 - The final enabled Super Admin cannot be downgraded, disabled or deleted from the web UI. If an older release already left zero enabled Super Admin accounts, recover one from the server console; `/admin/setup` is reserved for a true first-user installation.
@@ -132,6 +132,10 @@ systemctl status bw-monitor-maintenance-dispatch.service --no-pager -l
 journalctl -u bw-monitor-maintenance-dispatch.service -n 100 --no-pager
 journalctl -u 'bw-monitor-maintenance@*.service' -n 100 --no-pager
 ```
+
+## Configuration Backup and True Nuclear Reset
+
+Maintenance includes a Super Admin-only **Backup & Restore** card. Configuration Backup restores users, API keys, safe theme/policy settings, Node Groups and pending Node-to-Group mappings without restoring Node/VM inventory or monitoring data. Full Emergency Database Backup is verify/download/protect/delete only, with no direct web restore. See `docs/R22_5_CONFIGURATION_BACKUP_NUCLEAR.md`.
 
 ## Operations
 

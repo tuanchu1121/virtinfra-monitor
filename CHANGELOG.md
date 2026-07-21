@@ -1,4 +1,4 @@
-# 50.5.9-prod-r22.5-configuration-backup-nuclear-hardening
+# 50.5.9-prod-r22.6-consumption-vm-timeout-hotfix
 
 - Added Super Admin-only selective Configuration Backup and Restore.
 - Added protected pre-restore snapshots and checksum-verified archives.
@@ -6,7 +6,7 @@
 - Added optional Configuration/Full Emergency backup or strong no-backup reset.
 - Added pending Node-to-Group mapping restore and Top VM 2,000-row option.
 
-# 50.5.9-prod-r22.5-configuration-backup-nuclear-hardening
+# 50.5.9-prod-r22.6-consumption-vm-timeout-hotfix
 
 - Fixed update failure `ERROR: invalid relation type` when R21/R22 databases expose `bandwidth_hourly` and `bandwidth_daily` as compatibility views.
 - `002_timescale.sql` now checks PostgreSQL `relkind` and converts only real or partitioned tables to Timescale hypertables.
@@ -15,7 +15,7 @@
 
 # Changelog
 
-## 50.5.9-prod-r22.5-configuration-backup-nuclear-hardening
+## 50.5.9-prod-r22.6-consumption-vm-timeout-hotfix
 
 - Consolidated Consumption business logic into canonical runtime Layer 44; Layer 45 is now a compatibility marker with no routes, functions or ingest/query implementation.
 - Preserved the R21 data contract: Node, Node Group and Summary read only `node_consumption_5m`, `node_consumption_hourly` and `node_consumption_daily`; VM Consumption remains independent; RX/TX formulas and Agent payload are unchanged.
@@ -123,3 +123,8 @@
 - CPU, RAM, network Mbps/PPS, disk throughput/IOPS, Consumption, Abuse, snapshot selection, Queue batching and retention formulas are unchanged.
 - Static UI assets are unchanged.
 - Fresh installation remains `install.sh`; update with backup preservation remains `update.sh`.
+
+## 50.5.9-prod-r22.6-consumption-vm-timeout-hotfix
+- Default `/bandwidth-consumption` to the compact Node tab; per-VM aggregation is opt-in through `tab=vm`.
+- Constrain raw VM edge reads by the Timescale `node_stats.bucket` partition column as well as `last_push`, enabling chunk exclusion and preventing full retained-history scans.
+- Preserve VM/Node formulas, hourly/daily rollups, routes and response contracts.

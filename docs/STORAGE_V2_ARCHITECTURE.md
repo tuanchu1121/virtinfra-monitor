@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.9-prod-r22.5-configuration-backup-nuclear-hardening`
+Release: `50.5.9-prod-r22.6-consumption-vm-timeout-hotfix`
 
 ## Final data path
 

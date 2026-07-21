@@ -1,6 +1,6 @@
 # R22.3 Maintenance Queue + Backup Manifest Hotfix
 
-Release: `50.5.9-prod-r22.5-configuration-backup-nuclear-hardening`
+Release: `50.5.9-prod-r22.6-consumption-vm-timeout-hotfix`
 
 ## Fixed
 

@@ -236,43 +236,43 @@
   {
     "file": "39_inventory_consumption_views.py",
     "start_line": 29553,
-    "end_line": 30084,
-    "sha256": "df8ef4b399f07b0dc43a2f54557234eb2b1b33e7164e7f49da052e61f8d45252"
+    "end_line": 30086,
+    "sha256": "79338fcb0fb889cfa7336c1bde35f20e06aa0baf21f21e19bb88fef1c66518bb"
   },
   {
     "file": "40_consumption_cleanup_r4.py",
-    "start_line": 30085,
-    "end_line": 30972,
-    "sha256": "4712720831d2119b3e3f747ec81527cf056c31224da6f190889ae0f0dd15dd8b"
+    "start_line": 30087,
+    "end_line": 30976,
+    "sha256": "06205e08cc9fc7c145fe0eed633a3236f6310e778bb68ebb08d8441f97b2f50c"
   },
   {
     "file": "41_ui_layout_r2.py",
-    "start_line": 30973,
-    "end_line": 31679,
+    "start_line": 30977,
+    "end_line": 31683,
     "sha256": "5c3777ef2d4d44aa026d618826b5207d5078217a3e546544d59f0c6446d816e9"
   },
   {
     "file": "42_ui_alignment_r3.py",
-    "start_line": 31680,
-    "end_line": 32019,
+    "start_line": 31684,
+    "end_line": 32023,
     "sha256": "545466eb5be99c439ec41930cc1cde12a43d0e2031706ab1a594c1ade4e7d189"
   },
   {
     "file": "43_node_groups_loader.py",
-    "start_line": 32020,
-    "end_line": 32041,
+    "start_line": 32024,
+    "end_line": 32045,
     "sha256": "e346b747f8ff960327c4e80004d13964a3a9f7e39509d7a4b0857f403ba9c719"
   },
   {
     "file": "44_consumption_node_vm_rollup.py",
-    "start_line": 32042,
-    "end_line": 33000,
-    "sha256": "c0cbf4f359bd7c317358d7306b6afeb13a880f7073aab7e43b5310f0879b6f84"
+    "start_line": 32046,
+    "end_line": 33004,
+    "sha256": "c5555b72448d22d339b375abd4c4d4cc50aeaf24820783d33b12d7da4ebb0297"
   },
   {
     "file": "45_consumption_ingest_preaggregation.py",
-    "start_line": 33001,
-    "end_line": 33002,
+    "start_line": 33005,
+    "end_line": 33006,
     "sha256": "189b8843563ae6cd09af492ffcf00315fec17f659990217d89c83f696d6dcbfe"
   }
 ]

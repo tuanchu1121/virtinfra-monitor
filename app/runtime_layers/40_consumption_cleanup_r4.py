@@ -385,10 +385,12 @@ def _v5058r4_ceil_hour(ts):
 def _v5058r4_vm_raw_branch(start, end, selected_node=""):
     if end <= start:
         return "", []
-    # Keep the original last_push range semantics, while also constraining the
-    # TimescaleDB partition key so old chunks can be excluded before scanning.
+    # node_stats is partitioned by bucket. Filtering only last_push prevents
+    # Timescale chunk exclusion and can scan the full retained VM/NIC history
+    # for two small edge ranges. Keep last_push for exact boundary semantics,
+    # but always constrain the hypertable partition column too.
     bucket_start = bucket_for(start)
-    bucket_end = bucket_for(end - 1) + CACHE_BUCKET_SECONDS
+    bucket_end = bucket_for(max(start, end - 1)) + CACHE_BUCKET_SECONDS
     node_clause = " AND ns.node=?" if selected_node else ""
     sql = """
       SELECT ns.node,ns.vm_uuid,ns.bridge,

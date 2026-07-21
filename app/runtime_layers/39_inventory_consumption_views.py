@@ -80,8 +80,10 @@ def _v5058c_period(value):
     return value if value in V5058C_PERIODS else "24h"
 
 def _v5058c_tab(value):
-    value = str(value or "vm").strip().lower()
-    return value if value in {"vm", "node"} else "vm"
+    # Keep the unscoped landing page on the compact Node rollup pipeline.
+    # Per-VM aggregation remains available only when tab=vm is explicit.
+    value = str(value or "node").strip().lower()
+    return value if value in {"vm", "node"} else "node"
 
 def _v5058c_limit(value):
     value = safe_int(value, 100)

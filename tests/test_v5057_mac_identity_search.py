@@ -35,7 +35,7 @@ def load_normalizer():
 
 
 def test_release_identity():
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r22.5-configuration-backup-nuclear-hardening"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r22.6-consumption-vm-timeout-hotfix"
 
 
 def test_existing_agent_already_reports_vm_and_physical_mac():

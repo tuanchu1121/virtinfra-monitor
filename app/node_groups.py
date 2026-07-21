@@ -1,4 +1,4 @@
-"""50.5.9-prod-r22.5-configuration-backup-nuclear-hardening.
+"""50.5.9-prod-r22.6-consumption-vm-timeout-hotfix.
 
 Operations single-shell, Node flag scope and user/RBAC/session hardening.
 

@@ -207,7 +207,7 @@ def main() -> int:
 
     report = {
         "ok": True,
-        "release": "50.5.9-prod-r22.5-configuration-backup-nuclear-hardening",
+        "release": "50.5.9-prod-r22.6-consumption-vm-timeout-hotfix",
         "window_seconds": end - start,
         "seeded_nodes": args.nodes,
         "sql_reused_by": ["node_rows", "node_totals", "group_rows", "summary", "physical_totals", "vm_totals", "difference"],

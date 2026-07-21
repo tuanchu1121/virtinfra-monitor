@@ -40,7 +40,7 @@ def last_function(source: str, name: str) -> str:
 
 
 def test_release_identity():
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r22.8-vm-consumption-exact-window-sort-alignment"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r22.9-consumption-sort-regression-hotfix"
 
 
 def test_fifo_queue_allows_waiting_rows_but_only_one_worker():

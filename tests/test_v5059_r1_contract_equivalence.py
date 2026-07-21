@@ -103,8 +103,10 @@ def test_route_endpoint_query_form_sort_contract_is_unchanged():
     assert filtered_overrides == CONTRACT["view_overrides"]
 
     expected_args = dict(CONTRACT["request_args"])
-    expected_args["period"] += 1
+    expected_args["period"] += 2
     expected_args["tab"] += 1
+    expected_args["sort"] += 1
+    expected_args["order"] += 1
     assert dict(actual["request_args"]) == expected_args
 
     expected_form = dict(CONTRACT["request_form"])
@@ -121,7 +123,7 @@ def test_route_endpoint_query_form_sort_contract_is_unchanged():
 
     expected_urls = dict(CONTRACT["url_for_endpoints"])
     expected_urls["admin_bandwidth_consumption_action"] += 1
-    expected_urls["bandwidth_consumption_page"] += 8
+    expected_urls["bandwidth_consumption_page"] += 15
     expected_urls["node_page"] += 1
     expected_urls["admin_page"] -= 1  # consolidated Super Admin maintenance redirect
     assert dict(actual["url_for_endpoints"]) == expected_urls

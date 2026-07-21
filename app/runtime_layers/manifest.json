@@ -237,7 +237,7 @@
     "file": "39_inventory_consumption_views.py",
     "start_line": 29553,
     "end_line": 30086,
-    "sha256": "16d0f999c24c9162652ae2ba936ba5ba7a3adad3dc67ea6d401f9d73b920e7cc"
+    "sha256": "da53233ce344791e340eb9e95bbe528a087a253c9f2facb334db9baebf1ad3fb"
   },
   {
     "file": "40_consumption_cleanup_r4.py",
@@ -267,7 +267,7 @@
     "file": "44_consumption_node_vm_rollup.py",
     "start_line": 32055,
     "end_line": 33013,
-    "sha256": "335c3aa147bd2bb1b7c84fe32cd8ae7aecbb4e4346683e3d459255745a4a5b45"
+    "sha256": "cc0c9ab9e1ef7873536b7ffbd73d57c5d33f453201164ab2e1773174436c92ca"
   },
   {
     "file": "45_consumption_ingest_preaggregation.py",
@@ -276,9 +276,9 @@
     "sha256": "189b8843563ae6cd09af492ffcf00315fec17f659990217d89c83f696d6dcbfe"
   },
   {
-    "file": "46_vm_consumption_exact_window.py",
+    "file": "46_consumption_sort_alignment_hotfix.py",
     "start_line": 33016,
-    "end_line": 33434,
-    "sha256": "9e65b8c68d1a4342f191c62f05f8a990f6687e8bb0c37754115a165ce0c41ac2"
+    "end_line": 33288,
+    "sha256": "d6d892fcc15ed1ea0efd1c58e0a145c87aa5e654a628bedde53c8ddee7a3475d"
   }
 ]

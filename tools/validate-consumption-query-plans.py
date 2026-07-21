@@ -207,7 +207,7 @@ def main() -> int:
 
     report = {
         "ok": True,
-        "release": "50.5.9-prod-r22.8-vm-consumption-exact-window-sort-alignment",
+        "release": "50.5.9-prod-r22.9-consumption-sort-regression-hotfix",
         "window_seconds": end - start,
         "seeded_nodes": args.nodes,
         "sql_reused_by": ["node_rows", "node_totals", "group_rows", "summary", "physical_totals", "vm_totals", "difference"],

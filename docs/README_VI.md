@@ -1,6 +1,6 @@
 # Tài liệu VirtInfra Monitor
 
-Release: `50.5.9-prod-r22.8-vm-consumption-exact-window-sort-alignment`
+Release: `50.5.9-prod-r22.9-consumption-sort-regression-hotfix`
 
 Runtime dùng PostgreSQL 17 + TimescaleDB làm nguồn dữ liệu duy nhất.
 

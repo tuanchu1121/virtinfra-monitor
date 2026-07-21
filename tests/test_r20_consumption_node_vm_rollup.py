@@ -7,10 +7,9 @@ ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app"
 CANONICAL_LAYER = APP / "runtime_layers/44_consumption_node_vm_rollup.py"
 SHIM_LAYER = APP / "runtime_layers/45_consumption_ingest_preaggregation.py"
-FINAL_VM_LAYER = APP / "runtime_layers/46_vm_consumption_exact_window.py"
 R20_LAYER = CANONICAL_LAYER
 R21_LAYER = CANONICAL_LAYER
-RELEASE = "50.5.9-prod-r22.8-vm-consumption-exact-window-sort-alignment"
+RELEASE = "50.5.9-prod-r22.9-consumption-sort-regression-hotfix"
 
 
 def text(path: Path) -> str:
@@ -22,9 +21,9 @@ def test_r22_consumption_is_canonical_in_layer44_and_layer45_is_a_shim() -> None
     manifest = json.loads(text(APP / "runtime_layers/manifest.json"))
     names = [item["file"] for item in manifest]
     assert CANONICAL_LAYER.name in names
-    assert names[-1] == FINAL_VM_LAYER.name
     assert names[-2] == SHIM_LAYER.name
-    assert names.index(CANONICAL_LAYER.name) < names.index(SHIM_LAYER.name) < names.index(FINAL_VM_LAYER.name)
+    assert names[-1] == "46_consumption_sort_alignment_hotfix.py"
+    assert names.index(CANONICAL_LAYER.name) < names.index(SHIM_LAYER.name)
     shim = text(SHIM_LAYER)
     assert "R22_CONSUMPTION_CANONICAL_LAYER = 44" in shim
     assert "def " not in shim

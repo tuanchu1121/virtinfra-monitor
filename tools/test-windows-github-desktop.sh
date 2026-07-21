@@ -22,6 +22,7 @@ required=(
   app/runtime_layers/00_bootstrap_database.py app/runtime_layers/43_node_groups_loader.py
     app/runtime_layers/44_consumption_node_vm_rollup.py
     app/runtime_layers/45_consumption_ingest_preaggregation.py
+    app/runtime_layers/47_vm_5m_slot_rolling_window.py
   app/node_groups.py app/static/vendor/flag-icons/node-groups.css
   app/static/vendor/flag-icons/LICENSE app/static/vendor/flag-icons/SOURCE.md
   app/static/vendor/flag-icons/flags/4x3/vn.svg app/static/flags/node-groups.css
@@ -35,6 +36,7 @@ required=(
     postgres/sql/014_node_vm_consumption_rollups.sql
     postgres/sql/015_consumption_ingest_preaggregation.sql
     postgres/sql/016_configuration_backup_nuclear.sql
+    postgres/sql/017_vm_consumption_5m_slots.sql
   tools/validate-consumption-query-plans.py tools/benchmark-r22-top-vm.py
   requirements.txt VERSION CANONICAL_REPOSITORY README.md
 )

@@ -277,16 +277,20 @@ def _v5052_write_interface_copy_batch(conn, node, data_time, bucket, interval_se
                    SUM(rx_packets_delta)::bigint rx_packets,SUM(tx_packets_delta)::bigint tx_packets,
                    SUM(rx_drop_delta)::bigint rx_drops,SUM(tx_drop_delta)::bigint tx_drops,
                    SUM(rx_error_delta)::bigint rx_errors,SUM(tx_error_delta)::bigint tx_errors,
-                   COUNT(DISTINCT last_push)::bigint sample_count,MAX(last_push)::bigint last_push
+                   COUNT(DISTINCT last_push)::bigint sample_count,MAX(last_push)::bigint last_push,
+                   LEAST(11,GREATEST(0,((MAX(bucket)-hour_start)/300)::integer)) AS slot_no
               FROM pg_temp.vi5052_iface_stage
              GROUP BY hour_start,node,vm_uuid,bridge
           )
           INSERT INTO vm_consumption_hourly(
             hour_start,node,vm_uuid,bridge,rx_bytes,tx_bytes,rx_packets,tx_packets,
-            rx_drops,tx_drops,rx_errors,tx_errors,sample_count,last_push
+            rx_drops,tx_drops,rx_errors,tx_errors,sample_count,last_push,
+            rx_5m_slots,tx_5m_slots,sample_5m_mask
           )
           SELECT hour_start,node,vm_uuid,bridge,rx_bytes,tx_bytes,rx_packets,tx_packets,
-                 rx_drops,tx_drops,rx_errors,tx_errors,sample_count,last_push FROM grouped
+                 rx_drops,tx_drops,rx_errors,tx_errors,sample_count,last_push,
+                 ARRAY[CASE WHEN slot_no=0 THEN rx_bytes ELSE 0 END,CASE WHEN slot_no=1 THEN rx_bytes ELSE 0 END,CASE WHEN slot_no=2 THEN rx_bytes ELSE 0 END,CASE WHEN slot_no=3 THEN rx_bytes ELSE 0 END,CASE WHEN slot_no=4 THEN rx_bytes ELSE 0 END,CASE WHEN slot_no=5 THEN rx_bytes ELSE 0 END,CASE WHEN slot_no=6 THEN rx_bytes ELSE 0 END,CASE WHEN slot_no=7 THEN rx_bytes ELSE 0 END,CASE WHEN slot_no=8 THEN rx_bytes ELSE 0 END,CASE WHEN slot_no=9 THEN rx_bytes ELSE 0 END,CASE WHEN slot_no=10 THEN rx_bytes ELSE 0 END,CASE WHEN slot_no=11 THEN rx_bytes ELSE 0 END]::bigint[],ARRAY[CASE WHEN slot_no=0 THEN tx_bytes ELSE 0 END,CASE WHEN slot_no=1 THEN tx_bytes ELSE 0 END,CASE WHEN slot_no=2 THEN tx_bytes ELSE 0 END,CASE WHEN slot_no=3 THEN tx_bytes ELSE 0 END,CASE WHEN slot_no=4 THEN tx_bytes ELSE 0 END,CASE WHEN slot_no=5 THEN tx_bytes ELSE 0 END,CASE WHEN slot_no=6 THEN tx_bytes ELSE 0 END,CASE WHEN slot_no=7 THEN tx_bytes ELSE 0 END,CASE WHEN slot_no=8 THEN tx_bytes ELSE 0 END,CASE WHEN slot_no=9 THEN tx_bytes ELSE 0 END,CASE WHEN slot_no=10 THEN tx_bytes ELSE 0 END,CASE WHEN slot_no=11 THEN tx_bytes ELSE 0 END]::bigint[],(1 << slot_no)::integer
+            FROM grouped
           ON CONFLICT(hour_start,node,vm_uuid,bridge) DO UPDATE SET
             rx_bytes=vm_consumption_hourly.rx_bytes+excluded.rx_bytes,
             tx_bytes=vm_consumption_hourly.tx_bytes+excluded.tx_bytes,
@@ -297,7 +301,10 @@ def _v5052_write_interface_copy_batch(conn, node, data_time, bucket, interval_se
             rx_errors=vm_consumption_hourly.rx_errors+excluded.rx_errors,
             tx_errors=vm_consumption_hourly.tx_errors+excluded.tx_errors,
             sample_count=vm_consumption_hourly.sample_count+excluded.sample_count,
-            last_push=GREATEST(vm_consumption_hourly.last_push,excluded.last_push)
+            last_push=GREATEST(vm_consumption_hourly.last_push,excluded.last_push),
+            rx_5m_slots=ARRAY[COALESCE(vm_consumption_hourly.rx_5m_slots[1],0)+COALESCE(excluded.rx_5m_slots[1],0),COALESCE(vm_consumption_hourly.rx_5m_slots[2],0)+COALESCE(excluded.rx_5m_slots[2],0),COALESCE(vm_consumption_hourly.rx_5m_slots[3],0)+COALESCE(excluded.rx_5m_slots[3],0),COALESCE(vm_consumption_hourly.rx_5m_slots[4],0)+COALESCE(excluded.rx_5m_slots[4],0),COALESCE(vm_consumption_hourly.rx_5m_slots[5],0)+COALESCE(excluded.rx_5m_slots[5],0),COALESCE(vm_consumption_hourly.rx_5m_slots[6],0)+COALESCE(excluded.rx_5m_slots[6],0),COALESCE(vm_consumption_hourly.rx_5m_slots[7],0)+COALESCE(excluded.rx_5m_slots[7],0),COALESCE(vm_consumption_hourly.rx_5m_slots[8],0)+COALESCE(excluded.rx_5m_slots[8],0),COALESCE(vm_consumption_hourly.rx_5m_slots[9],0)+COALESCE(excluded.rx_5m_slots[9],0),COALESCE(vm_consumption_hourly.rx_5m_slots[10],0)+COALESCE(excluded.rx_5m_slots[10],0),COALESCE(vm_consumption_hourly.rx_5m_slots[11],0)+COALESCE(excluded.rx_5m_slots[11],0),COALESCE(vm_consumption_hourly.rx_5m_slots[12],0)+COALESCE(excluded.rx_5m_slots[12],0)]::bigint[],
+            tx_5m_slots=ARRAY[COALESCE(vm_consumption_hourly.tx_5m_slots[1],0)+COALESCE(excluded.tx_5m_slots[1],0),COALESCE(vm_consumption_hourly.tx_5m_slots[2],0)+COALESCE(excluded.tx_5m_slots[2],0),COALESCE(vm_consumption_hourly.tx_5m_slots[3],0)+COALESCE(excluded.tx_5m_slots[3],0),COALESCE(vm_consumption_hourly.tx_5m_slots[4],0)+COALESCE(excluded.tx_5m_slots[4],0),COALESCE(vm_consumption_hourly.tx_5m_slots[5],0)+COALESCE(excluded.tx_5m_slots[5],0),COALESCE(vm_consumption_hourly.tx_5m_slots[6],0)+COALESCE(excluded.tx_5m_slots[6],0),COALESCE(vm_consumption_hourly.tx_5m_slots[7],0)+COALESCE(excluded.tx_5m_slots[7],0),COALESCE(vm_consumption_hourly.tx_5m_slots[8],0)+COALESCE(excluded.tx_5m_slots[8],0),COALESCE(vm_consumption_hourly.tx_5m_slots[9],0)+COALESCE(excluded.tx_5m_slots[9],0),COALESCE(vm_consumption_hourly.tx_5m_slots[10],0)+COALESCE(excluded.tx_5m_slots[10],0),COALESCE(vm_consumption_hourly.tx_5m_slots[11],0)+COALESCE(excluded.tx_5m_slots[11],0),COALESCE(vm_consumption_hourly.tx_5m_slots[12],0)+COALESCE(excluded.tx_5m_slots[12],0)]::bigint[],
+            sample_5m_mask=COALESCE(vm_consumption_hourly.sample_5m_mask,0)|excluded.sample_5m_mask
         """)
         conn.execute("""
           WITH grouped AS (

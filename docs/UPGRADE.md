@@ -1,6 +1,6 @@
 # Update an existing installation
 
-Release: `50.5.9-prod-r22.9-consumption-sort-regression-hotfix`
+Release: `50.5.9-prod-r22.10-vm-5m-slot-rolling-window`
 Use this path only when VirtInfra Monitor is already installed. The updater requires both `/etc/default/bw-monitor` and `/etc/default/bw-monitor-postgres`.
 
 ```bash

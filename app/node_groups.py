@@ -1,4 +1,4 @@
-"""50.5.9-prod-r22.9-consumption-sort-regression-hotfix.
+"""50.5.9-prod-r22.10-vm-5m-slot-rolling-window.
 
 Operations single-shell, Node flag scope and user/RBAC/session hardening.
 

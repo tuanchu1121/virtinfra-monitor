@@ -15,20 +15,26 @@ def add_bandwidth_rollup(conn, data_time, node, vm_uuid, bridge,
                          rx_drop_delta, tx_drop_delta, rx_error_delta, tx_error_delta):
     hour_start = local_hour_start(data_time)
     day_start = local_day_start(data_time)
+    slot_no = max(0, min(11, (bucket_for(data_time) - hour_start) // CACHE_BUCKET_SECONDS))
+    rx_slots = [0] * 12
+    tx_slots = [0] * 12
+    rx_slots[slot_no] = max(0, safe_int(rx_delta, 0))
+    tx_slots[slot_no] = max(0, safe_int(tx_delta, 0))
+    slot_mask = 1 << slot_no
     values = (
         node, vm_uuid, bridge,
         rx_delta, tx_delta, rx_packets_delta, tx_packets_delta,
         rx_drop_delta, tx_drop_delta, rx_error_delta, tx_error_delta,
-        data_time,
+        data_time, rx_slots, tx_slots, slot_mask,
     )
     conn.execute("""
         INSERT INTO vm_consumption_hourly(
             hour_start, node, vm_uuid, bridge,
             rx_bytes, tx_bytes, rx_packets, tx_packets,
             rx_drops, tx_drops, rx_errors, tx_errors,
-            sample_count, last_push
+            sample_count, last_push, rx_5m_slots, tx_5m_slots, sample_5m_mask
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
         ON CONFLICT(hour_start, node, vm_uuid, bridge)
         DO UPDATE SET
             rx_bytes=vm_consumption_hourly.rx_bytes + excluded.rx_bytes,
@@ -40,7 +46,36 @@ def add_bandwidth_rollup(conn, data_time, node, vm_uuid, bridge,
             rx_errors=vm_consumption_hourly.rx_errors + excluded.rx_errors,
             tx_errors=vm_consumption_hourly.tx_errors + excluded.tx_errors,
             sample_count=vm_consumption_hourly.sample_count + 1,
-            last_push=MAX(vm_consumption_hourly.last_push, excluded.last_push)
+            last_push=MAX(vm_consumption_hourly.last_push, excluded.last_push),
+            rx_5m_slots=ARRAY[
+                COALESCE(vm_consumption_hourly.rx_5m_slots[1],0)+COALESCE(excluded.rx_5m_slots[1],0),
+                COALESCE(vm_consumption_hourly.rx_5m_slots[2],0)+COALESCE(excluded.rx_5m_slots[2],0),
+                COALESCE(vm_consumption_hourly.rx_5m_slots[3],0)+COALESCE(excluded.rx_5m_slots[3],0),
+                COALESCE(vm_consumption_hourly.rx_5m_slots[4],0)+COALESCE(excluded.rx_5m_slots[4],0),
+                COALESCE(vm_consumption_hourly.rx_5m_slots[5],0)+COALESCE(excluded.rx_5m_slots[5],0),
+                COALESCE(vm_consumption_hourly.rx_5m_slots[6],0)+COALESCE(excluded.rx_5m_slots[6],0),
+                COALESCE(vm_consumption_hourly.rx_5m_slots[7],0)+COALESCE(excluded.rx_5m_slots[7],0),
+                COALESCE(vm_consumption_hourly.rx_5m_slots[8],0)+COALESCE(excluded.rx_5m_slots[8],0),
+                COALESCE(vm_consumption_hourly.rx_5m_slots[9],0)+COALESCE(excluded.rx_5m_slots[9],0),
+                COALESCE(vm_consumption_hourly.rx_5m_slots[10],0)+COALESCE(excluded.rx_5m_slots[10],0),
+                COALESCE(vm_consumption_hourly.rx_5m_slots[11],0)+COALESCE(excluded.rx_5m_slots[11],0),
+                COALESCE(vm_consumption_hourly.rx_5m_slots[12],0)+COALESCE(excluded.rx_5m_slots[12],0)
+            ]::bigint[],
+            tx_5m_slots=ARRAY[
+                COALESCE(vm_consumption_hourly.tx_5m_slots[1],0)+COALESCE(excluded.tx_5m_slots[1],0),
+                COALESCE(vm_consumption_hourly.tx_5m_slots[2],0)+COALESCE(excluded.tx_5m_slots[2],0),
+                COALESCE(vm_consumption_hourly.tx_5m_slots[3],0)+COALESCE(excluded.tx_5m_slots[3],0),
+                COALESCE(vm_consumption_hourly.tx_5m_slots[4],0)+COALESCE(excluded.tx_5m_slots[4],0),
+                COALESCE(vm_consumption_hourly.tx_5m_slots[5],0)+COALESCE(excluded.tx_5m_slots[5],0),
+                COALESCE(vm_consumption_hourly.tx_5m_slots[6],0)+COALESCE(excluded.tx_5m_slots[6],0),
+                COALESCE(vm_consumption_hourly.tx_5m_slots[7],0)+COALESCE(excluded.tx_5m_slots[7],0),
+                COALESCE(vm_consumption_hourly.tx_5m_slots[8],0)+COALESCE(excluded.tx_5m_slots[8],0),
+                COALESCE(vm_consumption_hourly.tx_5m_slots[9],0)+COALESCE(excluded.tx_5m_slots[9],0),
+                COALESCE(vm_consumption_hourly.tx_5m_slots[10],0)+COALESCE(excluded.tx_5m_slots[10],0),
+                COALESCE(vm_consumption_hourly.tx_5m_slots[11],0)+COALESCE(excluded.tx_5m_slots[11],0),
+                COALESCE(vm_consumption_hourly.tx_5m_slots[12],0)+COALESCE(excluded.tx_5m_slots[12],0)
+            ]::bigint[],
+            sample_5m_mask=COALESCE(vm_consumption_hourly.sample_5m_mask,0)|excluded.sample_5m_mask
     """, (hour_start,) + values)
     conn.execute("""
         INSERT INTO vm_consumption_daily(
@@ -62,7 +97,7 @@ def add_bandwidth_rollup(conn, data_time, node, vm_uuid, bridge,
             tx_errors=vm_consumption_daily.tx_errors + excluded.tx_errors,
             sample_count=vm_consumption_daily.sample_count + 1,
             last_push=MAX(vm_consumption_daily.last_push, excluded.last_push)
-    """, (day_start,) + values)
+    """, (day_start,) + values[:12])
 
 def _delete_in_batches(conn, table, where_sql, params, batch_rows=RETENTION_BATCH_ROWS):
     total = 0

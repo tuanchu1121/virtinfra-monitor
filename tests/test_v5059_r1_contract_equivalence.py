@@ -151,6 +151,7 @@ def test_existing_postgresql_sql_matches_approved_release_contract():
         "014_node_vm_consumption_rollups.sql",
         "015_consumption_ingest_preaggregation.sql",
         "016_configuration_backup_nuclear.sql",
+        "017_vm_consumption_5m_slots.sql",
     }
     paths = [
         path

@@ -1,6 +1,6 @@
 # Consumption architecture
 
-**Release:** `50.5.9-prod-r22.9-consumption-sort-regression-hotfix`
+**Release:** `50.5.9-prod-r22.10-vm-5m-slot-rolling-window`
 
 R21 introduced high-cardinality network aggregation from page render time to the accepted five-minute `/push` transaction. Dashboard snapshots, Agent cadence and all non-Consumption features remain unchanged.
 
@@ -57,13 +57,28 @@ At 350 Nodes, the complete-hour portion reads roughly `350 × 23 = 8,050` rows i
 
 ## VM pipeline
 
-VM Consumption remains separate and is rollup-only at render time:
+VM Consumption remains separate and never scans raw VM/NIC history while rendering. Each canonical `vm_consumption_hourly` row now carries:
 
-- full local days from `vm_consumption_daily`;
-- partial local days, including the live current hour, from `vm_consumption_hourly`;
-- no `node_stats`, `usage` or raw NIC scan when the VM table is opened.
+- the existing full-hour RX/TX totals;
+- twelve packed five-minute RX slots;
+- twelve packed five-minute TX slots;
+- a twelve-bit sample-presence mask.
 
-The selected range is represented by a fixed number of hourly buckets. The oldest boundary is hour-aligned and the current hour can be partial. The VM pipeline runs only when the VM tab is opened. Node and Group tabs do not call it. Search, global sorting and pagination remain server-side.
+A rolling request ends at the latest closed five-minute bucket. For example, a 24-hour request made at 19:32 reads the exact range 19:30 yesterday through 19:30 today:
+
+```text
+19:30–20:00 yesterday  -> packed slots in the first hourly row
+20:00–19:00 today      -> compact hourly/daily totals
+19:00–19:30 today      -> packed slots in the last hourly row
+```
+
+Only the two partial hour edges inspect array elements. Complete hours and days keep using the existing compact totals. There is no `vm_consumption_5m` table and no `node_stats`, `usage` or raw NIC query when the VM table is opened.
+
+The slot arrays are updated inside the existing hourly `INSERT ... ON CONFLICT` statement, so row cardinality and statement count do not increase. Exact HTTP retries remain blocked by `push_receipts`. The wider hourly row does increase heap/WAL volume; operators should watch database growth after rollout.
+
+Rows created before migration 017 do not contain packed slots. During the bounded warm-up period, only the still-unpacked residual of an edge hour is proportionally estimated. Exact five-minute edges replace that estimate as new pushes arrive. No production raw-history backfill runs automatically.
+
+The VM pipeline runs only when the VM tab is opened. Node and Group tabs do not call it. Search, global sorting and pagination remain server-side.
 
 ## Request reuse and cache
 

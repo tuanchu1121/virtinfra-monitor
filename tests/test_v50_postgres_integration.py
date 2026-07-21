@@ -72,6 +72,7 @@ for migration in (
     "014_node_vm_consumption_rollups.sql",
     "015_consumption_ingest_preaggregation.sql",
     "016_configuration_backup_nuclear.sql",
+    "017_vm_consumption_5m_slots.sql",
 ):
     apply_sql(ROOT / "postgres/sql" / migration)
 
@@ -456,6 +457,12 @@ try:
         params = ("V50-TEST-NODE", vm_uuid) if "vm_uuid" in sql else ("V50-TEST-NODE",)
         count = int(conn.execute(sql, params).fetchone()[0])
         assert count >= 1, f"{table} was not populated"
+    slot_row = conn.execute(
+        "SELECT rx_5m_slots,tx_5m_slots,sample_5m_mask FROM vm_consumption_hourly WHERE node=? AND vm_uuid=? LIMIT 1",
+        ("V50-TEST-NODE", vm_uuid),
+    ).fetchone()
+    assert slot_row and len(slot_row[0] or []) == 12 and len(slot_row[1] or []) == 12
+    assert int(slot_row[2] or 0) > 0, "packed VM five-minute slot was not recorded"
     legacy_count = int(conn.execute(
         "SELECT count(*) FROM node_bandwidth_consumption_2h WHERE node=?",
         ("V50-TEST-NODE",),

@@ -1,4 +1,4 @@
-# 50.5.9-prod-r22.9-consumption-sort-regression-hotfix
+# 50.5.9-prod-r22.10-vm-5m-slot-rolling-window
 
 - VM Consumption is now rollup-only at render time.
 - Removed raw VM/NIC edge scans from `/bandwidth-consumption?tab=vm`.

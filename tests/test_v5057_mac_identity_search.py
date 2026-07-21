@@ -35,7 +35,7 @@ def load_normalizer():
 
 
 def test_release_identity():
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r22.9-consumption-sort-regression-hotfix"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r22.10-vm-5m-slot-rolling-window"
 
 
 def test_existing_agent_already_reports_vm_and_physical_mac():

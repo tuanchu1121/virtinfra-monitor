@@ -51,6 +51,7 @@ repo_complete() {
     postgres/sql/014_node_vm_consumption_rollups.sql \
     postgres/sql/015_consumption_ingest_preaggregation.sql \
     postgres/sql/016_configuration_backup_nuclear.sql \
+    postgres/sql/017_vm_consumption_5m_slots.sql \
     tools/validate-consumption-query-plans.py \
     tools/benchmark-r22-top-vm.py \
     requirements.txt \

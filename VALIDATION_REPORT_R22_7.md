@@ -1,6 +1,6 @@
 # Validation Report R22.7
 
-Release: `50.5.9-prod-r22.9-consumption-sort-regression-hotfix`
+Release: `50.5.9-prod-r22.10-vm-5m-slot-rolling-window`
 
 ## Scope validated
 

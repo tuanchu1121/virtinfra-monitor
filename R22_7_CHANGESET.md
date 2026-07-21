@@ -1,6 +1,6 @@
 # R22.7 Change Set
 
-Version: `50.5.9-prod-r22.9-consumption-sort-regression-hotfix`
+Version: `50.5.9-prod-r22.10-vm-5m-slot-rolling-window`
 
 ## Scope
 

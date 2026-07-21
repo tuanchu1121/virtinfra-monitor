@@ -62,7 +62,7 @@ virtinfra-monitorctl psql -c "SELECT hypertable_name,num_chunks FROM timescaledb
 |---|---|---|---:|
 | `node_stats` | VM interface / five-minute bucket | VM charts, diagnostics and retained raw detail; not used by the VM Consumption table | 48 hours |
 | `node_physical_net_stats` | Physical interface / five-minute bucket | Recent physical source/recovery data | 48 hours |
-| `vm_consumption_hourly` | VM + bridge + hour | Canonical per-VM complete-hour rollup | 7 days |
+| `vm_consumption_hourly` | VM + bridge + hour | Canonical hourly total plus twelve packed five-minute RX/TX slots and a sample mask | 7 days |
 | `vm_consumption_daily` | VM + bridge + day | Canonical per-VM complete-day rollup | 7 days |
 | `node_consumption_5m` | Node + five-minute bucket | Pre-aggregated Physical + All-VM values for only incomplete range edges | 48 hours |
 | `node_consumption_hourly` | Node + hour | Pre-aggregated Physical + All-VM complete-hour totals | 7 days |
@@ -72,6 +72,8 @@ virtinfra-monitorctl psql -c "SELECT hypertable_name,num_chunks FROM timescaledb
 The active path is the normal five-minute `/push`. Node, Node Group and Consumption Summary read only `node_consumption_5m`, `node_consumption_hourly`, `node_consumption_daily` plus Node metadata. They never read `node_stats`, `vm_consumption_hourly`, `vm_consumption_daily` or group by `vm_uuid` while rendering. The VM tab has its own per-VM rollup-only read pipeline using `vm_consumption_hourly` and `vm_consumption_daily`.
 
 The retired `/push/bandwidth-consumption` endpoint returns HTTP 410 and does not write data. Former `bandwidth_hourly` and `bandwidth_daily` names are read-only compatibility views after migration.
+
+Migration `017_vm_consumption_5m_slots.sql` adds nullable `BIGINT[]` RX/TX slot columns and an integer presence mask to the existing VM hourly hypertable. It creates no new high-cardinality table and no new index. Existing rows remain valid and are not backfilled automatically. Two twelve-element `BIGINT[]` values add roughly 240–250 bytes to a fully populated hourly row before tuple/TOAST effects, so database and WAL growth must be monitored at production scale.
 
 ## VACUUM online
 

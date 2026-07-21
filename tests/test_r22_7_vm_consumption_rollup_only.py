@@ -50,7 +50,7 @@ def test_short_ranges_do_not_duplicate_the_hourly_branch():
 
 
 def test_vm_ui_discloses_hourly_resolution_and_no_raw_scan():
-    assert "VM rows use hourly/daily rollups only" in VIEWS
+    assert "rolling five-minute slots packed inside hourly rollups" in VIEWS
     assert "no raw VM/NIC history is scanned" in VIEWS
 
 

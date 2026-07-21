@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE="50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix"
+RELEASE="50.5.9-prod-r22-consumption-hardening-global-sort"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 APP_SRC="$REPO_ROOT/app"
@@ -31,6 +31,7 @@ log(){ printf '\n==> %s\n' "$*"; }
 warn(){ printf '\nWARNING: %s\n' "$*" >&2; }
 die(){ printf '\nERROR: %s\n' "$*" >&2; exit 1; }
 UPDATE_QUIESCED=0
+UPDATE_SNAPSHOT_DIR=""
 resume_update_services(){
   ((UPDATE_QUIESCED)) || return 0
   warn "Update aborted after services were quiesced; restarting the installed services best-effort."
@@ -70,7 +71,7 @@ Options:
   -h, --help               Show this help.
 
 The updater preserves PostgreSQL data, secrets and current settings, and creates
-an automatic PostgreSQL backup before replacing application code.
+a PostgreSQL backup plus a source/config snapshot before replacing application code.
 EOF
   else
     cat <<'EOF'
@@ -326,6 +327,38 @@ if [[ "$MODE" == "update" && -f "$APP_DIR/backup.sh" ]]; then
 fi
 
 if [[ "$MODE" == "update" ]]; then
+  UPDATE_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+  UPDATE_SNAPSHOT_DIR="$BACKUP_ROOT/pre-update-$UPDATE_STAMP"
+  log "Snapshot installed source and service configuration"
+  install -d -m 0700 "$UPDATE_SNAPSHOT_DIR"
+  if [[ -d "$APP_DIR" ]]; then
+    tar \
+      --exclude='./venv' \
+      --exclude='./.venv' \
+      --exclude='./__pycache__' \
+      --exclude='*/__pycache__' \
+      --exclude='*.pyc' \
+      --exclude='*.pyo' \
+      -C "$APP_DIR" \
+      -czf "$UPDATE_SNAPSHOT_DIR/application-source.tar.gz" \
+      .
+  fi
+  for snapshot_file in "$ENV_FILE" "$PG_ENV" "$CRED_FILE" "$SERVICE_FILE" "$NGINX_SITE"; do
+    if [[ -f "$snapshot_file" ]]; then
+      install -m 0600 "$snapshot_file" "$UPDATE_SNAPSHOT_DIR/$(basename -- "$snapshot_file")"
+    fi
+  done
+  {
+    printf 'created_at_utc=%s\n' "$UPDATE_STAMP"
+    printf 'source_dir=%s\n' "$APP_DIR"
+    printf 'previous_version=%s\n' "$(cat "$APP_DIR/DEPLOY_VERSION" 2>/dev/null || printf unknown)"
+    printf 'target_version=%s\n' "$RELEASE"
+  } > "$UPDATE_SNAPSHOT_DIR/metadata.env"
+  chmod 0600 "$UPDATE_SNAPSHOT_DIR/metadata.env"
+  printf 'Pre-update snapshot: %s\n' "$UPDATE_SNAPSHOT_DIR"
+fi
+
+if [[ "$MODE" == "update" ]]; then
   RUNNING_MAINTENANCE="$(systemctl list-units 'bw-monitor-maintenance@*.service' --state=running --no-legend --plain 2>/dev/null | awk 'NF{print $1}' | paste -sd, -)"
   [[ -z "$RUNNING_MAINTENANCE" ]] || die "Active maintenance job services detected: $RUNNING_MAINTENANCE. Wait for them to finish before updating."
   log "Quiesce web, maintenance and cleanup services for schema update"
@@ -363,6 +396,8 @@ install -m 0755 "$APP_SRC/consumption_rollup.py" "$APP_DIR/consumption_rollup.py
 install -m 0755 "$REPO_ROOT/tools/storage-v2-status.py" "$APP_DIR/tools/storage-v2-status.py"
 install -m 0755 "$REPO_ROOT/tools/validate-storage-v2.py" "$APP_DIR/tools/validate-storage-v2.py"
 install -m 0755 "$REPO_ROOT/tools/benchmark-storage-v2.py" "$APP_DIR/tools/benchmark-storage-v2.py"
+install -m 0755 "$REPO_ROOT/tools/benchmark-r22-top-vm.py" "$APP_DIR/tools/benchmark-r22-top-vm.py"
+install -m 0755 "$REPO_ROOT/tools/validate-consumption-query-plans.py" "$APP_DIR/tools/validate-consumption-query-plans.py"
 install -m 0755 "$SCRIPT_DIR/start-monitor.sh" "$APP_DIR/start-monitor.sh"
 install -m 0644 "$REPO_ROOT/VERSION" "$APP_DIR/DEPLOY_VERSION"
 install -m 0644 "$REPO_ROOT/requirements.txt" "$APP_DIR/requirements.txt"
@@ -624,6 +659,7 @@ done
 systemctl is-active --quiet bw-monitor.service || die "bw-monitor.service inactive"
 systemctl restart bw-monitor-inventory-cleanup.timer
 UPDATE_QUIESCED=0
+UPDATE_SNAPSHOT_DIR=""
 if [[ -n "$DOMAIN" && $NO_TLS -eq 0 ]]; then
   for i in $(seq 1 30); do curl -fsS --max-time 10 "https://$DOMAIN/login" >/dev/null && break; ((i==30)) && die "HTTPS health check failed"; sleep 2; done
 fi

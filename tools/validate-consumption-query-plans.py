@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove R21 Node/Group/Summary plans stay on node-level rollups.
+"""Prove R22 Node/Group/Summary plans stay on node-level rollups.
 
 Requires a disposable PostgreSQL DSN in BW_TEST_DATABASE_URL. The validator
 creates TEMP tables, seeds 350 nodes, runs EXPLAIN (ANALYZE, BUFFERS, FORMAT
@@ -51,13 +51,13 @@ def install_sqlite_shim(path: Path) -> None:
 
 
 def load_exact_node_sql(start: int, end: int) -> tuple[str, list[Any]]:
-    with tempfile.TemporaryDirectory(prefix="r21-plan-sql-") as temp:
+    with tempfile.TemporaryDirectory(prefix="r22-plan-sql-") as temp:
         os.environ.pop("BW_DATABASE_URL", None)
         os.environ.pop("BW_POSTGRES_DSN", None)
         os.environ.update({
             "BW_MONITOR_DB": str(Path(temp) / "runtime.sqlite3"),
-            "BW_ADMIN_SECRET_KEY": "r21-plan-validator",
-            "BW_MONITOR_TOKEN": "r21-plan-validator-token",
+            "BW_ADMIN_SECRET_KEY": "r22-plan-validator",
+            "BW_MONITOR_TOKEN": "r22-plan-validator-token",
             "BW_START_BACKGROUND_THREADS": "0",
         })
         install_sqlite_shim(Path(temp) / "runtime.sqlite3")
@@ -207,7 +207,7 @@ def main() -> int:
 
     report = {
         "ok": True,
-        "release": "50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix",
+        "release": "50.5.9-prod-r22-consumption-hardening-global-sort",
         "window_seconds": end - start,
         "seeded_nodes": args.nodes,
         "sql_reused_by": ["node_rows", "node_totals", "group_rows", "summary", "physical_totals", "vm_totals", "difference"],

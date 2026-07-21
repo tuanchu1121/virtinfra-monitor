@@ -49,6 +49,8 @@ repo_complete() {
     postgres/sql/013_maintenance_queue_boolean.sql \
     postgres/sql/014_node_vm_consumption_rollups.sql \
     postgres/sql/015_consumption_ingest_preaggregation.sql \
+    tools/validate-consumption-query-plans.py \
+    tools/benchmark-r22-top-vm.py \
     requirements.txt \
     VERSION \
     CANONICAL_REPOSITORY \

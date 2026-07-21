@@ -13,6 +13,8 @@ cd "$ROOT"
 printf '\n==> Refresh canonical source checksum manifest\n'
 find . \
   -path './.git' -prune -o \
+  -path './.venv' -prune -o \
+  -path './artifacts' -prune -o \
   -path './dist' -prune -o \
   -type d \( -name __pycache__ -o -name .pytest_cache \) -prune -o \
   -type f ! -name SHA256SUMS ! -name '*.pyc' ! -name '*.pyo' \
@@ -23,6 +25,8 @@ python3 tests/test_manifest_contract.py
 
 tar \
   --exclude='./.git' \
+  --exclude='./.venv' \
+  --exclude='./artifacts' \
   --exclude='./dist' \
   --exclude='*/__pycache__' \
   --exclude='*/.pytest_cache' \

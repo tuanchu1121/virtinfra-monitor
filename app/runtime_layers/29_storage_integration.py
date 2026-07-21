@@ -2,44 +2,331 @@
 V48133_VERSION = "48.13.3"
 V48133_DISK_SORT_KEYS = {"diskallocated", "diskassigned", "diskallocpct", "diskcount"}
 
+# R22: Top VM global sort reads only the existing bounded current/snapshot
+# tables.  Filtering and ORDER BY happen in PostgreSQL before LIMIT, so RAM
+# and disk rankings are no longer limited to a network-selected 1,000-row
+# candidate set.  No second current-state table or dual-write path is added.
 _get_top_vm_rows_v48133_base = get_top_vm_rows
 
-def get_top_vm_rows(period, q="", sort_by="total", order="desc", scope="all", limit=100):
-    requested_sort = str(sort_by or "total").strip().lower()
-    requested_order = clean_sort_order(order)
-    requested_limit = max(10, min(1000, safe_int(limit, 100)))
-    disk_sort = requested_sort in V48133_DISK_SORT_KEYS
-    base_sort = "total" if disk_sort else requested_sort
-    fetch_limit = 1000 if disk_sort else requested_limit
-    rows, selected_bucket, latest_bucket, _ = _get_top_vm_rows_v48133_base(
-        period, q=q, sort_by=base_sort, order=requested_order,
-        scope=scope, limit=fetch_limit,
+_R22_RAM_VALID = """(
+    COALESCE({a}.ram_available_kib,0)>0
+    AND (COALESCE({a}.ram_usable_kib,0)>0 OR COALESCE({a}.ram_unused_kib,0)>0)
+    AND COALESCE({a}.ram_usable_kib,0)<=COALESCE({a}.ram_available_kib,0)*1.05
+)"""
+
+def _r22_ram_sort_expressions(alias="c"):
+    valid = _R22_RAM_VALID.format(a=alias)
+    guest_used = (
+        f"CASE WHEN {valid} THEN "
+        f"MAX(COALESCE({alias}.ram_available_kib,0)-COALESCE({alias}.ram_usable_kib,0),0) END"
     )
-    totals = _v48133_disk_totals_for_pairs([(r[0], r[1]) for r in rows])
-    augmented = [tuple(r) + totals.get((str(r[0]), str(r[1])), (0, 0, 0)) for r in rows]
-    if disk_sort:
-        def metric(row):
-            allocated = max(0.0, safe_float(row[35], 0.0))
-            assigned = max(0.0, safe_float(row[36], 0.0))
-            count = max(0.0, safe_float(row[37], 0.0))
-            if requested_sort == "diskallocated":
-                return allocated
-            if requested_sort == "diskassigned":
-                return assigned
-            if requested_sort == "diskallocpct":
-                return allocated / assigned if assigned > 0 else -1.0
-            return count
+    guest_pct = (
+        f"CASE WHEN {valid} THEN "
+        f"MAX(COALESCE({alias}.ram_available_kib,0)-COALESCE({alias}.ram_usable_kib,0),0)"
+        f"*100.0/COALESCE({alias}.ram_available_kib,1) END"
+    )
+    return {
+        "ram": guest_pct,
+        "ramguest": guest_pct,
+        "ramused": guest_used,
+        "ramrss": f"NULLIF(COALESCE({alias}.ram_rss_kib,0),0)",
+        "ramassigned": f"NULLIF(COALESCE({alias}.ram_current_kib,0),0)",
+    }
 
-        def sort_key(row):
-            has_value = safe_int(row[37], 0) > 0 or safe_int(row[36], 0) > 0 or safe_int(row[35], 0) > 0
-            value = metric(row)
-            tie = safe_float(row[7], 0.0)
-            if requested_order == "asc":
-                return (0 if has_value else 1, value, tie)
-            return (0 if has_value else 1, -value, -tie)
+def _r22_disk_sort_expressions(alias="d"):
+    present = (
+        f"({alias}.node IS NOT NULL AND (COALESCE({alias}.disk_count,0)>0 "
+        f"OR COALESCE({alias}.allocated_bytes,0)>0 OR COALESCE({alias}.assigned_bytes,0)>0))"
+    )
+    return {
+        "diskallocated": f"CASE WHEN {present} THEN COALESCE({alias}.allocated_bytes,0) END",
+        "diskassigned": f"CASE WHEN {present} THEN COALESCE({alias}.assigned_bytes,0) END",
+        "diskallocpct": (
+            f"CASE WHEN {present} AND COALESCE({alias}.assigned_bytes,0)>0 "
+            f"THEN COALESCE({alias}.allocated_bytes,0)*1.0/{alias}.assigned_bytes END"
+        ),
+        "diskcount": f"CASE WHEN {present} THEN COALESCE({alias}.disk_count,0) END",
+    }
 
-        augmented.sort(key=sort_key)
-    return augmented[:requested_limit], selected_bucket, latest_bucket, requested_limit
+def _r22_top_order_expression(sort_by, live=True):
+    alias = "c" if live else "b"
+    values = {
+        "total": f"{alias}.total_bytes" if live else "b.total",
+        "rx": f"{alias}.rx_bytes" if live else "b.rx",
+        "tx": f"{alias}.tx_bytes" if live else "b.tx",
+        "public": (
+            f"({alias}.public_rx_bytes+{alias}.public_tx_bytes)" if live else "b.public_total"
+        ),
+        "private": (
+            f"({alias}.private_rx_bytes+{alias}.private_tx_bytes)" if live else "b.private_total"
+        ),
+        "mbps": f"{alias}.total_mbps" if live else "b.avg_mbps",
+        "peakmbps": f"{alias}.total_peak_mbps" if live else "b.peak_mbps",
+        "pps": f"{alias}.total_pps" if live else "b.avg_pps",
+        "peakpps": f"{alias}.total_peak_pps" if live else "b.peak_pps",
+        "sample": (
+            f"CASE UPPER(COALESCE({alias}.sample_quality,'LEGACY')) "
+            "WHEN 'POOR' THEN 3 WHEN 'DEGRADED' THEN 2 WHEN 'GOOD' THEN 1 ELSE 0 END"
+            if live else "b.sample_quality_rank"
+        ),
+        "drops": f"{alias}.drops" if live else "b.drops",
+        "errors": f"{alias}.errors" if live else "b.errors",
+        "cpu": f"{alias}.cpu_core_percent" if live else "b.core_cpu_percent",
+        "cpufull": f"{alias}.cpu_full_percent" if live else "b.cpu_percent",
+        "vcpu": f"{alias}.vcpu_current" if live else "b.vcpu_current",
+        "diskr": f"{alias}.disk_read_bps" if live else "b.disk_read_bps",
+        "diskw": f"{alias}.disk_write_bps" if live else "b.disk_write_bps",
+        "last_push": f"{alias}.last_seen" if live else "b.last_push",
+        "node": f"{alias}.node COLLATE NOCASE",
+        "vm": f"{alias}.vm_uuid COLLATE NOCASE",
+    }
+    values.update(_r22_ram_sort_expressions(alias))
+    values.update(_r22_disk_sort_expressions("d"))
+    return values[sort_by]
+
+def _r22_top_visibility_sql(node_expr, group_id):
+    sql = f"""
+      AND EXISTS (
+            SELECT 1
+              FROM node_group_memberships r22gm
+              JOIN node_groups r22g ON r22g.id=r22gm.group_id
+             WHERE r22gm.node={node_expr}
+               AND r22g.is_active=1
+      )
+    """
+    params = []
+    if safe_int(group_id, 0) > 0:
+        sql += f"""
+          AND EXISTS (
+                SELECT 1
+                  FROM node_group_memberships r22sgm
+                  JOIN node_groups r22sg ON r22sg.id=r22sgm.group_id
+                 WHERE r22sgm.node={node_expr}
+                   AND r22sg.is_active=1
+                   AND r22sg.id=?
+          )
+        """
+        params.append(safe_int(group_id, 0))
+    return sql, params
+
+def _r22_get_top_vm_rows_live(q, sort_by, order, scope, limit, group_id=0):
+    params = [now_ts() - FAST_CURRENT_STALE_SECONDS]
+    where_sql, visibility_params = _r22_top_visibility_sql("c.node", group_id)
+    params.extend(visibility_params)
+    if scope == "public":
+        where_sql += " AND (c.public_rx_bytes+c.public_tx_bytes)>0"
+    elif scope == "private":
+        where_sql += " AND (c.private_rx_bytes+c.private_tx_bytes)>0"
+    if q:
+        pattern = like_pattern(q)
+        where_sql += """ AND (
+              c.node LIKE ? OR c.vm_uuid LIKE ?
+              OR EXISTS (
+                    SELECT 1 FROM vm_iface_current r22if
+                     WHERE r22if.node=c.node AND r22if.vm_uuid=c.vm_uuid
+                       AND (COALESCE(r22if.iface,'') LIKE ? OR COALESCE(r22if.mac,'') LIKE ?)
+              )
+              OR EXISTS (
+                    SELECT 1 FROM node_bridge_addresses_latest r22ba
+                     WHERE r22ba.node=c.node
+                       AND (COALESCE(r22ba.primary_ipv4,'') LIKE ? OR COALESCE(r22ba.ipv4_json,'[]') LIKE ?)
+              )
+        )"""
+        params.extend([pattern] * 6)
+    order_expr = _r22_top_order_expression(sort_by, live=True)
+    params.append(limit)
+    conn = db()
+    try:
+        try:
+            _v48140_reconcile_summaries_if_needed(conn)
+        except Exception:
+            app.logger.exception("R22 Top VM disk-summary reconciliation failed")
+        rows = conn.execute(f"""
+          SELECT c.node,c.vm_uuid,c.iface_count,
+                 c.public_rx_bytes+c.public_tx_bytes,
+                 c.private_rx_bytes+c.private_tx_bytes,
+                 c.rx_bytes,c.tx_bytes,c.total_bytes,
+                 CAST(c.total_pps*c.interval_seconds AS INTEGER),c.drops,c.errors,
+                 c.total_mbps,c.total_peak_mbps,c.total_pps,c.total_peak_pps,
+                 c.sample_count,c.sample_expected,c.sample_max_gap,
+                 c.seconds_over_rx_pps+c.seconds_over_tx_pps,0,
+                 CASE UPPER(COALESCE(c.sample_quality,'LEGACY'))
+                   WHEN 'POOR' THEN 3 WHEN 'DEGRADED' THEN 2 WHEN 'GOOD' THEN 1 ELSE 0 END,
+                 c.cpu_full_percent,c.vcpu_current,c.cpu_core_percent,
+                 c.ram_rss_kib,c.ram_current_kib,c.disk_read_bps,c.disk_write_bps,
+                 c.last_seen,c.interval_seconds,
+                 COALESCE((SELECT primary_ipv4 FROM node_bridge_addresses_latest ba
+                            WHERE ba.node=c.node AND LOWER(ba.role)='public'
+                            ORDER BY ba.last_seen DESC LIMIT 1),''),
+                 COALESCE((SELECT primary_ipv4 FROM node_bridge_addresses_latest ba
+                            WHERE ba.node=c.node AND LOWER(ba.role)='private'
+                            ORDER BY ba.last_seen DESC LIMIT 1),''),
+                 COALESCE(c.ram_available_kib,0),COALESCE(c.ram_unused_kib,0),COALESCE(c.ram_usable_kib,0),
+                 COALESCE(d.allocated_bytes,0),COALESCE(d.assigned_bytes,0),COALESCE(d.disk_count,0)
+            FROM vm_current_fast c
+            LEFT JOIN node_inventory ni ON ni.node=c.node
+            LEFT JOIN vm_inventory vi ON vi.node=c.node AND vi.vm_uuid=c.vm_uuid
+            LEFT JOIN vm_disk_summary_current d ON d.node=c.node AND d.vm_uuid=c.vm_uuid
+           WHERE c.last_seen>=?
+             AND (ni.node IS NULL OR (COALESCE(ni.status,'active')!='hidden' AND ni.deleted_at IS NULL))
+             AND (vi.vm_uuid IS NULL OR (COALESCE(vi.status,'active')!='hidden' AND vi.deleted_at IS NULL))
+             {where_sql}
+           ORDER BY {order_expr} {order.upper()} NULLS LAST,
+                    c.node COLLATE NOCASE ASC,c.vm_uuid COLLATE NOCASE ASC
+           LIMIT ?
+        """, params).fetchall()
+        latest = max([safe_int(row[28], 0) for row in rows] or [0])
+        return rows, latest, latest, limit
+    finally:
+        conn.close()
+
+def _r22_get_top_vm_rows_history(period, q, sort_by, order, scope, limit, group_id=0):
+    auto_cleanup_inventory()
+    conn = db()
+    try:
+        selected_bucket, latest_bucket = resolve_snapshot_bucket(conn, period, node=None)
+        if not selected_bucket:
+            return [], 0, 0, limit
+        try:
+            _v48140_reconcile_summaries_if_needed(conn)
+        except Exception:
+            app.logger.exception("R22 historical Top VM disk-summary reconciliation failed")
+
+        # Keep the historical snapshot formulas and scope semantics unchanged;
+        # only visibility, complete metric enrichment, SQL ordering and LIMIT
+        # placement are hardened.
+        params = [
+            CACHE_BUCKET_SECONDS, CACHE_BUCKET_SECONDS, selected_bucket,
+            PUBLIC_BRIDGE, PRIVATE_BRIDGE,
+            CACHE_BUCKET_SECONDS, CACHE_BUCKET_SECONDS, selected_bucket,
+        ]
+        source_where = ""
+        if scope == "public":
+            source_where += " AND ns.bridge=?"
+            params.append(PUBLIC_BRIDGE)
+        elif scope == "private":
+            source_where += " AND ns.bridge=?"
+            params.append(PRIVATE_BRIDGE)
+        if q:
+            pattern = like_pattern(q)
+            source_where += """ AND (
+                ns.node LIKE ? OR ns.vm_uuid LIKE ? OR ns.iface LIKE ?
+                OR EXISTS (
+                    SELECT 1 FROM node_bridge_addresses_latest r22ba
+                     WHERE r22ba.node=ns.node
+                       AND (COALESCE(r22ba.primary_ipv4,'') LIKE ? OR COALESCE(r22ba.ipv4_json,'[]') LIKE ?)
+                )
+            )"""
+            params.extend([pattern] * 5)
+        visibility_sql, visibility_params = _r22_top_visibility_sql("b.node", group_id)
+        params.extend(visibility_params)
+        order_expr = _r22_top_order_expression(sort_by, live=False)
+        params.append(limit)
+        rows = conn.execute(f"""
+          WITH perf AS (
+            SELECT node,vm_uuid,
+                   MAX(COALESCE(cpu_percent,0)) cpu_percent,
+                   MAX(COALESCE(vcpu_current,0)) vcpu_current,
+                   MAX(COALESCE(ram_rss_kib,0)) ram_rss_kib,
+                   MAX(COALESCE(ram_current_kib,0)) ram_current_kib,
+                   MAX(COALESCE(ram_available_kib,0)) ram_available_kib,
+                   MAX(COALESCE(ram_unused_kib,0)) ram_unused_kib,
+                   MAX(COALESCE(ram_usable_kib,0)) ram_usable_kib,
+                   MAX(COALESCE(disk_read_delta,0)*1.0/MAX(COALESCE(interval_seconds,?),1)) disk_read_bps,
+                   MAX(COALESCE(disk_write_delta,0)*1.0/MAX(COALESCE(interval_seconds,?),1)) disk_write_bps
+              FROM vm_perf_stats
+             WHERE bucket=?
+             GROUP BY node,vm_uuid
+          ), base AS (
+            SELECT ns.node,ns.vm_uuid,
+                   COUNT(DISTINCT ns.bridge||':'||ns.iface) iface_count,
+                   SUM(CASE WHEN ns.bridge=? THEN ns.rx_delta+ns.tx_delta ELSE 0 END) public_total,
+                   SUM(CASE WHEN ns.bridge=? THEN ns.rx_delta+ns.tx_delta ELSE 0 END) private_total,
+                   SUM(ns.rx_delta) rx,SUM(ns.tx_delta) tx,SUM(ns.rx_delta+ns.tx_delta) total,
+                   SUM(ns.rx_packets_delta+ns.tx_packets_delta) packets,
+                   SUM(ns.rx_drop_delta+ns.tx_drop_delta) drops,
+                   SUM(ns.rx_error_delta+ns.tx_error_delta) errors,
+                   SUM((ns.rx_delta+ns.tx_delta)*8.0/MAX(COALESCE(ns.interval_seconds,1),1)/1000000.0) avg_mbps,
+                   MAX(MAX(COALESCE(ns.rx_mbps_peak,0),COALESCE(ns.tx_mbps_peak,0))) peak_mbps,
+                   SUM(ns.rx_packets_delta+ns.tx_packets_delta)*1.0/MAX(MAX(COALESCE(ns.interval_seconds,?)),1) avg_pps,
+                   MAX(MAX(COALESCE(ns.rx_pps_peak,0),COALESCE(ns.tx_pps_peak,0))) peak_pps,
+                   SUM(COALESCE(ns.network_sample_count,0)) sample_count,
+                   SUM(COALESCE(ns.network_sample_expected,0)) sample_expected,
+                   MAX(COALESCE(ns.network_sample_max_gap_seconds,0)) sample_max_gap_seconds,
+                   SUM(COALESCE(ns.seconds_over_pps,0)) seconds_over_pps,
+                   SUM(COALESCE(ns.seconds_over_mbps,0)) seconds_over_mbps,
+                   MAX(CASE UPPER(COALESCE(ns.network_sample_quality,'LEGACY'))
+                         WHEN 'POOR' THEN 3 WHEN 'DEGRADED' THEN 2 WHEN 'GOOD' THEN 1 ELSE 0 END) sample_quality_rank,
+                   MAX(COALESCE(p.cpu_percent,0)) cpu_percent,
+                   MAX(COALESCE(p.vcpu_current,0)) vcpu_current,
+                   MAX(CASE WHEN COALESCE(p.cpu_percent,0)<=100
+                            THEN COALESCE(p.cpu_percent,0)*CASE WHEN COALESCE(p.vcpu_current,0)>0 THEN p.vcpu_current ELSE 1 END
+                            ELSE COALESCE(p.cpu_percent,0) END) core_cpu_percent,
+                   MAX(COALESCE(p.ram_rss_kib,0)) ram_rss_kib,
+                   MAX(COALESCE(p.ram_current_kib,0)) ram_current_kib,
+                   MAX(COALESCE(p.ram_available_kib,0)) ram_available_kib,
+                   MAX(COALESCE(p.ram_unused_kib,0)) ram_unused_kib,
+                   MAX(COALESCE(p.ram_usable_kib,0)) ram_usable_kib,
+                   MAX(COALESCE(p.disk_read_bps,0)) disk_read_bps,
+                   MAX(COALESCE(p.disk_write_bps,0)) disk_write_bps,
+                   MAX(ns.last_push) last_push,
+                   MAX(COALESCE(ns.interval_seconds,?)) interval_seconds,
+                   COALESCE((SELECT primary_ipv4 FROM node_bridge_addresses_latest ba
+                              WHERE ba.node=ns.node AND LOWER(ba.role)='public'
+                              ORDER BY ba.last_seen DESC LIMIT 1),'') public_ipv4,
+                   COALESCE((SELECT primary_ipv4 FROM node_bridge_addresses_latest ba
+                              WHERE ba.node=ns.node AND LOWER(ba.role)='private'
+                              ORDER BY ba.last_seen DESC LIMIT 1),'') private_ipv4
+              FROM node_stats ns
+              LEFT JOIN perf p ON p.node=ns.node AND p.vm_uuid=ns.vm_uuid
+             WHERE ns.bucket=? {source_where}
+             GROUP BY ns.node,ns.vm_uuid
+            HAVING SUM(COALESCE(ns.rx_delta,0)+COALESCE(ns.tx_delta,0))>0
+          )
+          SELECT b.node,b.vm_uuid,b.iface_count,b.public_total,b.private_total,
+                 b.rx,b.tx,b.total,b.packets,b.drops,b.errors,b.avg_mbps,b.peak_mbps,b.avg_pps,b.peak_pps,
+                 b.sample_count,b.sample_expected,b.sample_max_gap_seconds,b.seconds_over_pps,b.seconds_over_mbps,
+                 b.sample_quality_rank,b.cpu_percent,b.vcpu_current,b.core_cpu_percent,
+                 b.ram_rss_kib,b.ram_current_kib,b.disk_read_bps,b.disk_write_bps,
+                 b.last_push,b.interval_seconds,b.public_ipv4,b.private_ipv4,
+                 b.ram_available_kib,b.ram_unused_kib,b.ram_usable_kib,
+                 COALESCE(d.allocated_bytes,0),COALESCE(d.assigned_bytes,0),COALESCE(d.disk_count,0)
+            FROM base b
+            LEFT JOIN node_inventory ni ON ni.node=b.node
+            LEFT JOIN vm_inventory vi ON vi.node=b.node AND vi.vm_uuid=b.vm_uuid
+            LEFT JOIN vm_disk_summary_current d ON d.node=b.node AND d.vm_uuid=b.vm_uuid
+           WHERE (ni.node IS NULL OR (COALESCE(ni.status,'active')!='hidden' AND ni.deleted_at IS NULL))
+             AND (vi.vm_uuid IS NULL OR (COALESCE(vi.status,'active')!='hidden' AND vi.deleted_at IS NULL))
+             {visibility_sql}
+           ORDER BY {order_expr} {order.upper()} NULLS LAST,
+                    b.node COLLATE NOCASE ASC,b.vm_uuid COLLATE NOCASE ASC
+           LIMIT ?
+        """, params).fetchall()
+        return rows, selected_bucket, latest_bucket, limit
+    finally:
+        conn.close()
+
+def _r22_get_top_vm_rows_global(period, q="", sort_by="total", order="desc", scope="all", limit=100, group_id=0):
+    requested_sort = clean_top_sort(str(sort_by or "").strip().lower())
+    requested_order = clean_sort_order(order)
+    requested_scope = clean_top_scope(scope)
+    requested_limit = max(10, min(1000, safe_int(limit, 100)))
+    history = _request_target_ts() is not None or clean_period(period) != "5m"
+    if history:
+        return _r22_get_top_vm_rows_history(
+            period, q, requested_sort, requested_order, requested_scope,
+            requested_limit, group_id=group_id,
+        )
+    return _r22_get_top_vm_rows_live(
+        q, requested_sort, requested_order, requested_scope,
+        requested_limit, group_id=group_id,
+    )
+
+def get_top_vm_rows(period, q="", sort_by="total", order="desc", scope="all", limit=100):
+    return _r22_get_top_vm_rows_global(
+        period, q=q, sort_by=sort_by, order=order, scope=scope,
+        limit=limit, group_id=0,
+    )
 
 def _v48133_disk_sort_link(label, key, period, q, current_sort, current_order, scope, limit):
     active = current_sort == key
@@ -503,4 +790,3 @@ def purge_vm_data(conn, node, vm_uuid, refresh_snapshots=True):
         """,(affected,))
     deleted["affected_nodes"]=len(affected_nodes)
     return deleted
-

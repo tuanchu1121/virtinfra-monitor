@@ -91,10 +91,10 @@ def test_route_endpoint_query_form_sort_contract_is_unchanged():
     for key in ("routes", "request_values", "sort_maps"):
         assert actual[key] == CONTRACT[key], f"runtime contract changed: {key}"
 
-    # R20 changes only the effective Consumption view and retires the legacy
-    # 2-hour writer without adding or removing any Flask route.
+    # R22 preserves the route contract while making the canonical Consumption
+    # implementation explicit and keeping the legacy 2-hour writer retired.
     allowed_overrides = [
-        {"endpoint": "bandwidth_consumption_page", "value": "bandwidth_consumption_page_r20"},
+        {"endpoint": "bandwidth_consumption_page", "value": "bandwidth_consumption_page_r22"},
         {"endpoint": "push_bandwidth_consumption", "value": "push_bandwidth_consumption_retired"},
         {"endpoint": "admin_bandwidth_consumption_action", "value": "admin_bandwidth_consumption_action_r21"},
     ]
@@ -103,7 +103,7 @@ def test_route_endpoint_query_form_sort_contract_is_unchanged():
     assert filtered_overrides == CONTRACT["view_overrides"]
 
     expected_args = dict(CONTRACT["request_args"])
-    expected_args["period"] += 2
+    expected_args["period"] += 1
     expected_args["tab"] += 1
     assert dict(actual["request_args"]) == expected_args
 
@@ -113,8 +113,8 @@ def test_route_endpoint_query_form_sort_contract_is_unchanged():
     assert dict(actual["request_form"]) == expected_form
 
     expected_urls = dict(CONTRACT["url_for_endpoints"])
-    expected_urls["admin_bandwidth_consumption_action"] += 2
-    expected_urls["bandwidth_consumption_page"] += 15
+    expected_urls["admin_bandwidth_consumption_action"] += 1
+    expected_urls["bandwidth_consumption_page"] += 8
     expected_urls["node_page"] += 1
     assert dict(actual["url_for_endpoints"]) == expected_urls
 

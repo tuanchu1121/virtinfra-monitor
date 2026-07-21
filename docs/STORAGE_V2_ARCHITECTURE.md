@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix`
+Release: `50.5.9-prod-r22-consumption-hardening-global-sort`
 
 ## Final data path
 

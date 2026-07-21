@@ -1,5 +1,19 @@
 # Changelog
 
+## 50.5.9-prod-r22-consumption-hardening-global-sort
+
+- Consolidated Consumption business logic into canonical runtime Layer 44; Layer 45 is now a compatibility marker with no routes, functions or ingest/query implementation.
+- Preserved the R21 data contract: Node, Node Group and Summary read only `node_consumption_5m`, `node_consumption_hourly` and `node_consumption_daily`; VM Consumption remains independent; RX/TX formulas and Agent payload are unchanged.
+- Added raw-retention-aware Node range planning. Raw five-minute edges are clipped to available retention while the requested interval remains the coverage denominator, so 3D–7D queries no longer silently claim complete data for missing edges.
+- Fixed VM Consumption caching so Group, Node, search, coverage, sort, page, page size and visibility generation are part of the cache identity.
+- Replaced Top VM RAM/disk candidate sorting with PostgreSQL global sorting over existing bounded current/snapshot tables. Visibility and Group filters run before `ORDER BY`; `LIMIT` runs last; NULL values sort last with deterministic Node/UUID ties.
+- Added regression execution with more than 1,500 VMs, including low-network global RAM/disk winners, hidden Nodes and Group filtering. No `vm_top_current`, dual-write or new Maintenance pipeline was introduced.
+- Rejects normal `/push` payload timestamps more than the configured future-skew limit and prevents later-arriving older samples from rewinding VM/interface/Node/disk current tables.
+- Treats a missing or invalid `vms` metrics section as partial collection and preserves existing VM current metrics instead of replacing them with zero/empty state. A present empty list remains a valid complete empty sample.
+- Records Consumption backfill state and progress in the existing settings/status path with `running`, `completed`, `completed_with_gaps` and `failed` outcomes; the supported state contract also includes `pending`.
+- Updates the updater to snapshot installed source and service configuration in addition to the PostgreSQL backup before replacing application code.
+- Adds live PostgreSQL integration coverage and disposable 300-Node/60,000-VM benchmark tooling. These tests skip cleanly when `BW_TEST_DATABASE_URL` is not supplied.
+
 ## 50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix
 
 - Redesigned Consumption around ingest-time pre-aggregation. Every accepted normal five-minute `/push` incrementally UPSERTs canonical per-VM hourly/daily rollups and compact node-level five-minute/hourly/daily rollups in the same transaction.

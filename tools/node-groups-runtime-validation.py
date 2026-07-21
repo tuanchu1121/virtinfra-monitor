@@ -356,13 +356,16 @@ def main() -> int:
             all_html = client.get(path + joiner + "group=all").get_data(as_text=True)
             assert all_html == baseline_html, path
 
-        # Group=All still delegates metric calculation to the untouched baseline,
-        # then applies the active-group visibility predicate to the returned rows.
+        # Node/health continue to wrap the baseline. Top VM now delegates to
+        # the R22 canonical SQL path, which applies visibility/group filtering
+        # before ORDER BY and LIMIT rather than filtering a limited result set.
         original_delegates = {
             name: ng._BASE[name]
-            for name in ("get_node_rows", "get_node_health_rows", "get_top_vm_rows")
+            for name in ("get_node_rows", "get_node_health_rows")
         }
         original_effective = ng.effective_visible_nodes
+        original_top_global = app_module._r22_get_top_vm_rows_global
+        top_calls = []
         try:
             ng.effective_visible_nodes = lambda *_a, **_k: {"node-vn"}
             ng._BASE["get_node_rows"] = lambda *_a, **_k: ([("node-vn",), ("node-hidden",)], 100, 200)
@@ -371,10 +374,17 @@ def main() -> int:
             ng._BASE["get_node_health_rows"] = lambda *_a, **_k: [("node-vn",), ("node-hidden",)]
             with app_module.app.test_request_context("/health/nodes"):
                 assert ng.get_node_health_rows() == [("node-vn",)]
-            ng._BASE["get_top_vm_rows"] = lambda *_a, **_k: ([("node-vn", "vm-1"), ("node-hidden", "vm-x")], 100, 100, 100)
+
+            def fake_top_global(*args, **kwargs):
+                top_calls.append((args, kwargs))
+                return ([("node-vn", "vm-1")], 100, 100, 100)
+
+            app_module._r22_get_top_vm_rows_global = fake_top_global
             with app_module.app.test_request_context("/top?group=all"):
                 assert ng.get_top_vm_rows("5m") == ([("node-vn", "vm-1")], 100, 100, 100)
+            assert top_calls and top_calls[-1][1]["group_id"] == 0
         finally:
+            app_module._r22_get_top_vm_rows_global = original_top_global
             ng.effective_visible_nodes = original_effective
             ng._BASE.update(original_delegates)
 

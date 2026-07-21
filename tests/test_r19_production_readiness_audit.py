@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app"
-VERSION = "50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix"
+VERSION = "50.5.9-prod-r22-consumption-hardening-global-sort"
 
 
 def test_release_identity() -> None:
@@ -16,14 +16,14 @@ def test_release_identity() -> None:
 
 def test_clear_monitoring_covers_current_consumption_rollups() -> None:
     maintenance = (APP / "maintenance_native.py").read_text(encoding="utf-8")
-    layer = (APP / "runtime_layers/45_consumption_ingest_preaggregation.py").read_text(encoding="utf-8")
+    layer = (APP / "runtime_layers/44_consumption_node_vm_rollup.py").read_text(encoding="utf-8")
     for table in ("node_consumption_5m", "node_consumption_hourly", "node_consumption_daily", "vm_consumption_hourly", "vm_consumption_daily"):
         assert table in maintenance or table in layer
     assert "Clear All Monitoring Data" in (APP / "runtime_layers/34_bandwidth_consumption.py").read_text(encoding="utf-8")
 
 
 def test_consumption_maintenance_card_uses_current_rollups() -> None:
-    layer = (APP / "runtime_layers/45_consumption_ingest_preaggregation.py").read_text(encoding="utf-8")
+    layer = (APP / "runtime_layers/44_consumption_node_vm_rollup.py").read_text(encoding="utf-8")
     assert "Consumption Pre-aggregation Storage" in layer
     assert "NODE 5M" in layer and "NODE HOURLY" in layer and "NODE DAILY" in layer
     assert "VM HOURLY" in layer and "VM DAILY" in layer

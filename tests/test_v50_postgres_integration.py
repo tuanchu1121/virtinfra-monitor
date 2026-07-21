@@ -5,7 +5,9 @@ Set BW_TEST_DATABASE_URL to a disposable database. The test drops/recreates the
 public and bw_meta schemas in that database.
 """
 from __future__ import annotations
+import copy
 import importlib.util
+from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
 import sys
@@ -64,10 +66,11 @@ for migration in (
     "001_bootstrap.sql", "002_timescale.sql", "003_native_indexes.sql", "004_storage_v2.sql",
     "005_ingest_write_profile.sql", "006_postgres_native_maintenance.sql",
     "007_safe_maintenance_queue.sql", "008_mac_identity_search.sql",
+    "009_low_io_compat.sql", "010_consumption_inventory_cleanup.sql",
+    "011_node_groups.sql", "012_node_groups_r6_safety.sql",
     "013_maintenance_queue_boolean.sql",
     "014_node_vm_consumption_rollups.sql",
-    "009_low_io_compat.sql", "010_consumption_inventory_cleanup.sql",
-    "011_node_groups.sql",
+    "015_consumption_ingest_preaggregation.sql",
 ):
     apply_sql(ROOT / "postgres/sql" / migration)
 
@@ -169,6 +172,167 @@ assert response.get_json().get("ok") is True
 response2 = client.post("/push", json=payload, headers={"X-Token": "v50-integration-token"})
 assert response2.status_code == 200 and response2.get_json().get("duplicate") is True
 
+# Two web workers receiving the same new sample concurrently must serialize on
+# the per-Node advisory lock. Exactly one receipt may add the sample delta.
+concurrent_payload = dict(payload)
+concurrent_payload["time"] = now + 1
+concurrent_bucket = module.bucket_for(concurrent_payload["time"])
+def node_vm_total(bucket_value):
+    check_conn = module.db()
+    try:
+        row = check_conn.execute(
+            """
+            SELECT COALESCE(vm_public_rx_bytes,0)+COALESCE(vm_public_tx_bytes,0)
+                 + COALESCE(vm_private_rx_bytes,0)+COALESCE(vm_private_tx_bytes,0)
+              FROM node_consumption_5m
+             WHERE bucket_start=? AND node=?
+            """,
+            (bucket_value, "V50-TEST-NODE"),
+        ).fetchone()
+        return int((row or (0,))[0] or 0)
+    finally:
+        check_conn.close()
+
+before_concurrent = node_vm_total(concurrent_bucket)
+def post_concurrent_sample():
+    thread_client = module.app.test_client()
+    result = thread_client.post(
+        "/push", json=concurrent_payload,
+        headers={"X-Token": "v50-integration-token"},
+    )
+    return result.status_code, result.get_json() or {}
+
+with ThreadPoolExecutor(max_workers=2) as executor:
+    concurrent_results = list(executor.map(lambda _index: post_concurrent_sample(), range(2)))
+assert all(status == 200 for status, _body in concurrent_results)
+assert sorted(bool(body.get("duplicate")) for _status, body in concurrent_results) == [False, True]
+after_concurrent = node_vm_total(concurrent_bucket)
+assert after_concurrent - before_concurrent == 562500000
+
+# Node and VM rollups are one transaction. Force the VM COPY stage to fail
+# after the interface stage has prepared Node rollups, then verify receipt and
+# all Node deltas are rolled back and the same sample can be retried normally.
+atomic_payload = dict(payload)
+atomic_payload["time"] = now + 2
+atomic_bucket = module.bucket_for(atomic_payload["time"])
+before_atomic = node_vm_total(atomic_bucket)
+original_vm_copy = module._v5052_write_vm_copy_batch
+def fail_vm_copy(*_args, **_kwargs):
+    raise RuntimeError("forced R22 atomicity test failure")
+module._v5052_write_vm_copy_batch = fail_vm_copy
+try:
+    atomic_failed = client.post(
+        "/push", json=atomic_payload,
+        headers={"X-Token": "v50-integration-token"},
+    )
+finally:
+    module._v5052_write_vm_copy_batch = original_vm_copy
+assert atomic_failed.status_code == 500, atomic_failed.get_data(as_text=True)
+assert node_vm_total(atomic_bucket) == before_atomic
+receipt_conn = module.db()
+try:
+    receipt_count = int(receipt_conn.execute(
+        "SELECT count(*) FROM push_receipts WHERE node=? AND push_time=?",
+        ("V50-TEST-NODE", atomic_payload["time"]),
+    ).fetchone()[0])
+finally:
+    receipt_conn.close()
+assert receipt_count == 0
+atomic_retry = client.post(
+    "/push", json=atomic_payload,
+    headers={"X-Token": "v50-integration-token"},
+)
+assert atomic_retry.status_code == 200
+assert not atomic_retry.get_json().get("duplicate")
+assert node_vm_total(atomic_bucket) - before_atomic == 562500000
+
+# R22: a missing/invalid VM metrics section is partial data, not an empty VM
+# inventory. It must not erase or zero the latest CPU/RAM/disk snapshot.
+conn = module.db()
+try:
+    before_partial = conn.execute(
+        "SELECT last_seen,ram_current_kib,ram_rss_kib FROM vm_current_fast WHERE node=? AND vm_uuid=?",
+        ("V50-TEST-NODE", vm_uuid),
+    ).fetchone()
+finally:
+    conn.close()
+partial_payload = dict(payload)
+partial_payload["time"] = now + 30
+partial_payload.pop("vms", None)
+partial_response = client.post("/push", json=partial_payload, headers={"X-Token": "v50-integration-token"})
+assert partial_response.status_code == 200, partial_response.get_data(as_text=True)
+conn = module.db()
+try:
+    after_partial = conn.execute(
+        "SELECT last_seen,ram_current_kib,ram_rss_kib FROM vm_current_fast WHERE node=? AND vm_uuid=?",
+        ("V50-TEST-NODE", vm_uuid),
+    ).fetchone()
+finally:
+    conn.close()
+assert tuple(after_partial) == tuple(before_partial)
+
+# Newer current state wins. A later-arriving older retry may still populate
+# history, but it must never rewind current tables.
+newer_payload = dict(payload)
+newer_payload["time"] = now + 120
+newer_payload["vms"] = [dict(payload["vms"][0], ram_current_kib=8388608, ram_rss_kib=7340032)]
+newer_response = client.post("/push", json=newer_payload, headers={"X-Token": "v50-integration-token"})
+assert newer_response.status_code == 200, newer_response.get_data(as_text=True)
+older_payload = dict(payload)
+older_payload["time"] = now + 60
+older_payload["vms"] = [dict(payload["vms"][0], ram_current_kib=1048576, ram_rss_kib=524288)]
+older_response = client.post("/push", json=older_payload, headers={"X-Token": "v50-integration-token"})
+assert older_response.status_code == 200, older_response.get_data(as_text=True)
+conn = module.db()
+try:
+    current_after_reorder = conn.execute(
+        "SELECT last_seen,ram_current_kib,ram_rss_kib FROM vm_current_fast WHERE node=? AND vm_uuid=?",
+        ("V50-TEST-NODE", vm_uuid),
+    ).fetchone()
+finally:
+    conn.close()
+assert int(current_after_reorder[0]) == now + 120
+assert int(current_after_reorder[1]) == 8388608
+assert int(current_after_reorder[2]) == 7340032
+
+future_payload = dict(payload)
+future_payload["time"] = int(time.time()) + module.V50_MAX_FUTURE_PUSH_SECONDS + 60
+future_response = client.post("/push", json=future_payload, headers={"X-Token": "v50-integration-token"})
+assert future_response.status_code == 400
+assert future_response.get_json().get("error") == "bad_payload"
+
+# A VM may move between Nodes without rewriting old Consumption history.
+move_uuid = str(uuid.uuid4())
+def moved_payload(node_name, sample_time):
+    moved = copy.deepcopy(payload)
+    moved["node"] = node_name
+    moved["time"] = sample_time
+    moved["inventory_complete"] = False
+    moved["vm_inventory"] = [move_uuid]
+    moved["interfaces"][0]["vm_uuid"] = move_uuid
+    moved["vms"][0]["vm_uuid"] = move_uuid
+    return moved
+move_a = client.post(
+    "/push", json=moved_payload("V50-MOVE-A", now + 240),
+    headers={"X-Token": "v50-integration-token"},
+)
+move_b = client.post(
+    "/push", json=moved_payload("V50-MOVE-B", now + 360),
+    headers={"X-Token": "v50-integration-token"},
+)
+assert move_a.status_code == 200 and move_b.status_code == 200
+move_conn = module.db()
+try:
+    move_nodes = {
+        str(row[0]) for row in move_conn.execute(
+            "SELECT DISTINCT node FROM vm_consumption_hourly WHERE vm_uuid=?",
+            (move_uuid,),
+        ).fetchall()
+    }
+finally:
+    move_conn.close()
+assert move_nodes == {"V50-MOVE-A", "V50-MOVE-B"}
+
 # Compact node-only Bandwidth Consumption ingest. No VM UUID is present.
 bw_end = module._v5030_local_bucket_start(now)
 bw_start = bw_end - module.V5030_BW_BUCKET_SECONDS
@@ -189,15 +353,17 @@ bw_payload = {
     "estimated": 0,
     "agent_version": 13,
 }
+# The legacy Agent-side two-hour endpoint is deliberately retired. Normal
+# five-minute /push is the only active writer and owns all compact rollups.
 bw_unauthorized = client.post("/push/bandwidth-consumption", json=bw_payload, headers={"X-Token": "wrong-token"})
-assert bw_unauthorized.status_code == 401, bw_unauthorized.get_data(as_text=True)
+assert bw_unauthorized.status_code == 410, bw_unauthorized.get_data(as_text=True)
+assert bw_unauthorized.get_json().get("error") == "legacy_2h_accounting_retired"
 
 bw_response = client.post("/push/bandwidth-consumption", json=bw_payload, headers={"X-Token": "v50-integration-token"})
-assert bw_response.status_code == 200, bw_response.get_data(as_text=True)
-assert bw_response.get_json().get("ok") is True
-# Retry is an idempotent UPSERT, not a second row.
+assert bw_response.status_code == 410, bw_response.get_data(as_text=True)
+assert bw_response.get_json().get("error") == "legacy_2h_accounting_retired"
 bw_retry = client.post("/push/bandwidth-consumption", json=bw_payload, headers={"X-Token": "v50-integration-token"})
-assert bw_retry.status_code == 200 and bw_retry.get_json().get("ok") is True
+assert bw_retry.status_code == 410
 
 admin_user = module.get_dashboard_user("admin")
 node_groups_module = sys.modules["node_groups"]
@@ -278,7 +444,9 @@ try:
         "node_stats": "SELECT count(*) FROM node_stats WHERE node=? AND vm_uuid=?",
         "vm_perf_stats": "SELECT count(*) FROM vm_perf_stats WHERE node=? AND vm_uuid=?",
         "node_push_snapshots": "SELECT count(*) FROM node_push_snapshots WHERE node=?",
-        "node_bandwidth_consumption_2h": "SELECT count(*) FROM node_bandwidth_consumption_2h WHERE node=?",
+        "node_consumption_5m": "SELECT count(*) FROM node_consumption_5m WHERE node=?",
+        "vm_consumption_hourly": "SELECT count(*) FROM vm_consumption_hourly WHERE node=? AND vm_uuid=?",
+        "vm_consumption_daily": "SELECT count(*) FROM vm_consumption_daily WHERE node=? AND vm_uuid=?",
         "vm_chart_5m": "SELECT count(*) FROM vm_chart_5m WHERE node=? AND vm_uuid=?",
         "vm_raw_detail_5m": "SELECT count(*) FROM vm_raw_detail_5m WHERE node=? AND vm_uuid=?",
         "node_chart_5m": "SELECT count(*) FROM node_chart_5m WHERE node=?",
@@ -287,6 +455,11 @@ try:
         params = ("V50-TEST-NODE", vm_uuid) if "vm_uuid" in sql else ("V50-TEST-NODE",)
         count = int(conn.execute(sql, params).fetchone()[0])
         assert count >= 1, f"{table} was not populated"
+    legacy_count = int(conn.execute(
+        "SELECT count(*) FROM node_bandwidth_consumption_2h WHERE node=?",
+        ("V50-TEST-NODE",),
+    ).fetchone()[0])
+    assert legacy_count == 0, "retired legacy two-hour writer accepted data"
     chart_rows, _start, _end, _step = module.query_vm_chart("V50-TEST-NODE", vm_uuid, "7d")
     perf_rows, _start, _end, _step = module.query_vm_perf_chart("V50-TEST-NODE", vm_uuid, "7d")
     assert chart_rows and chart_rows[-1]["bucket"] == module.bucket_for(now), "V2 network chart read failed"

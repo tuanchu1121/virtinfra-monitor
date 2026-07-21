@@ -5,22 +5,27 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app"
-R20_LAYER = APP / "runtime_layers/44_consumption_node_vm_rollup.py"
-R21_LAYER = APP / "runtime_layers/45_consumption_ingest_preaggregation.py"
-RELEASE = "50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix"
+CANONICAL_LAYER = APP / "runtime_layers/44_consumption_node_vm_rollup.py"
+SHIM_LAYER = APP / "runtime_layers/45_consumption_ingest_preaggregation.py"
+R20_LAYER = CANONICAL_LAYER
+R21_LAYER = CANONICAL_LAYER
+RELEASE = "50.5.9-prod-r22-consumption-hardening-global-sort"
 
 
 def text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_r20_alignment_layer_is_preserved_but_r21_is_final() -> None:
+def test_r22_consumption_is_canonical_in_layer44_and_layer45_is_a_shim() -> None:
     assert text(ROOT / "VERSION").strip() == RELEASE
     manifest = json.loads(text(APP / "runtime_layers/manifest.json"))
     names = [item["file"] for item in manifest]
-    assert R20_LAYER.name in names
-    assert names[-1] == R21_LAYER.name
-    assert names.index(R20_LAYER.name) < names.index(R21_LAYER.name)
+    assert CANONICAL_LAYER.name in names
+    assert names[-1] == SHIM_LAYER.name
+    assert names.index(CANONICAL_LAYER.name) < names.index(SHIM_LAYER.name)
+    shim = text(SHIM_LAYER)
+    assert "R22_CONSUMPTION_CANONICAL_LAYER = 44" in shim
+    assert "def " not in shim
 
 
 def test_r20_table_alignment_contract_remains_available() -> None:

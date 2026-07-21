@@ -6,9 +6,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app"
-LAYER = APP / "runtime_layers/45_consumption_ingest_preaggregation.py"
+LAYER = APP / "runtime_layers/44_consumption_node_vm_rollup.py"
 MIGRATION = ROOT / "postgres/sql/015_consumption_ingest_preaggregation.sql"
-RELEASE = "50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix"
+RELEASE = "50.5.9-prod-r22-consumption-hardening-global-sort"
 
 
 def read(path: Path) -> str:
@@ -25,7 +25,9 @@ def function_source(path: Path, name: str) -> str:
 def test_release_manifest_and_install_contract() -> None:
     assert read(ROOT / "VERSION").strip() == RELEASE
     manifest = json.loads(read(APP / "runtime_layers/manifest.json"))
-    assert manifest[-1]["file"] == LAYER.name
+    assert manifest[-2]["file"] == LAYER.name
+    assert manifest[-1]["file"] == "45_consumption_ingest_preaggregation.py"
+    assert "def " not in read(APP / "runtime_layers/45_consumption_ingest_preaggregation.py")
     for path in (ROOT / "install.sh", ROOT / "preflight.sh", ROOT / "deploy/postgres/provision-postgres-native.sh"):
         value = read(path)
         assert "015_consumption_ingest_preaggregation.sql" in value
@@ -101,11 +103,13 @@ def test_node_render_sql_has_strict_node_only_boundary() -> None:
     assert "node_consumption_forbidden_grouping:vm_uuid" in guard
 
 
-def test_hybrid_24h_path_uses_raw_edges_and_hourly_middle() -> None:
+def test_hybrid_24h_path_uses_retained_raw_edges_and_hourly_middle() -> None:
     source = function_source(LAYER, "_r21_node_source_sql")
-    assert "_r21_node_raw_branch(edge_start, full_hour_start)" in source
+    assert "add_raw(edge_start, full_hour_start)" in source
     assert "_r21_node_hourly_branch(full_hour_start, full_hour_end)" in source
-    assert "_r21_node_raw_branch(full_hour_end, edge_end)" in source
+    assert "add_raw(full_hour_end, edge_end)" in source
+    assert "raw_start = max" in source
+    assert "raw_available_start" in source
     assert "UNION ALL" in source
 
 

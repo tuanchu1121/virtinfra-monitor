@@ -472,7 +472,7 @@ def _v5052_merge_latest_metrics(conn, node, data_time):
       MERGE INTO vm_latest_metrics AS dst
       USING src
          ON dst.node=? AND dst.vm_uuid=src.vm_uuid
-      WHEN MATCHED THEN UPDATE SET
+      WHEN MATCHED AND src.last_seen >= dst.last_seen THEN UPDATE SET
         iface=CASE WHEN src.has_net THEN src.iface ELSE dst.iface END,
         bridge=CASE WHEN src.has_net THEN src.bridge ELSE dst.bridge END,
         last_seen=GREATEST(dst.last_seen,src.last_seen),
@@ -552,7 +552,11 @@ def _v5052_copy_upsert_rows(conn, table, key_columns, rows):
     key_sql = ",".join(keys)
     if updates:
         update_sql = ",".join(f"{column}=excluded.{column}" for column in updates)
-        conflict_sql = f"ON CONFLICT({key_sql}) DO UPDATE SET {update_sql}"
+        stale_guard = (
+            f" WHERE excluded.last_seen >= {table}.last_seen"
+            if "last_seen" in columns else ""
+        )
+        conflict_sql = f"ON CONFLICT({key_sql}) DO UPDATE SET {update_sql}{stale_guard}"
     else:
         conflict_sql = f"ON CONFLICT({key_sql}) DO NOTHING"
     cur = conn.execute(
@@ -628,6 +632,7 @@ def _v5052_current_writer(conn, node, data_time, interval_seconds, interfaces, v
         seconds_over_rx_pps=excluded.seconds_over_rx_pps,
         seconds_over_tx_pps=excluded.seconds_over_tx_pps,
         drops=excluded.drops,errors=excluded.errors
+      WHERE excluded.last_seen >= vm_iface_current.last_seen
     """)
 
     conn.execute("""
@@ -757,6 +762,7 @@ def _v5052_current_writer(conn, node, data_time, interval_seconds, interfaces, v
         ram_unused_kib=excluded.ram_unused_kib,ram_usable_kib=excluded.ram_usable_kib,
         disk_read_bps=excluded.disk_read_bps,disk_write_bps=excluded.disk_write_bps,
         disk_read_iops=excluded.disk_read_iops,disk_write_iops=excluded.disk_write_iops
+      WHERE excluded.last_seen >= vm_current_fast.last_seen
     """, (
         PUBLIC_BRIDGE, PUBLIC_BRIDGE, PRIVATE_BRIDGE, PRIVATE_BRIDGE,
         PUBLIC_BRIDGE, PRIVATE_BRIDGE, PUBLIC_BRIDGE, PRIVATE_BRIDGE,
@@ -795,6 +801,7 @@ def _v5052_current_writer(conn, node, data_time, interval_seconds, interfaces, v
         mem_total=excluded.mem_total,mem_used=excluded.mem_used,
         disk_read_bps=excluded.disk_read_bps,disk_write_bps=excluded.disk_write_bps,
         uptime_seconds=excluded.uptime_seconds
+      WHERE excluded.last_seen >= node_current_fast.last_seen
     """, (
         node, data_time, interval_seconds,
         safe_float(nh.get("load1"), 0), safe_float(nh.get("load5"), 0), safe_float(nh.get("load15"), 0),

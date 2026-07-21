@@ -1,8 +1,8 @@
 # Consumption architecture
 
-**Release:** `50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix`
+**Release:** `50.5.9-prod-r22-consumption-hardening-global-sort`
 
-R21 moves high-cardinality network aggregation from page render time to the accepted five-minute `/push` transaction. Dashboard snapshots, Agent cadence and all non-Consumption features remain unchanged.
+R21 introduced high-cardinality network aggregation from page render time to the accepted five-minute `/push` transaction. Dashboard snapshots, Agent cadence and all non-Consumption features remain unchanged.
 
 ## Active ingestion path
 
@@ -96,4 +96,4 @@ The Maintenance card uses PostgreSQL planner row estimates instead of exact `COU
 EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ...
 ```
 
-The validator fails if the plan scans a per-VM relation or if the SQL contains `vm_uuid`. The recorded R21 result is stored in `EXPLAIN_ANALYZE_R21.json`.
+The validator fails if the plan scans a per-VM relation or if the SQL contains `vm_uuid`. `EXPLAIN_ANALYZE_R21.json` remains the historical R21 baseline; R22 live-plan output is generated separately with `--output`.

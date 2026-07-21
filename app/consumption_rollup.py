@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Backfill R21 Consumption rollups without importing the Flask application.
+"""Backfill R22 Consumption rollups without importing the Flask application.
 
 This is an update/recovery utility, not a render-path dependency. It rebuilds
 compact node-level edge/hour/day rows from retained raw data and canonical
@@ -16,16 +16,14 @@ from typing import Any
 
 from maintenance_native import advisory_xact_lock, dedicated_connection
 
-ROLLUP_LOCK = "virtinfra-consumption-backfill-r21"
+ROLLUP_LOCK = "virtinfra-consumption-backfill-r22"
 MAX_BACKFILL_HOURS = 24 * 8
 RAW_EDGE_HOURS = 48
-
 
 def local_day_start(timestamp: int, offset_seconds: int) -> int:
     return (((int(timestamp) + int(offset_seconds)) // 86400) * 86400 - int(offset_seconds))
 
-
-def backfill(hours: int) -> dict[str, Any]:
+def _backfill_impl(hours: int) -> dict[str, Any]:
     """Rebuild recent node-level pre-aggregates from retained source data.
 
     Render requests never call this function. GROUP BY vm_uuid is deliberately
@@ -42,7 +40,7 @@ def backfill(hours: int) -> dict[str, Any]:
     first_day = local_day_start(cutoff, timezone_offset)
 
     conn = dedicated_connection(
-        application_name="virtinfra-consumption-rollup-r21",
+        application_name="virtinfra-consumption-rollup-r22",
         statement_timeout_ms=30 * 60 * 1000,
         lock_timeout_ms=5000,
     )
@@ -274,6 +272,127 @@ def backfill(hours: int) -> dict[str, Any]:
     finally:
         conn.close()
 
+BACKFILL_STATUS_KEY = "consumption_backfill_status_r22"
+BACKFILL_STATES = ("pending", "running", "completed", "completed_with_gaps", "failed")
+
+def _write_backfill_status(payload: dict[str, Any]) -> None:
+    value = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    conn = dedicated_connection(
+        application_name="virtinfra-consumption-backfill-status-r22",
+        statement_timeout_ms=30_000,
+        lock_timeout_ms=5_000,
+    )
+    try:
+        with conn.transaction():
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO admin_settings(key,value,updated_at)
+                    VALUES (%s,%s,%s)
+                    ON CONFLICT(key) DO UPDATE SET
+                      value=EXCLUDED.value,
+                      updated_at=EXCLUDED.updated_at
+                    """,
+                    (BACKFILL_STATUS_KEY, value, int(time.time())),
+                )
+    finally:
+        conn.close()
+
+def _backfill_progress(hours: int, started_at: int) -> tuple[int, int, int]:
+    now = int(time.time())
+    cutoff = now - hours * 3600
+    raw_cutoff = max(cutoff, now - RAW_EDGE_HOURS * 3600)
+    expected_raw = max(0, (now - raw_cutoff + 299) // 300)
+    expected_hourly = max(1, hours)
+    expected_daily = max(1, (hours + 23) // 24 + 1)
+    expected = expected_raw + expected_hourly + expected_daily
+    conn = dedicated_connection(
+        application_name="virtinfra-consumption-backfill-progress-r22",
+        statement_timeout_ms=60_000,
+        lock_timeout_ms=5_000,
+    )
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT COUNT(DISTINCT bucket_start) FROM node_consumption_5m WHERE bucket_start >= %s",
+                (raw_cutoff,),
+            )
+            raw_done = int((cursor.fetchone() or (0,))[0] or 0)
+            cursor.execute(
+                "SELECT COUNT(DISTINCT hour_start) FROM node_consumption_hourly WHERE hour_start >= %s",
+                (cutoff,),
+            )
+            hourly_done = int((cursor.fetchone() or (0,))[0] or 0)
+            cursor.execute(
+                "SELECT COUNT(DISTINCT day_start) FROM node_consumption_daily WHERE day_start >= %s",
+                (local_day_start(cutoff, int(os.environ.get("BW_RETENTION_TZ_OFFSET_SECONDS", "25200") or 25200)),),
+            )
+            daily_done = int((cursor.fetchone() or (0,))[0] or 0)
+            cursor.execute(
+                """
+                SELECT COUNT(*)
+                  FROM node_consumption_hourly
+                 WHERE hour_start >= %s
+                   AND (COALESCE(physical_coverage_seconds,0)<=0 OR COALESCE(vm_coverage_seconds,0)<=0)
+                """,
+                (cutoff,),
+            )
+            gap_rows = int((cursor.fetchone() or (0,))[0] or 0)
+        return expected, raw_done + hourly_done + daily_done, gap_rows
+    finally:
+        conn.close()
+
+def backfill(hours: int) -> dict[str, Any]:
+    hours = max(1, min(MAX_BACKFILL_HOURS, int(hours)))
+    started_at = int(time.time())
+    range_start = started_at - hours * 3600
+    running = {
+        "state": "running",
+        "started_at": started_at,
+        "finished_at": 0,
+        "range_start": range_start,
+        "range_end": started_at,
+        "expected_buckets": min(hours, RAW_EDGE_HOURS) * 12 + hours + max(1, (hours + 23) // 24 + 1),
+        "processed_buckets": 0,
+        "processed_rows": 0,
+        "skipped_rows": 0,
+        "last_error": "",
+    }
+    _write_backfill_status(running)
+    try:
+        result = _backfill_impl(hours)
+        expected, processed, gap_rows = _backfill_progress(hours, started_at)
+        finished_at = int(time.time())
+        processed_rows = sum(
+            int(value or 0)
+            for key, value in result.items()
+            if key.endswith("_rows")
+        )
+        missing_buckets = max(0, expected - processed)
+        state = "completed_with_gaps" if gap_rows > 0 or missing_buckets > 0 else "completed"
+        status = {
+            **running,
+            "state": state,
+            "finished_at": finished_at,
+            "expected_buckets": expected,
+            "processed_buckets": processed,
+            "processed_rows": processed_rows,
+            "skipped_rows": gap_rows + missing_buckets,
+        }
+        _write_backfill_status(status)
+        return {**result, "backfill_status": status}
+    except Exception as exc:
+        failed = {
+            **running,
+            "state": "failed",
+            "finished_at": int(time.time()),
+            "last_error": str(exc)[:2000],
+        }
+        try:
+            _write_backfill_status(failed)
+        except Exception:
+            pass
+        raise
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -281,7 +400,6 @@ def main() -> int:
     args = parser.parse_args()
     print(json.dumps(backfill(args.hours), sort_keys=True, separators=(",", ":")), flush=True)
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

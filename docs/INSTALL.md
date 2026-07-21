@@ -1,6 +1,6 @@
 # Installation
 
-Release: `50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix`
+Release: `50.5.9-prod-r22-consumption-hardening-global-sort`
 ## Requirements
 
 - Debian 12+ or Ubuntu 22.04+

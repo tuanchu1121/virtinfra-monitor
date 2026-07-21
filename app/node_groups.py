@@ -1,4 +1,4 @@
-"""50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix.
+"""50.5.9-prod-r22-consumption-hardening-global-sort.
 
 Operations single-shell, Node flag scope and user/RBAC/session hardening.
 
@@ -2118,43 +2118,17 @@ def _group_top_raw_rows(period, q, sort_by, order, scope, limit, group_id):
 
 
 def get_top_vm_rows(period, q="", sort_by="total", order="desc", scope="all", limit=100):
-    gid = selected_group_id()
-    if not gid:
-        rows, selected_bucket, latest_bucket, requested_limit = _BASE["get_top_vm_rows"](period, q=q, sort_by=sort_by, order=order, scope=scope, limit=limit)
-        allowed = effective_visible_nodes()
-        return [row for row in rows if str(row[0]) in allowed], selected_bucket, latest_bucket, requested_limit
+    """Use the R22 canonical SQL global-sort path for All/Group views."""
     m = _m()
-    requested_sort = m.clean_top_sort(sort_by)
-    requested_order = m.clean_sort_order(order)
-    requested_limit = max(10, min(1000, m.safe_int(limit, 100)))
-    ram_sort = requested_sort in m.V48103_RAM_SORT_KEYS
-    disk_sort = requested_sort in m.V48133_DISK_SORT_KEYS
-    base_sort = "total" if ram_sort or disk_sort else requested_sort
-    fetch_limit = 1000 if ram_sort or disk_sort else requested_limit
-    rows, selected_bucket, latest_bucket, _ = _group_top_raw_rows(period, q, base_sort, requested_order, scope, fetch_limit, gid)
-    rows = m._v48103_augment_rows_with_ram(rows, period, selected_bucket, (0, 1, 24, 25))
-    if rows:
-        conn = m.db()
-        try:
-            rows = [r for r in rows if m._v48126_is_visible(conn, r[0], r[1])]
-        finally:
-            conn.close()
-    if ram_sort:
-        rows = m._v48103_sort_ram_rows(rows, requested_sort, requested_order, extractor=lambda r:(r[25],r[24],r[32],r[33],r[34]), tie_extractor=lambda r:m.safe_float(r[7],0))
-    totals = m._v48133_disk_totals_for_pairs([(r[0], r[1]) for r in rows])
-    rows = [tuple(r) + totals.get((str(r[0]), str(r[1])), (0,0,0)) for r in rows]
-    if disk_sort:
-        def disk_metric(row):
-            allocated, assigned, count = (max(0.0,m.safe_float(row[i],0)) for i in (35,36,37))
-            if requested_sort == "diskallocated": return allocated
-            if requested_sort == "diskassigned": return assigned
-            if requested_sort == "diskallocpct": return allocated/assigned if assigned > 0 else -1.0
-            return count
-        def key(row):
-            present = any(m.safe_int(row[i],0)>0 for i in (35,36,37)); value=disk_metric(row); tie=m.safe_float(row[7],0)
-            return ((0 if present else 1), value if requested_order=="asc" else -value, tie if requested_order=="asc" else -tie)
-        rows.sort(key=key)
-    return rows[:requested_limit], selected_bucket, latest_bucket, requested_limit
+    return m._r22_get_top_vm_rows_global(
+        period,
+        q=q,
+        sort_by=sort_by,
+        order=order,
+        scope=scope,
+        limit=limit,
+        group_id=selected_group_id(),
+    )
 
 
 def _inject_group_select(response, marker: str, selected: int = 0, css_class: str = ""):

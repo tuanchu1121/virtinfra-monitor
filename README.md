@@ -1,6 +1,6 @@
 # VirtInfra Monitor
 
-**Release:** `50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix`
+**Release:** `50.5.9-prod-r22-consumption-hardening-global-sort`
 
 VirtInfra Monitor is a PostgreSQL 17 and TimescaleDB monitoring platform for KVM/libvirt nodes and virtual machines. PostgreSQL is the authoritative datastore for inventory, users, settings, current metrics, historical metrics, Abuse events, Storage I/O and Consumption.
 
@@ -9,7 +9,7 @@ VirtInfra Monitor is a PostgreSQL 17 and TimescaleDB monitoring platform for KVM
 The release has two explicit entry points:
 
 - `install.sh` is fresh-install only. It refuses to overwrite an existing application directory, PostgreSQL configuration, container or data volume.
-- `update.sh` is update-only. It requires an existing installation, preserves configuration and credentials, and creates a PostgreSQL backup before replacing application code.
+- `update.sh` is update-only. It requires an existing installation, preserves configuration and credentials, and creates a PostgreSQL backup plus a source/configuration snapshot before replacing application code.
 
 There is no automatic install-to-update fallback.
 
@@ -21,6 +21,17 @@ There is no automatic install-to-update fallback.
 - UI visibility and backend authorization use the same role boundary; direct forged requests remain denied.
 - R18 and later bind each browser session to the current password hash, role and enabled state. Password resets, role changes, disable and delete actions revoke old sessions on their next request. Existing sessions from an older release must sign in again after update.
 - The final enabled Super Admin cannot be downgraded, disabled or deleted from the web UI. If an older release already left zero enabled Super Admin accounts, recover one from the server console; `/admin/setup` is reserved for a true first-user installation.
+
+
+## R22 hardening highlights
+
+- Consumption business logic is canonical in runtime Layer 44; Layer 45 is only a compatibility marker.
+- Node, Node Group and Summary continue to read only compact Node rollups. VM Consumption remains a separate pipeline.
+- Top VM RAM and disk sorting now ranks the complete filtered VM set in PostgreSQL before `LIMIT`; no second current-state table or dual-write path was added.
+- VM Consumption caches are isolated by Group, Node and visibility generation.
+- Future-dated Agent payloads are bounded, older retries cannot rewind current tables, and partial payloads without VM metrics preserve the last valid VM current state.
+
+See [R22 validation](VALIDATION_REPORT_R22.md), [benchmark status](BENCHMARK_REPORT_R22.md), [query-plan status](QUERY_PLAN_REPORT_R22.md) and [migration/rollback](docs/R22_MIGRATION_ROLLBACK.md).
 
 
 ## Fresh installation
@@ -66,14 +77,14 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/update.sh \
 | bash
 ```
 
-The updater creates a PostgreSQL backup, refuses to proceed while a maintenance worker is active, and briefly quiesces the web/cleanup services while schema and Consumption backfill work runs. Agent pushes resume after the health check.
+The updater creates a PostgreSQL backup and a pre-update source/configuration snapshot, refuses to proceed while a maintenance worker is active, and briefly quiesces the web/cleanup services while schema and Consumption backfill work runs. Agent pushes resume after the health check.
 
 The updater preserves:
 
 - the `bw_monitor_postgres_data` Docker volume;
 - `/etc/default/bw-monitor` and `/etc/default/bw-monitor-postgres` settings;
 - Admin credentials, Agent token, domain/TLS settings and current data;
-- PostgreSQL backup/restore and rollback controls needed for update safety.
+- PostgreSQL backup/restore, source/configuration snapshot and rollback controls needed for update safety.
 
 Change domain through the update path:
 

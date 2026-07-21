@@ -1,4 +1,9 @@
 
+V50_MAX_FUTURE_PUSH_SECONDS = max(
+    60,
+    min(86400, safe_int(os.environ.get("BW_MAX_FUTURE_PUSH_SECONDS", "600"), 600)),
+)
+
 def local_hour_start(ts):
     return ((int(ts) + RETENTION_TZ_OFFSET_SECONDS) // 3600) * 3600 - RETENTION_TZ_OFFSET_SECONDS
 
@@ -457,8 +462,18 @@ def push():
         log_node_event("bad_payload", node="", status_code=400, detail=str(exc))
         return {"error": "bad_payload", "detail": str(exc)}, 400
 
-    data_time = safe_int(data.get("time"), now_ts())
+    received_now = now_ts()
+    data_time = safe_int(data.get("time"), received_now)
     node = str(data.get("node") or "").strip()
+    if data_time > received_now + V50_MAX_FUTURE_PUSH_SECONDS:
+        detail = "payload time exceeds allowed future skew"
+        log_node_event("future_payload", node=node, status_code=400, detail=detail)
+        return {
+            "error": "bad_payload",
+            "detail": detail,
+            "server_time": received_now,
+            "max_future_seconds": V50_MAX_FUTURE_PUSH_SECONDS,
+        }, 400
     if not node:
         log_node_event("bad_payload", node="", status_code=400, detail="missing required field: node")
         return {"error": "bad_payload", "detail": "node is required"}, 400
@@ -481,9 +496,10 @@ def push():
         log_node_event("bad_payload", node=node, status_code=400, detail="interfaces is not a list")
         return {"error": "bad_payload", "detail": "interfaces must be a list"}, 400
 
-    vms = data.get("vms") or []
-    if not isinstance(vms, list):
-        vms = []
+    vm_metrics_present = "vms" in data and isinstance(data.get("vms"), list)
+    vms = data.get("vms") if vm_metrics_present else []
+    if not vm_metrics_present:
+        app.logger.warning("push_partial_vm_metrics node=%s time=%s reason=missing_or_invalid_vms", node, data_time)
 
     vm_inventory_payload = data.get("vm_inventory") or []
     if not isinstance(vm_inventory_payload, list):
@@ -1037,10 +1053,12 @@ def push():
             ))
 
         disk_current_started = time.perf_counter()
-        ingest_disk_io_current(conn, node, data_time, interval_seconds, vms, node_host)
+        if vm_metrics_present:
+            ingest_disk_io_current(conn, node, data_time, interval_seconds, vms, node_host)
         disk_current_ms = (time.perf_counter() - disk_current_started) * 1000.0
         current_abuse_started = time.perf_counter()
-        refresh_fast_current_state(conn, node, data_time, interval_seconds, interfaces, vms, node_host, inventory_complete)
+        if vm_metrics_present:
+            refresh_fast_current_state(conn, node, data_time, interval_seconds, interfaces, vms, node_host, inventory_complete)
         current_abuse_ms = (time.perf_counter() - current_abuse_started) * 1000.0
         try:
             storage_v2_stats = storage_v2.write_storage_v2(
@@ -1063,7 +1081,7 @@ def push():
         conn.close()
 
     vm_count = len({str(item.get("vm_uuid") or "-") for item in interfaces if isinstance(item, dict)})
-    detail = f"bucket={bucket};vms={len(vms)};physical={len(physical_interfaces)};bridges={len(bridge_addresses)};inventory_complete={1 if inventory_complete else 0}"
+    detail = f"bucket={bucket};vms={len(vms)};physical={len(physical_interfaces)};bridges={len(bridge_addresses)};inventory_complete={1 if inventory_complete else 0};vm_metrics_present={1 if vm_metrics_present else 0}"
     if agent_health:
         detail += f";duration_ms={safe_int(agent_health.get('duration_ms'), 0)}"
     log_node_event("push_ok", node=node, status_code=200, vm_count=vm_count, iface_count=len(interfaces), detail=detail)
@@ -1087,4 +1105,3 @@ def push():
             storage_v2_stats.chart_rows, storage_v2_stats.raw_rows, storage_v2_stats.node_rows,
         )
     return {"ok": True, "count": len(interfaces), "vms": len(vms), "physical": len(physical_interfaces), "bridges": len(bridge_addresses), "inventory_complete": inventory_complete, "version": data.get("version", 1), "agent_config": get_agent_runtime_config()}
-

@@ -267,12 +267,18 @@
     "file": "44_consumption_node_vm_rollup.py",
     "start_line": 32055,
     "end_line": 33013,
-    "sha256": "335c3aa147bd2bb1b7c84fe32cd8ae7aecbb4e4346683e3d459255745a4a5b45"
+    "sha256": "76b5a36e8347c7171c1de871e5f5a9d68c677f3457c41c6e0ac5a0199d6880f3"
   },
   {
     "file": "45_consumption_ingest_preaggregation.py",
     "start_line": 33014,
     "end_line": 33015,
     "sha256": "189b8843563ae6cd09af492ffcf00315fec17f659990217d89c83f696d6dcbfe"
+  },
+  {
+    "file": "46_consumption_sort_alignment_hotfix.py",
+    "start_line": 33016,
+    "end_line": 33463,
+    "sha256": "9e512a89bc799997ef6cd9aa25e517664b3ddc3f529075be5c2eb0c6d15e71dc"
   }
 ]

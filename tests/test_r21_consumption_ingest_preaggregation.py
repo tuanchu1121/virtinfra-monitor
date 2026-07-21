@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app"
 LAYER = APP / "runtime_layers/44_consumption_node_vm_rollup.py"
 MIGRATION = ROOT / "postgres/sql/015_consumption_ingest_preaggregation.sql"
-RELEASE = "50.5.9-prod-r22.7-vm-consumption-rollup-only"
+RELEASE = "50.5.9-prod-r22.8-consumption-sort-alignment-hotfix"
 
 
 def read(path: Path) -> str:
@@ -25,8 +25,9 @@ def function_source(path: Path, name: str) -> str:
 def test_release_manifest_and_install_contract() -> None:
     assert read(ROOT / "VERSION").strip() == RELEASE
     manifest = json.loads(read(APP / "runtime_layers/manifest.json"))
-    assert manifest[-2]["file"] == LAYER.name
-    assert manifest[-1]["file"] == "45_consumption_ingest_preaggregation.py"
+    assert manifest[-3]["file"] == LAYER.name
+    assert manifest[-2]["file"] == "45_consumption_ingest_preaggregation.py"
+    assert manifest[-1]["file"] == "46_consumption_sort_alignment_hotfix.py"
     assert "def " not in read(APP / "runtime_layers/45_consumption_ingest_preaggregation.py")
     for path in (ROOT / "install.sh", ROOT / "preflight.sh", ROOT / "deploy/postgres/provision-postgres-native.sh"):
         value = read(path)

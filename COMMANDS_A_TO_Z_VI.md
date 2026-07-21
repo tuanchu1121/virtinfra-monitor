@@ -1,6 +1,6 @@
 # VirtInfra Monitor - Toàn bộ command triển khai và bảo trì từ A đến Z
 
-> Release: `50.5.9-prod-r22.7-vm-consumption-rollup-only`
+> Release: `50.5.9-prod-r22.8-consumption-sort-alignment-hotfix`
 >
 > Chạy command Monitor bằng `root`. Với node KVM, chạy Agent bằng `root` để Agent đọc được libvirt, interface, disk và host metrics.
 
@@ -105,7 +105,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Kết quả mong đợi:
 
 ```text
-50.5.9-prod-r22.7-vm-consumption-rollup-only
+50.5.9-prod-r22.8-consumption-sort-alignment-hotfix
 ```
 
 ## 2.2 Update chuẩn, có backup trước

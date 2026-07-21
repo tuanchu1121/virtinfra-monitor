@@ -7,7 +7,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "tools" / "rbac-runtime-validation.py"
-VERSION = "50.5.9-prod-r22.7-vm-consumption-rollup-only"
+VERSION = "50.5.9-prod-r22.8-consumption-sort-alignment-hotfix"
 
 
 def test_release_identity() -> None:

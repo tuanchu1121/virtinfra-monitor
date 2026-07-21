@@ -633,7 +633,9 @@ def main() -> int:
         group_consumption_html = group_consumption.get_data(as_text=True)
         assert 'v5058c-node-table' in group_consumption_html
         assert group_consumption_html.count('<th>') >= 7
-        assert 'sort=physical_public' not in group_consumption_html
+        assert 'sort=physical_public&amp;' not in group_consumption_html
+        assert 'sort=physical_public_rx' in group_consumption_html
+        assert 'sort=public_difference' in group_consumption_html
 
         # R20 fixes the Node and Node Group Consumption grids to an explicit
         # column contract. Validate rendered colgroups and body rows rather

@@ -44,7 +44,7 @@ run_contract(){
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.9-prod-r22.7-vm-consumption-rollup-only" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.5.9-prod-r22.8-consumption-sort-alignment-hotfix" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/runtime_loader.py \
    && -f deploy/postgres/install-postgres-native.sh \
    && -f deploy/postgres/update-postgres-native.sh \
@@ -52,6 +52,7 @@ log "Validate release identity"
    && -f app/runtime_layers/manifest.json \
    && -f app/runtime_layers/44_consumption_node_vm_rollup.py \
    && -f app/runtime_layers/45_consumption_ingest_preaggregation.py \
+   && -f app/runtime_layers/46_consumption_sort_alignment_hotfix.py \
    && -f app/runtime_layers/00_bootstrap_database.py \
    && -f app/runtime_layers/43_node_groups_loader.py \
    && -f app/bw_pg.py && -f app/maintenance_native.py && -f app/configuration_backup.py && -f app/emergency_backup.py \
@@ -210,6 +211,9 @@ run_pytest -q tests/test_r225_configuration_backup_nuclear.py
 
 log "Validate r22.7 VM Consumption rollup-only read path"
 run_pytest -q tests/test_r22_7_vm_consumption_rollup_only.py
+
+log "Validate r22.8 Consumption sort and alignment hotfix"
+run_pytest -q tests/test_r22_8_consumption_sort_alignment.py
 
 log "Verify one-command installer and operations flow"
 bash ./tools/test-installer-flow.sh

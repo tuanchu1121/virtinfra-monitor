@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.9-prod-r22.7-vm-consumption-rollup-only`
+Release: `50.5.9-prod-r22.8-consumption-sort-alignment-hotfix`
 
 ## Final data path
 

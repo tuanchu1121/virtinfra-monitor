@@ -385,6 +385,10 @@ def _v5058r4_ceil_hour(ts):
 def _v5058r4_vm_raw_branch(start, end, selected_node=""):
     if end <= start:
         return "", []
+    # Keep the original last_push range semantics, while also constraining the
+    # TimescaleDB partition key so old chunks can be excluded before scanning.
+    bucket_start = bucket_for(start)
+    bucket_end = bucket_for(end - 1) + CACHE_BUCKET_SECONDS
     node_clause = " AND ns.node=?" if selected_node else ""
     sql = """
       SELECT ns.node,ns.vm_uuid,ns.bridge,
@@ -393,10 +397,11 @@ def _v5058r4_vm_raw_branch(start, end, selected_node=""):
              COUNT(DISTINCT ns.bucket)::bigint AS sample_count,
              COALESCE(MAX(ns.last_push),0)::bigint AS last_push
         FROM node_stats ns
-       WHERE ns.last_push>=? AND ns.last_push<?%s
+       WHERE ns.bucket>=? AND ns.bucket<?
+         AND ns.last_push>=? AND ns.last_push<?%s
        GROUP BY ns.node,ns.vm_uuid,ns.bridge
     """ % node_clause
-    params = [start, end]
+    params = [bucket_start, bucket_end, start, end]
     if selected_node:
         params.append(selected_node)
     return sql, params

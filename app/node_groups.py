@@ -1,4 +1,4 @@
-"""50.5.9-prod-r22.6-consumption-vm-timeout-hotfix.
+"""50.5.9-prod-r22.7-vm-consumption-rollup-only.
 
 Operations single-shell, Node flag scope and user/RBAC/session hardening.
 

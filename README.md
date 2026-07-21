@@ -1,6 +1,6 @@
 # VirtInfra Monitor
 
-**Release:** `50.5.9-prod-r22.6-consumption-vm-timeout-hotfix`
+**Release:** `50.5.9-prod-r22.7-vm-consumption-rollup-only`
 
 VirtInfra Monitor is a PostgreSQL 17 and TimescaleDB monitoring platform for KVM/libvirt nodes and virtual machines. PostgreSQL is the authoritative datastore for inventory, users, settings, current metrics, historical metrics, Abuse events, Storage I/O and Consumption.
 
@@ -26,7 +26,7 @@ There is no automatic install-to-update fallback.
 ## R22 hardening highlights
 
 - Consumption business logic is canonical in runtime Layer 44; Layer 45 is only a compatibility marker.
-- Node, Node Group and Summary continue to read only compact Node rollups. VM Consumption remains a separate pipeline.
+- Node, Node Group and Summary continue to read only compact Node rollups. VM Consumption remains separate and reads only canonical hourly/daily VM rollups.
 - Top VM RAM and disk sorting now ranks the complete filtered VM set in PostgreSQL before `LIMIT`; no second current-state table or dual-write path was added.
 - VM Consumption caches are isolated by Group, Node and visibility generation.
 - Future-dated Agent payloads are bounded, older retries cannot rewind current tables, and partial payloads without VM metrics preserve the last valid VM current state.

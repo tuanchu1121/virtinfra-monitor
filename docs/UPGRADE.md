@@ -1,6 +1,6 @@
 # Update an existing installation
 
-Release: `50.5.9-prod-r22.6-consumption-vm-timeout-hotfix`
+Release: `50.5.9-prod-r22.7-vm-consumption-rollup-only`
 Use this path only when VirtInfra Monitor is already installed. The updater requires both `/etc/default/bw-monitor` and `/etc/default/bw-monitor-postgres`.
 
 ```bash

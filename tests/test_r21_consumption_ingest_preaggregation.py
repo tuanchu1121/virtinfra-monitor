@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app"
 LAYER = APP / "runtime_layers/44_consumption_node_vm_rollup.py"
 MIGRATION = ROOT / "postgres/sql/015_consumption_ingest_preaggregation.sql"
-RELEASE = "50.5.9-prod-r22.6-consumption-vm-timeout-hotfix"
+RELEASE = "50.5.9-prod-r22.7-vm-consumption-rollup-only"
 
 
 def read(path: Path) -> str:
@@ -127,11 +127,11 @@ def test_node_group_summary_reuse_one_cached_node_dataset() -> None:
     assert "node_stats" not in group
 
 
-def test_vm_pipeline_remains_separate_and_hybrid() -> None:
+def test_vm_pipeline_remains_separate_and_rollup_only() -> None:
     source = read(APP / "runtime_layers/40_consumption_cleanup_r4.py")
     assert "FROM vm_consumption_daily" in source
     assert "FROM vm_consumption_hourly" in source
-    assert "FROM node_stats ns" in source
+    assert "FROM node_stats ns" not in function_source(APP / "runtime_layers/40_consumption_cleanup_r4.py", "_v5058c_vm_source_sql")
     assert "def _v5058c_vm_source_sql" in source
     node_group = function_source(LAYER, "_r20_group_page")
     assert "_v5058c_vm_source_sql" not in node_group

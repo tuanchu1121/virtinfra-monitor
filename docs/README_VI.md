@@ -1,6 +1,6 @@
 # Tài liệu VirtInfra Monitor
 
-Release: `50.5.9-prod-r22.6-consumption-vm-timeout-hotfix`
+Release: `50.5.9-prod-r22.7-vm-consumption-rollup-only`
 
 Runtime dùng PostgreSQL 17 + TimescaleDB làm nguồn dữ liệu duy nhất.
 

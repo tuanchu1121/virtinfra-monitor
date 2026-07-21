@@ -44,7 +44,7 @@ run_contract(){
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.9-prod-r22.6-consumption-vm-timeout-hotfix" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.5.9-prod-r22.7-vm-consumption-rollup-only" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/runtime_loader.py \
    && -f deploy/postgres/install-postgres-native.sh \
    && -f deploy/postgres/update-postgres-native.sh \
@@ -68,7 +68,8 @@ log "Validate release identity"
    && -f app/inventory_cleanup.py && -f app/consumption_rollup.py \
    && -f deploy/postgres/bw-monitor-inventory-cleanup.timer \
    && -f deploy/agent/agent.py && -f deploy/agent/fix-agent-uuid.sh \
-   && -f tools/benchmark-r22-top-vm.py && -f tests/test_r22_hardening.py ]] \
+   && -f tools/benchmark-r22-top-vm.py && -f tests/test_r22_hardening.py \
+   && -f tests/test_r22_7_vm_consumption_rollup_only.py ]] \
 || fail "full source tree is incomplete"
 [[ ! -d release && ! -d enterprise ]] || fail "legacy duplicate runtime trees must not be shipped"
 
@@ -206,6 +207,9 @@ run_pytest -q tests/test_r21_consumption_ingest_preaggregation.py
 log "Validate r22 canonical Consumption and global Top VM hardening"
 run_pytest -q tests/test_r22_hardening.py
 run_pytest -q tests/test_r225_configuration_backup_nuclear.py
+
+log "Validate r22.7 VM Consumption rollup-only read path"
+run_pytest -q tests/test_r22_7_vm_consumption_rollup_only.py
 
 log "Verify one-command installer and operations flow"
 bash ./tools/test-installer-flow.sh

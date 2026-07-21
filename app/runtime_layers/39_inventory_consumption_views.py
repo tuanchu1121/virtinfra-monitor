@@ -513,7 +513,7 @@ def bandwidth_consumption_page_v5058c():
       %s
       %s
       %s
-      <div class="v5058c-note">Data follows the monitor's existing timezone and refresh cycle. VM RX/TX is normalized to the guest perspective. Search and pagination do not change the four overview totals.</div>
+      <div class="v5058c-note">Data follows the monitor's existing timezone and refresh cycle. VM RX/TX is normalized to the guest perspective. VM rows use hourly/daily rollups only; the current hour can be partial and no raw VM/NIC history is scanned. Search and pagination do not change the four overview totals.</div>
     </div>
     """ % (
         "".join(period_links), escape(refresh_url, quote=True),

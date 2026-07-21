@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.9-prod-r22.6-consumption-vm-timeout-hotfix`
+Release: `50.5.9-prod-r22.7-vm-consumption-rollup-only`
 
 ## Final data path
 

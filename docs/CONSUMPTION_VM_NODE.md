@@ -1,6 +1,6 @@
 # Consumption architecture
 
-**Release:** `50.5.9-prod-r22.6-consumption-vm-timeout-hotfix`
+**Release:** `50.5.9-prod-r22.7-vm-consumption-rollup-only`
 
 R21 introduced high-cardinality network aggregation from page render time to the accepted five-minute `/push` transaction. Dashboard snapshots, Agent cadence and all non-Consumption features remain unchanged.
 
@@ -57,13 +57,13 @@ At 350 Nodes, the complete-hour portion reads roughly `350 × 23 = 8,050` rows i
 
 ## VM pipeline
 
-VM Consumption remains separate:
+VM Consumption remains separate and is rollup-only at render time:
 
-- complete days from `vm_consumption_daily`;
-- complete hours from `vm_consumption_hourly`;
-- only incomplete edges from recent raw VM rows.
+- full local days from `vm_consumption_daily`;
+- partial local days, including the live current hour, from `vm_consumption_hourly`;
+- no `node_stats`, `usage` or raw NIC scan when the VM table is opened.
 
-The VM pipeline runs only when the VM tab is opened. Node and Group tabs do not call it. Search, sorting and pagination remain server-side.
+The selected range is represented by a fixed number of hourly buckets. The oldest boundary is hour-aligned and the current hour can be partial. The VM pipeline runs only when the VM tab is opened. Node and Group tabs do not call it. Search, global sorting and pagination remain server-side.
 
 ## Request reuse and cache
 

@@ -1,6 +1,6 @@
 # VirtInfra Monitor - Toàn bộ command triển khai và bảo trì từ A đến Z
 
-> Release: `50.5.9-prod-r22.6-consumption-vm-timeout-hotfix`
+> Release: `50.5.9-prod-r22.7-vm-consumption-rollup-only`
 >
 > Chạy command Monitor bằng `root`. Với node KVM, chạy Agent bằng `root` để Agent đọc được libvirt, interface, disk và host metrics.
 
@@ -105,7 +105,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Kết quả mong đợi:
 
 ```text
-50.5.9-prod-r22.6-consumption-vm-timeout-hotfix
+50.5.9-prod-r22.7-vm-consumption-rollup-only
 ```
 
 ## 2.2 Update chuẩn, có backup trước
@@ -1060,7 +1060,7 @@ bash ansible/remove-agent.sh \
 ```text
 15 giây: Agent sample local
 5 phút: một payload /push
-Monitor: raw edge + VM hourly/daily + Node 5m/hourly/daily UPSERT
+Monitor: VM hourly/daily rollup-only reads + Node 5m/hourly/daily UPSERT
 ```
 
 Node/Group/Summary chỉ đọc bảng Node. VM có pipeline riêng. Không còn payload Agent hai giờ. Nút `2H` trên giao diện chỉ là khoảng thời gian hiển thị.

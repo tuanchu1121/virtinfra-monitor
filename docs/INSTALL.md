@@ -1,6 +1,6 @@
 # Installation
 
-Release: `50.5.9-prod-r22.6-consumption-vm-timeout-hotfix`
+Release: `50.5.9-prod-r22.7-vm-consumption-rollup-only`
 ## Requirements
 
 - Debian 12+ or Ubuntu 22.04+

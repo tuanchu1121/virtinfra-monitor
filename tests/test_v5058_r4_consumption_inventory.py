@@ -11,7 +11,7 @@ VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 
 def test_release_identity():
-    assert VERSION == "50.5.9-prod-r22.6-consumption-vm-timeout-hotfix"
+    assert VERSION == "50.5.9-prod-r22.7-vm-consumption-rollup-only"
     assert VERSION in APP
     assert VERSION in INSTALLER
 
@@ -48,15 +48,17 @@ def test_push_has_transaction_retry_for_residual_deadlocks():
     assert '"40P01"' in APP
 
 
-def test_consumption_uses_server_rollups_and_exact_edges():
+def test_consumption_uses_server_rollups_without_vm_raw_edges():
     final = APP[APP.index("# 50.5.8-r4 fast Consumption + deadlock-safe inventory cleanup"):]
     assert "node_consumption_hourly" in final
     assert "node_consumption_daily" in final
     assert "FROM vm_consumption_hourly" in final
     assert "FROM vm_consumption_daily" in final
-    assert "FROM node_stats ns" in final
+    vm_source = final[final.index("def _v5058c_vm_source_sql"):final.index("def _v5058c_visible_vm_cte")]
+    assert "FROM node_stats ns" not in vm_source
+    assert "FROM usage" not in vm_source
     assert "FROM node_physical_net_stats" in final
-    assert "def _v5058r4_ceil_hour" in final
+    assert "def _v5058r7_vm_rollup_window" in final
     assert "COUNT(*) OVER()" in final
     assert "V5058R4_SUMMARY_CACHE_TTL = 60" in final
     assert "COUNT(DISTINCT last_push)::bigint sample_count" in APP

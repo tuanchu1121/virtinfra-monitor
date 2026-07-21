@@ -378,37 +378,24 @@ def run_inventory_cleanup_batches(batch_size=None, max_batches=None):
 
 # ----- Fast, rolling-window Consumption readers --------------------------------
 
-def _v5058r4_ceil_hour(ts):
-    base = local_hour_start(ts)
-    return base if safe_int(ts, 0) == base else base + 3600
+def _v5058r7_vm_rollup_window(start, end):
+    """Return the fixed number of hourly buckets used by the VM table.
 
-def _v5058r4_vm_raw_branch(start, end, selected_node=""):
+    VM rollups are updated by every accepted five-minute Agent push.  The
+    current hour therefore already contains a live partial total.  Selecting
+    exactly N hourly buckets keeps the query bounded without reopening raw
+    VM/NIC history.  The oldest edge is hour-aligned by design.
+    """
+    start = safe_int(start, 0)
+    end = safe_int(end, 0)
     if end <= start:
-        return "", []
-    # node_stats is partitioned by bucket. Filtering only last_push prevents
-    # Timescale chunk exclusion and can scan the full retained VM/NIC history
-    # for two small edge ranges. Keep last_push for exact boundary semantics,
-    # but always constrain the hypertable partition column too.
-    bucket_start = bucket_for(start)
-    bucket_end = bucket_for(max(start, end - 1)) + CACHE_BUCKET_SECONDS
-    node_clause = " AND ns.node=?" if selected_node else ""
-    sql = """
-      SELECT ns.node,ns.vm_uuid,ns.bridge,
-             COALESCE(SUM(ns.rx_delta),0)::bigint AS rx_bytes,
-             COALESCE(SUM(ns.tx_delta),0)::bigint AS tx_bytes,
-             COUNT(DISTINCT ns.bucket)::bigint AS sample_count,
-             COALESCE(MAX(ns.last_push),0)::bigint AS last_push
-        FROM node_stats ns
-       WHERE ns.bucket>=? AND ns.bucket<?
-         AND ns.last_push>=? AND ns.last_push<?%s
-       GROUP BY ns.node,ns.vm_uuid,ns.bridge
-    """ % node_clause
-    params = [bucket_start, bucket_end, start, end]
-    if selected_node:
-        params.append(selected_node)
-    return sql, params
+        return 0, 0
+    requested_hours = max(1, int(math.ceil((end - start) / 3600.0)))
+    aligned_end = local_hour_start(max(start, end - 1)) + 3600
+    aligned_start = aligned_end - requested_hours * 3600
+    return aligned_start, aligned_end
 
-def _v5058r4_vm_hourly_branch(start, end, selected_node=""):
+def _v5058r7_vm_hourly_branch(start, end, selected_node=""):
     if end <= start:
         return "", []
     node_clause = " AND node=?" if selected_node else ""
@@ -422,7 +409,7 @@ def _v5058r4_vm_hourly_branch(start, end, selected_node=""):
         params.append(selected_node)
     return sql, params
 
-def _v5058r4_vm_daily_branch(start, end, selected_node=""):
+def _v5058r7_vm_daily_branch(start, end, selected_node=""):
     if end <= start:
         return "", []
     node_clause = " AND node=?" if selected_node else ""
@@ -437,41 +424,62 @@ def _v5058r4_vm_daily_branch(start, end, selected_node=""):
     return sql, params
 
 def _v5058c_vm_source_sql(start, end, selected_node=""):
-    """Use daily/full-hour rollups and raw 5-minute rows only at true edges."""
-    start = safe_int(start, 0)
-    end = safe_int(end, 0)
-    if end <= start:
-        return "SELECT node,vm_uuid,bridge,rx_bytes,tx_bytes,sample_count,last_push FROM vm_consumption_hourly WHERE 1=0", []
+    """Read only canonical VM hourly/daily rollups.
 
-    first_day = local_day_start(start)
-    full_day_start = first_day if start == first_day else first_day + 86400
-    full_day_end = local_day_start(end)
+    No VM Consumption request may scan node_stats, usage, raw NIC history or
+    derive per-VM totals at render time.  Full local days use the daily table;
+    hour-aligned edges, including the live current hour, use the hourly table.
+    """
+    aligned_start, aligned_end = _v5058r7_vm_rollup_window(start, end)
+    if aligned_end <= aligned_start:
+        return (
+            "SELECT node,vm_uuid,bridge,rx_bytes,tx_bytes,sample_count,last_push "
+            "FROM vm_consumption_hourly WHERE 1=0",
+            [],
+        )
+
+    first_day = local_day_start(aligned_start)
+    full_day_start = first_day if aligned_start == first_day else first_day + 86400
+    full_day_end = local_day_start(aligned_end)
     branches, params = [], []
 
     if full_day_start < full_day_end:
-        sql, values = _v5058r4_vm_daily_branch(full_day_start, full_day_end, selected_node)
-        branches.append(sql); params.extend(values)
-        edges = [(start, full_day_start), (full_day_end, end)]
-    else:
-        edges = [(start, end)]
+        if aligned_start < full_day_start:
+            sql, values = _v5058r7_vm_hourly_branch(
+                aligned_start, full_day_start, selected_node,
+            )
+            if sql:
+                branches.append(sql)
+                params.extend(values)
 
-    for edge_start, edge_end in edges:
-        if edge_end <= edge_start:
-            continue
-        full_hour_start = _v5058r4_ceil_hour(edge_start)
-        full_hour_end = local_hour_start(edge_end)
-        if full_hour_start >= full_hour_end:
-            sql, values = _v5058r4_vm_raw_branch(edge_start, edge_end, selected_node)
-            branches.append(sql); params.extend(values)
-            continue
-        if edge_start < full_hour_start:
-            sql, values = _v5058r4_vm_raw_branch(edge_start, full_hour_start, selected_node)
-            branches.append(sql); params.extend(values)
-        sql, values = _v5058r4_vm_hourly_branch(full_hour_start, full_hour_end, selected_node)
-        branches.append(sql); params.extend(values)
-        if full_hour_end < edge_end:
-            sql, values = _v5058r4_vm_raw_branch(full_hour_end, edge_end, selected_node)
-            branches.append(sql); params.extend(values)
+        sql, values = _v5058r7_vm_daily_branch(
+            full_day_start, full_day_end, selected_node,
+        )
+        if sql:
+            branches.append(sql)
+            params.extend(values)
+
+        if full_day_end < aligned_end:
+            sql, values = _v5058r7_vm_hourly_branch(
+                full_day_end, aligned_end, selected_node,
+            )
+            if sql:
+                branches.append(sql)
+                params.extend(values)
+    else:
+        sql, values = _v5058r7_vm_hourly_branch(
+            aligned_start, aligned_end, selected_node,
+        )
+        if sql:
+            branches.append(sql)
+            params.extend(values)
+
+    if not branches:
+        return (
+            "SELECT node,vm_uuid,bridge,rx_bytes,tx_bytes,sample_count,last_push "
+            "FROM vm_consumption_hourly WHERE 1=0",
+            [],
+        )
     return " UNION ALL ".join(branches), params
 
 def _v5058c_visible_vm_cte(selected_node=""):
@@ -514,7 +522,8 @@ def _v5058c_visible_vm_cte(selected_node=""):
 def _v5058c_vm_ctes(start, end, selected_node=""):
     source_sql, source_params = _v5058c_vm_source_sql(start, end, selected_node)
     visible_sql, visible_params = _v5058c_visible_vm_cte(selected_node)
-    expected_samples = max(1, int(math.ceil(max(1, end - start) / float(CACHE_BUCKET_SECONDS))))
+    aligned_start, aligned_end = _v5058r7_vm_rollup_window(start, end)
+    expected_samples = max(1, int(math.ceil(max(1, aligned_end - aligned_start) / float(CACHE_BUCKET_SECONDS))))
     sql = """
       WITH source AS (%s),
       per_bridge AS (

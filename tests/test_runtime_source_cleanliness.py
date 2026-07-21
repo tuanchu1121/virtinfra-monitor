@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_VERSION = "50.5.9-prod-r22.6-consumption-vm-timeout-hotfix"
+EXPECTED_VERSION = "50.5.9-prod-r22.7-vm-consumption-rollup-only"
 LAYER_DIR = ROOT / "app/runtime_layers"
 MANIFEST = LAYER_DIR / "manifest.json"
 

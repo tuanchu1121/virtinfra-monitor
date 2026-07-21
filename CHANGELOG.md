@@ -1,3 +1,10 @@
+# 50.5.9-prod-r22.7-vm-consumption-rollup-only
+
+- VM Consumption is now rollup-only at render time.
+- Removed raw VM/NIC edge scans from `/bandwidth-consumption?tab=vm`.
+- A selected range uses a fixed number of hourly buckets; complete local days use `vm_consumption_daily`, while partial days use `vm_consumption_hourly`.
+- No schema, ingest, Agent, formula, retention or public API change.
+
 # 50.5.9-prod-r22.6-consumption-vm-timeout-hotfix
 
 - Added Super Admin-only selective Configuration Backup and Restore.

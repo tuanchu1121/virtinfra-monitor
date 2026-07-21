@@ -36,7 +36,7 @@ def test_runtime_manifest_is_complete_ordered_and_hash_pinned() -> None:
     assert names == sorted(names)
     assert len(names) == len(set(names))
     assert names[0] == "00_bootstrap_database.py"
-    assert names[-1] == "44_consumption_node_vm_rollup.py"
+    assert names[-1] == "45_consumption_ingest_preaggregation.py"
 
     previous_end = 0
     for item in manifest:
@@ -54,7 +54,8 @@ def test_runtime_manifest_is_complete_ordered_and_hash_pinned() -> None:
 def test_combined_runtime_remains_the_full_legacy_contract() -> None:
     source = read_app_source()
     tree = ast.parse(source, filename="<virtinfra-modular-runtime>")
-    assert len(source.splitlines()) == 31952
+    expected_lines = sum(len((LAYER_DIR / str(item["file"])).read_text(encoding="utf-8").splitlines()) for item in _manifest())
+    assert len(source.splitlines()) == expected_lines
     assert any(isinstance(node, ast.FunctionDef) and node.name == "push" for node in tree.body)
     assert '@app.route("/push", methods=["POST"])' in source
     assert "_node_groups_hotfix.install(_node_groups_module)" in source

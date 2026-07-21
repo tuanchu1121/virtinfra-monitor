@@ -35,7 +35,7 @@ def load_normalizer():
 
 
 def test_release_identity():
-    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix"
+    assert (ROOT / "VERSION").read_text().strip() == "50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix"
 
 
 def test_existing_agent_already_reports_vm_and_physical_mac():

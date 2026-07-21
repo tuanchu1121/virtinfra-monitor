@@ -1,80 +1,99 @@
-# Consumption VM/Node
+# Consumption architecture
 
-Release: `50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix`
+**Release:** `50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix`
 
-## Scope
+R21 moves high-cardinality network aggregation from page render time to the accepted five-minute `/push` transaction. Dashboard snapshots, Agent cadence and all non-Consumption features remain unchanged.
 
-R20 changes only the Consumption data/read path and its Maintenance status card.
-Dashboard snapshot behavior, Agent cadence and payload, CPU/RAM/Disk/PPS formulas,
-Abuse, Storage I/O, Queue, RBAC and the 2-day/7-day retention policy are unchanged.
+## Active ingestion path
 
-## Active data flow
+```text
+Agent sample every 15 seconds
+        |
+        v
+One durable /push every 300 seconds
+        |
+        +-- recent raw VM interface data
+        +-- recent raw Physical interface data
+        +-- vm_consumption_hourly / vm_consumption_daily
+        +-- node_consumption_5m
+        +-- node_consumption_hourly / node_consumption_daily
+```
 
-The Agent samples locally every 15 seconds and sends one durable `/push` every
-300 seconds. One accepted push updates, in the same PostgreSQL transaction:
+All rollups use incremental `INSERT ... ON CONFLICT ... DO UPDATE`. Exact HTTP retries are rejected by `push_receipts` before the same deltas can be added twice. Guest traffic direction remains normalized as guest RX = host tap TX and guest TX = host tap RX.
 
-- recent VM interface rows in `node_stats`;
-- per-VM `bandwidth_hourly` and `bandwidth_daily`;
-- recent physical rows in `node_physical_net_stats`;
-- physical Node `node_consumption_hourly` and `node_consumption_daily`;
-- compact All-VM-per-Node `node_vm_consumption_hourly` and
-  `node_vm_consumption_daily`.
+The retired Agent-side two-hour endpoint `/push/bandwidth-consumption` remains registered only for safe upgrades and returns HTTP 410. `node_bandwidth_consumption_2h` is dormant compatibility storage and is not part of the active read or write path.
 
-`push_receipts` prevents an exact retry from being added twice. Guest direction
-remains normalized as guest RX = host tap TX and guest TX = host tap RX.
+## Node-level pipeline
 
-The previous Agent-side two-hour writer is retired. The route
-`/push/bandwidth-consumption` remains registered only for safe upgrades and
-returns HTTP 410. `node_bandwidth_consumption_2h` remains a dormant compatibility
-table until a later schema cleanup release. The `2H` page button is only a
-rolling display range.
+The Node rollup rows contain both Physical and All-VM totals:
 
-## Fast range queries
+- Physical Public RX/TX
+- Physical Private RX/TX
+- All-VM Public RX/TX
+- All-VM Private RX/TX
+- separate Physical/VM coverage counters
+- VM reporting count and latest ingestion
 
-The page never scans seven days of raw interface rows:
+Node, Node Group and Consumption Summary may read only:
 
-- incomplete hour edges use retained five-minute rows;
-- complete hours use hourly rollups;
-- complete days use daily rollups.
+- `node_consumption_5m` for incomplete five-minute edges;
+- `node_consumption_hourly` for complete hours;
+- `node_consumption_daily` for complete days;
+- low-cardinality Node inventory and Node Group metadata.
 
-At the target scale of 350 Nodes, 70,000 VMs and about 140,000 VM interfaces,
-Node and Node Group pages query one compact Node row per hour/day. VM list
-search, sorting and pagination remain server-side.
+Their render SQL is guarded against `node_stats`, `vm_consumption_hourly`, `vm_consumption_daily`, legacy per-Node VM tables and `vm_uuid`. Group totals are computed from the already-fetched Node dataset, so opening Node Group does not launch a second database aggregation.
 
-## VM Consumption
+### Hybrid 24-hour example
 
-The VM tab shows one VM per row with Public/Private RX, TX and Total, Coverage
-and Latest Sample. It uses the existing per-VM hourly/daily tables and keeps
-100/200/500-row server-side pagination.
+For an unaligned range such as 15:23 yesterday through 15:23 today:
 
-## Node Consumption
+```text
+15:23–16:00 yesterday  -> node_consumption_5m
+16:00–15:00 today      -> node_consumption_hourly
+15:00–15:23 today      -> node_consumption_5m
+```
 
-Each Node row shows aligned columns:
+At 350 Nodes, the complete-hour portion reads roughly `350 × 23 = 8,050` rows instead of scaling with VM × NIC × sample count.
 
-- Physical Public RX / TX / Total;
-- All VM Public RX / TX / Total;
-- Public observed difference;
-- Physical Private RX / TX / Total;
-- All VM Private RX / TX / Total;
-- Private observed difference;
-- VM reporting count, Coverage and Latest Sample.
+## VM pipeline
 
-Observed difference is Physical minus All VM for the same selected window. It
-may include host traffic, protocol overhead or partial sample coverage and is
-not a billing value. The Node link opens normal Node monitoring; the VM link
-filters the VM Consumption tab to that Node.
+VM Consumption remains separate:
 
-## Node Group Consumption
+- complete days from `vm_consumption_daily`;
+- complete hours from `vm_consumption_hourly`;
+- only incomplete edges from recent raw VM rows.
 
-Node Group uses the same column order, fixed widths and numeric alignment as the
-Node table. It sums compact Node rollups, not all VM rows. Only active groups
-and effectively visible Nodes participate. Group history follows the Node's
-current group assignment.
+The VM pipeline runs only when the VM tab is opened. Node and Group tabs do not call it. Search, sorting and pagination remain server-side.
+
+## Request reuse and cache
+
+One Node dataset is computed for a normalized range and reused for:
+
+- Physical totals;
+- All-VM totals;
+- Node rows;
+- Node Group rows;
+- Summary;
+- observed differences.
+
+A short in-process cache is bounded to 5–15 seconds, default 10 seconds. Destructive actions and retention cleanup clear the cache generation.
+
+## Observed difference
+
+Observed difference is Physical minus All-VM traffic for the same range. It can include host traffic, protocol overhead or incomplete coverage and is not a billing value.
 
 ## Maintenance
 
-There is no separate Clear Consumption button. `Clear All Monitoring Data`
-clears raw metrics and every hourly/daily Consumption rollup together while
-preserving Node/VM inventory, Node Groups, flags, hidden state, users and
-settings. Routine 7-day cleanup remains available. Individual VM/Node purge
-rebuilds or removes the compact Node VM rollups so totals cannot remain stale.
+There is no separate Clear Consumption action. `Clear All Monitoring Data` removes raw metrics and all Consumption rollups together while preserving Node/VM inventory, Node Groups, flags, hidden state, users and settings. Routine cleanup retains node-level five-minute edges for 48 hours and visible hourly/daily history for seven days.
+
+The Maintenance card uses PostgreSQL planner row estimates instead of exact `COUNT(*)` scans on large per-VM rollups.
+
+## Performance proof
+
+`tools/validate-consumption-query-plans.py` loads the exact production SQL builder, seeds 350 Nodes in a disposable PostgreSQL database and executes:
+
+```sql
+EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ...
+```
+
+The validator fails if the plan scans a per-VM relation or if the SQL contains `vm_uuid`. The recorded R21 result is stored in `EXPLAIN_ANALYZE_R21.json`.

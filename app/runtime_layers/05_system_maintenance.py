@@ -107,8 +107,8 @@ MONITORING_DATA_TABLES = (
     "push_receipts",
     "node_push_snapshots",
     # Rollups and raw history.
-    "bandwidth_daily",
-    "bandwidth_hourly",
+    "vm_consumption_daily",
+    "vm_consumption_hourly",
     "usage",
     "node_stats",
     "vm_perf_stats",

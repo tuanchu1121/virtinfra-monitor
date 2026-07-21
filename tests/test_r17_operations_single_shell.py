@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "app/node_groups.py"
-VERSION = "50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix"
+VERSION = "50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix"
 
 
 def _load_module():

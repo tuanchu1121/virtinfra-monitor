@@ -485,7 +485,7 @@ def purge_vm_data(conn, node, vm_uuid, refresh_snapshots=True):
     deleted={}
     uuid_tables=(
         "vm_iface_current","vm_current_fast","vm_abuse_state","vm_abuse_events","vm_abuse_incidents",
-        "usage","node_stats","vm_perf_stats","vm_latest_metrics","bandwidth_hourly","bandwidth_daily",
+        "usage","node_stats","vm_perf_stats","vm_latest_metrics","vm_consumption_hourly","vm_consumption_daily",
         "vm_node_presence","vm_inventory","vm_disk_current",
     )
     for table in uuid_tables:

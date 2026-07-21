@@ -1,4 +1,4 @@
-"""50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix.
+"""50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix.
 
 Operations single-shell, Node flag scope and user/RBAC/session hardening.
 

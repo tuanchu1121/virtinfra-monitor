@@ -281,23 +281,23 @@ def _v5052_write_interface_copy_batch(conn, node, data_time, bucket, interval_se
               FROM pg_temp.vi5052_iface_stage
              GROUP BY hour_start,node,vm_uuid,bridge
           )
-          INSERT INTO bandwidth_hourly(
+          INSERT INTO vm_consumption_hourly(
             hour_start,node,vm_uuid,bridge,rx_bytes,tx_bytes,rx_packets,tx_packets,
             rx_drops,tx_drops,rx_errors,tx_errors,sample_count,last_push
           )
           SELECT hour_start,node,vm_uuid,bridge,rx_bytes,tx_bytes,rx_packets,tx_packets,
                  rx_drops,tx_drops,rx_errors,tx_errors,sample_count,last_push FROM grouped
           ON CONFLICT(hour_start,node,vm_uuid,bridge) DO UPDATE SET
-            rx_bytes=bandwidth_hourly.rx_bytes+excluded.rx_bytes,
-            tx_bytes=bandwidth_hourly.tx_bytes+excluded.tx_bytes,
-            rx_packets=bandwidth_hourly.rx_packets+excluded.rx_packets,
-            tx_packets=bandwidth_hourly.tx_packets+excluded.tx_packets,
-            rx_drops=bandwidth_hourly.rx_drops+excluded.rx_drops,
-            tx_drops=bandwidth_hourly.tx_drops+excluded.tx_drops,
-            rx_errors=bandwidth_hourly.rx_errors+excluded.rx_errors,
-            tx_errors=bandwidth_hourly.tx_errors+excluded.tx_errors,
-            sample_count=bandwidth_hourly.sample_count+excluded.sample_count,
-            last_push=GREATEST(bandwidth_hourly.last_push,excluded.last_push)
+            rx_bytes=vm_consumption_hourly.rx_bytes+excluded.rx_bytes,
+            tx_bytes=vm_consumption_hourly.tx_bytes+excluded.tx_bytes,
+            rx_packets=vm_consumption_hourly.rx_packets+excluded.rx_packets,
+            tx_packets=vm_consumption_hourly.tx_packets+excluded.tx_packets,
+            rx_drops=vm_consumption_hourly.rx_drops+excluded.rx_drops,
+            tx_drops=vm_consumption_hourly.tx_drops+excluded.tx_drops,
+            rx_errors=vm_consumption_hourly.rx_errors+excluded.rx_errors,
+            tx_errors=vm_consumption_hourly.tx_errors+excluded.tx_errors,
+            sample_count=vm_consumption_hourly.sample_count+excluded.sample_count,
+            last_push=GREATEST(vm_consumption_hourly.last_push,excluded.last_push)
         """)
         conn.execute("""
           WITH grouped AS (
@@ -310,23 +310,23 @@ def _v5052_write_interface_copy_batch(conn, node, data_time, bucket, interval_se
               FROM pg_temp.vi5052_iface_stage
              GROUP BY day_start,node,vm_uuid,bridge
           )
-          INSERT INTO bandwidth_daily(
+          INSERT INTO vm_consumption_daily(
             day_start,node,vm_uuid,bridge,rx_bytes,tx_bytes,rx_packets,tx_packets,
             rx_drops,tx_drops,rx_errors,tx_errors,sample_count,last_push
           )
           SELECT day_start,node,vm_uuid,bridge,rx_bytes,tx_bytes,rx_packets,tx_packets,
                  rx_drops,tx_drops,rx_errors,tx_errors,sample_count,last_push FROM grouped
           ON CONFLICT(day_start,node,vm_uuid,bridge) DO UPDATE SET
-            rx_bytes=bandwidth_daily.rx_bytes+excluded.rx_bytes,
-            tx_bytes=bandwidth_daily.tx_bytes+excluded.tx_bytes,
-            rx_packets=bandwidth_daily.rx_packets+excluded.rx_packets,
-            tx_packets=bandwidth_daily.tx_packets+excluded.tx_packets,
-            rx_drops=bandwidth_daily.rx_drops+excluded.rx_drops,
-            tx_drops=bandwidth_daily.tx_drops+excluded.tx_drops,
-            rx_errors=bandwidth_daily.rx_errors+excluded.rx_errors,
-            tx_errors=bandwidth_daily.tx_errors+excluded.tx_errors,
-            sample_count=bandwidth_daily.sample_count+excluded.sample_count,
-            last_push=GREATEST(bandwidth_daily.last_push,excluded.last_push)
+            rx_bytes=vm_consumption_daily.rx_bytes+excluded.rx_bytes,
+            tx_bytes=vm_consumption_daily.tx_bytes+excluded.tx_bytes,
+            rx_packets=vm_consumption_daily.rx_packets+excluded.rx_packets,
+            tx_packets=vm_consumption_daily.tx_packets+excluded.tx_packets,
+            rx_drops=vm_consumption_daily.rx_drops+excluded.rx_drops,
+            tx_drops=vm_consumption_daily.tx_drops+excluded.tx_drops,
+            rx_errors=vm_consumption_daily.rx_errors+excluded.rx_errors,
+            tx_errors=vm_consumption_daily.tx_errors+excluded.tx_errors,
+            sample_count=vm_consumption_daily.sample_count+excluded.sample_count,
+            last_push=GREATEST(vm_consumption_daily.last_push,excluded.last_push)
         """)
     return {
         "rows": len(rows),

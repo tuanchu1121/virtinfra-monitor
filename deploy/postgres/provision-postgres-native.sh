@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE="50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix"
+RELEASE="50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 APP_SRC="$REPO_ROOT/app"
@@ -309,6 +309,7 @@ install -m 0644 "$PG_SRC/sql/011_node_groups.sql" "$APP_DIR/postgres/sql/011_nod
 install -m 0644 "$PG_SRC/sql/012_node_groups_r6_safety.sql" "$APP_DIR/postgres/sql/012_node_groups_r6_safety.sql"
 install -m 0644 "$PG_SRC/sql/013_maintenance_queue_boolean.sql" "$APP_DIR/postgres/sql/013_maintenance_queue_boolean.sql"
 install -m 0644 "$PG_SRC/sql/014_node_vm_consumption_rollups.sql" "$APP_DIR/postgres/sql/014_node_vm_consumption_rollups.sql"
+install -m 0644 "$PG_SRC/sql/015_consumption_ingest_preaggregation.sql" "$APP_DIR/postgres/sql/015_consumption_ingest_preaggregation.sql"
 
 log "Start PostgreSQL 17 + TimescaleDB"
 "${COMPOSE[@]}" --env-file "$PG_ENV" -f "$APP_DIR/postgres/docker-compose.yml" pull
@@ -498,6 +499,8 @@ docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATA
 log "Normalize maintenance queue cancel flag to PostgreSQL BOOLEAN"
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/013_maintenance_queue_boolean.sql"
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/014_node_vm_consumption_rollups.sql"
+log "Apply Consumption ingest-time pre-aggregation schema"
+docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/015_consumption_ingest_preaggregation.sql"
 QUEUE_CANCEL_TYPE="$(docker exec bw-timescaledb psql -U "$PG_USER" -d "$PG_DATABASE" -Atqc "SELECT data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='maintenance_jobs' AND column_name='cancel_requested'")"
 [[ "$QUEUE_CANCEL_TYPE" == "boolean" ]] || die "maintenance_jobs.cancel_requested must be boolean; found ${QUEUE_CANCEL_TYPE:-missing}"
 log "Verify maintenance Queue accepts PostgreSQL BOOLEAN values"
@@ -514,8 +517,8 @@ INSERT INTO public.maintenance_jobs(
 ROLLBACK;
 SQL
 
-log "Backfill recent physical Consumption rollups"
-if ! "$APP_DIR/venv/bin/python3" "$APP_DIR/consumption_rollup.py" --hours 48; then
+log "Backfill recent Consumption pre-aggregates"
+if ! "$APP_DIR/venv/bin/python3" "$APP_DIR/consumption_rollup.py" --hours 168; then
   warn "Consumption backfill did not complete. New 5-minute pushes will populate rollups automatically."
 fi
 

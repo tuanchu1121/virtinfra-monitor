@@ -1,5 +1,17 @@
 # Changelog
 
+## 50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix
+
+- Redesigned Consumption around ingest-time pre-aggregation. Every accepted normal five-minute `/push` incrementally UPSERTs canonical per-VM hourly/daily rollups and compact node-level five-minute/hourly/daily rollups in the same transaction.
+- Canonicalized the VM pipeline as `vm_consumption_hourly` and `vm_consumption_daily`, preserving existing rows through an idempotent in-place migration and read-only compatibility views for the former names.
+- Added `node_consumption_5m` for only the two incomplete range edges. Complete hours and days are read from `node_consumption_hourly` and `node_consumption_daily`.
+- Embedded Physical and All-VM totals together in the Node rollups so Node, Node Group and Consumption Summary never scan `node_stats`, never read per-VM rollups and never `GROUP BY vm_uuid` while rendering.
+- Made one cached Node dataset per range the source for totals, Node rows, Group rows, Physical totals, VM totals and observed differences. Cache TTL is bounded to 5–15 seconds, default 10 seconds.
+- Preserved the independent VM hybrid pipeline: daily for complete days, hourly for complete hours and raw VM rows only at incomplete edges. The VM pipeline is not invoked by Node or Group tabs.
+- Added a real PostgreSQL 17 `EXPLAIN (ANALYZE, BUFFERS)` validator. With 350 seeded Nodes and an unaligned 24-hour range, the plan reads about 8,050 hourly Node rows plus compact Node-edge rows, with no per-VM relation and no `vm_uuid`.
+- Replaced exact `COUNT(*)` scans in the Consumption maintenance card with planner estimates to keep Operations light on large VM rollups.
+- Kept Dashboard snapshots, route count, Agent cadence/payload, CPU/RAM/network/disk calculations, Abuse, Storage I/O, Queue, RBAC, Node Groups and unrelated behavior unchanged.
+
 ## 50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix
 
 - Added compact hourly and daily **All VM per Node** Consumption rollups, written from the accepted normal 5-minute push in the same database transaction as the existing raw/per-VM data.

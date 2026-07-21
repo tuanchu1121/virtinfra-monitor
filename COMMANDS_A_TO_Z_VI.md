@@ -1,6 +1,6 @@
 # VirtInfra Monitor - Toàn bộ command triển khai và bảo trì từ A đến Z
 
-> Release: `50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix`
+> Release: `50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix`
 >
 > Chạy command Monitor bằng `root`. Với node KVM, chạy Agent bằng `root` để Agent đọc được libvirt, interface, disk và host metrics.
 
@@ -105,7 +105,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Kết quả mong đợi:
 
 ```text
-50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix
+50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix
 ```
 
 ## 2.2 Update chuẩn, có backup trước
@@ -1053,30 +1053,30 @@ bash ansible/remove-agent.sh \
 
 ---
 
-# 15. Consumption: kiểm tra rollup và retention
+# 15. Consumption: kiểm tra ingest-time pre-aggregation
 
 ## 15.1 Hành vi đúng
 
 ```text
 15 giây: Agent sample local
 5 phút: một payload /push
-Monitor: raw + hourly + daily rollup
+Monitor: raw edge + VM hourly/daily + Node 5m/hourly/daily UPSERT
 ```
 
-Không còn payload Agent 2 giờ riêng. Nút `2H` trên giao diện chỉ chọn khoảng
-thời gian hiển thị.
+Node/Group/Summary chỉ đọc bảng Node. VM có pipeline riêng. Không còn payload Agent hai giờ. Nút `2H` trên giao diện chỉ là khoảng thời gian hiển thị.
 
-## 15.2 Kiểm tra bảng rollup
+## 15.2 Kiểm tra các rollup hiện hành
 
 ```bash
 virtinfra-monitorctl psql
 ```
 
 ```sql
-SELECT 'physical_hourly' AS source, COUNT(*) FROM node_consumption_hourly
-UNION ALL SELECT 'physical_daily', COUNT(*) FROM node_consumption_daily
-UNION ALL SELECT 'vm_node_hourly', COUNT(*) FROM node_vm_consumption_hourly
-UNION ALL SELECT 'vm_node_daily', COUNT(*) FROM node_vm_consumption_daily;
+SELECT 'node_5m' AS source, COUNT(*) FROM node_consumption_5m
+UNION ALL SELECT 'node_hourly', COUNT(*) FROM node_consumption_hourly
+UNION ALL SELECT 'node_daily', COUNT(*) FROM node_consumption_daily
+UNION ALL SELECT 'vm_hourly', COUNT(*) FROM vm_consumption_hourly
+UNION ALL SELECT 'vm_daily', COUNT(*) FROM vm_consumption_daily;
 ```
 
 Xem Node mới ingest:
@@ -1085,42 +1085,50 @@ Xem Node mới ingest:
 SELECT node,
        to_timestamp(MAX(last_push)) AS last_ingestion,
        COUNT(*) AS hourly_rows
-FROM node_vm_consumption_hourly
+FROM node_consumption_hourly
 GROUP BY node
 ORDER BY MAX(last_push) DESC
 LIMIT 30;
 ```
 
-Bảng `node_bandwidth_consumption_2h` chỉ còn để tương thích upgrade và không
-nhận dữ liệu mới. Endpoint cũ trả HTTP 410.
+`node_bandwidth_consumption_2h` chỉ còn là bảng tương thích upgrade và không nhận dữ liệu mới. Endpoint cũ trả HTTP 410.
 
-## 15.3 Kiểm tra một Node
+## 15.3 Kiểm tra Physical và All-VM của một Node
 
 ```sql
-SELECT p.node,
-       pg_size_pretty(SUM(p.physical_public_rx_bytes+p.physical_public_tx_bytes)::bigint) AS physical_public,
-       pg_size_pretty(SUM(v.vm_public_rx_bytes+v.vm_public_tx_bytes)::bigint) AS all_vm_public,
-       to_timestamp(MAX(GREATEST(p.last_push,v.last_push))) AS latest
-FROM node_consumption_hourly p
-JOIN node_vm_consumption_hourly v
-  ON v.node=p.node AND v.hour_start=p.hour_start
-WHERE p.node='NODE-NAME'
-  AND p.hour_start >= EXTRACT(EPOCH FROM NOW()-INTERVAL '24 hours')::bigint
-GROUP BY p.node;
+SELECT node,
+       pg_size_pretty(SUM(physical_public_rx_bytes+physical_public_tx_bytes)::bigint) AS physical_public,
+       pg_size_pretty(SUM(vm_public_rx_bytes+vm_public_tx_bytes)::bigint) AS all_vm_public,
+       pg_size_pretty(SUM((physical_public_rx_bytes+physical_public_tx_bytes)
+                       -(vm_public_rx_bytes+vm_public_tx_bytes))::bigint) AS observed_difference,
+       to_timestamp(MAX(last_push)) AS latest
+FROM node_consumption_hourly
+WHERE node='NODE-NAME'
+  AND hour_start >= EXTRACT(EPOCH FROM NOW()-INTERVAL '24 hours')::bigint
+GROUP BY node;
 ```
 
-## 15.4 Cleanup và Clear
+## 15.4 Chứng minh query Node không đọc per-VM
 
-Dữ liệu hiển thị quá 7 ngày được retention xóa. Chạy thủ công:
+Chỉ chạy trên PostgreSQL thử nghiệm, không dùng database production làm dữ liệu seed:
+
+```bash
+BW_TEST_DATABASE_URL='postgresql://USER:PASS@127.0.0.1:5432/DISPOSABLE_DB' \
+python3 tools/validate-consumption-query-plans.py \
+  --output EXPLAIN_ANALYZE_R21.json
+```
+
+Kết quả phải có `forbidden_relations_seen: []` và `contains_vm_uuid: false`.
+
+## 15.5 Cleanup và Clear
+
+Dữ liệu hiển thị quá bảy ngày được retention xóa. Chạy thủ công:
 
 ```bash
 virtinfra-monitorctl retention
 ```
 
-Maintenance chỉ có cleanup và trạng thái rollup. Không có nút Clear
-Consumption riêng. Muốn bắt đầu lại toàn bộ số liệu, dùng `Clear All Monitoring
-Data`; thao tác này xóa đồng bộ raw và mọi rollup nhưng giữ inventory, Node
-Groups, users và settings.
+Không có nút Clear Consumption riêng. Muốn bắt đầu lại toàn bộ số liệu, dùng `Clear All Monitoring Data`; thao tác này xóa đồng bộ raw và mọi rollup nhưng giữ inventory, Node Groups, users và settings.
 
 ---
 
@@ -1811,7 +1819,7 @@ grep -E \
 /etc/virtinfra-agent.env
 ```
 
-Kiểm tra `node_consumption_hourly` và `node_vm_consumption_hourly`. Sau cài mới,
+Kiểm tra `node_consumption_5m`, `node_consumption_hourly` và `vm_consumption_hourly`. Sau cài mới,
 lần push đầu tạo baseline nên cần thêm một chu kỳ để thấy delta Consumption.
 
 ## 25.6 Bridge sai

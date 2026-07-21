@@ -11,7 +11,7 @@ VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 
 def test_release_identity():
-    assert VERSION == "50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix"
+    assert VERSION == "50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix"
     assert VERSION in APP
     assert VERSION in INSTALLER
 
@@ -52,8 +52,8 @@ def test_consumption_uses_server_rollups_and_exact_edges():
     final = APP[APP.index("# 50.5.8-r4 fast Consumption + deadlock-safe inventory cleanup"):]
     assert "node_consumption_hourly" in final
     assert "node_consumption_daily" in final
-    assert "FROM bandwidth_hourly" in final
-    assert "FROM bandwidth_daily" in final
+    assert "FROM vm_consumption_hourly" in final
+    assert "FROM vm_consumption_daily" in final
     assert "FROM node_stats ns" in final
     assert "FROM node_physical_net_stats" in final
     assert "def _v5058r4_ceil_hour" in final

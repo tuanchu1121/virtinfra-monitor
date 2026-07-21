@@ -7,7 +7,7 @@ _run_retention_v48125_base = run_retention
 
 def _v48125_retention_specs(cutoff):
     return (
-        ("bandwidth_daily", "day_start<?", (cutoff,)),
+        ("vm_consumption_daily", "day_start<?", (cutoff,)),
         ("api_access_logs", "request_time<?", (cutoff,)),
         ("api_key_events", "event_time<?", (cutoff,)),
         ("node_logs", "time<?", (cutoff,)),

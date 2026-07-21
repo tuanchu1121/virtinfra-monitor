@@ -29,13 +29,14 @@ fail(){ echo "ERROR: $*" >&2; exit 1; }
 cd "$ROOT"
 
 log "Validate release identity"
-[[ "$(cat VERSION)" == "50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix" ]] || fail "VERSION mismatch"
+[[ "$(cat VERSION)" == "50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix" ]] || fail "VERSION mismatch"
 [[ -f app/app.py && -f app/runtime_loader.py \
    && -f deploy/postgres/install-postgres-native.sh \
    && -f deploy/postgres/update-postgres-native.sh \
    && -f deploy/postgres/provision-postgres-native.sh \
    && -f app/runtime_layers/manifest.json \
    && -f app/runtime_layers/44_consumption_node_vm_rollup.py \
+   && -f app/runtime_layers/45_consumption_ingest_preaggregation.py \
    && -f app/runtime_layers/00_bootstrap_database.py \
    && -f app/runtime_layers/43_node_groups_loader.py \
    && -f app/bw_pg.py && -f app/maintenance_native.py \
@@ -43,7 +44,8 @@ log "Validate release identity"
    && -f postgres/sql/007_safe_maintenance_queue.sql \
    && -f postgres/sql/010_consumption_inventory_cleanup.sql \
    && -f postgres/sql/011_node_groups.sql && -f postgres/sql/012_node_groups_r6_safety.sql \
-   && -f postgres/sql/013_maintenance_queue_boolean.sql && -f postgres/sql/014_node_vm_consumption_rollups.sql && -f app/node_groups.py \
+   && -f postgres/sql/013_maintenance_queue_boolean.sql && -f postgres/sql/014_node_vm_consumption_rollups.sql \
+   && -f postgres/sql/015_consumption_ingest_preaggregation.sql && -f app/node_groups.py \
    && -f app/static/vendor/flag-icons/node-groups.css \
    && -f app/static/vendor/flag-icons/LICENSE \
    && -f app/static/vendor/flag-icons/SOURCE.md \
@@ -182,6 +184,9 @@ log "Validate r19 production-readiness audit hotfix"
 "$PYTHON" -m pytest -q tests/test_r19_production_readiness_audit.py
 "$PYTHON" -m pytest -q tests/test_r20_consumption_node_vm_rollup.py
 
+log "Validate r21 ingest-time Consumption pre-aggregation"
+"$PYTHON" -m pytest -q tests/test_r21_consumption_ingest_preaggregation.py
+
 log "Verify one-command installer and operations flow"
 bash ./tools/test-installer-flow.sh
 bash ./tools/test-installer-manifest-paths.sh
@@ -189,6 +194,8 @@ bash ./tools/test-installer-manifest-paths.sh
 if ((SKIP_LIVE)); then
   log "Skip live PostgreSQL integration by request"
 elif [[ -n "${BW_TEST_DATABASE_URL:-}" ]]; then
+  log "Prove Node/Group/Summary query plans on disposable PostgreSQL"
+  "$PYTHON" tools/validate-consumption-query-plans.py --dsn "$BW_TEST_DATABASE_URL"
   log "Run full application integration against disposable PostgreSQL"
   "$PYTHON" -m pytest -q tests/test_node_groups_postgres_integration.py
   "$PYTHON" tests/test_v50_postgres_integration.py

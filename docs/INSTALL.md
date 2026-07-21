@@ -1,6 +1,6 @@
 # Installation
 
-Release: `50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix`
+Release: `50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix`
 ## Requirements
 
 - Debian 12+ or Ubuntu 22.04+

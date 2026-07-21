@@ -66,7 +66,7 @@ def get_node_health_rows(q="", sort_by="status", order="asc"):
     Important:
     - Do not backfill missed history inside an HTTP request.
     - Do not scan millions of node_stats rows for the 24-hour total.
-    - Read 24-hour traffic from bandwidth_hourly and current VM/interface
+    - Read 24-hour traffic from vm_consumption_hourly and current VM/interface
       counts from the latest compact node_push_snapshots row.
     """
     auto_cleanup_inventory()
@@ -213,7 +213,7 @@ def get_node_health_rows(q="", sort_by="status", order="asc"):
             bh.node,
             MAX(bh.last_push) AS stat_last_push,
             SUM(bh.rx_bytes + bh.tx_bytes) AS total_24h
-        FROM bandwidth_hourly bh
+        FROM vm_consumption_hourly bh
         LEFT JOIN vm_inventory vi
           ON vi.node = bh.node
          AND vi.vm_uuid = bh.vm_uuid

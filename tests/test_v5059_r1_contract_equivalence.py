@@ -96,24 +96,25 @@ def test_route_endpoint_query_form_sort_contract_is_unchanged():
     allowed_overrides = [
         {"endpoint": "bandwidth_consumption_page", "value": "bandwidth_consumption_page_r20"},
         {"endpoint": "push_bandwidth_consumption", "value": "push_bandwidth_consumption_retired"},
+        {"endpoint": "admin_bandwidth_consumption_action", "value": "admin_bandwidth_consumption_action_r21"},
     ]
     assert all(item in actual["view_overrides"] for item in allowed_overrides)
     filtered_overrides = [item for item in actual["view_overrides"] if item not in allowed_overrides]
     assert filtered_overrides == CONTRACT["view_overrides"]
 
     expected_args = dict(CONTRACT["request_args"])
-    expected_args["period"] += 1
+    expected_args["period"] += 2
     expected_args["tab"] += 1
     assert dict(actual["request_args"]) == expected_args
 
     expected_form = dict(CONTRACT["request_form"])
     expected_form["confirm_text"] -= 1  # separate Consumption clear was removed
+    expected_form["action"] += 1  # R21 cleanup override keeps the existing endpoint
     assert dict(actual["request_form"]) == expected_form
 
     expected_urls = dict(CONTRACT["url_for_endpoints"])
-    expected_urls["admin_bandwidth_consumption_action"] += 1
-    expected_urls["admin_page"] -= 1
-    expected_urls["bandwidth_consumption_page"] += 8
+    expected_urls["admin_bandwidth_consumption_action"] += 2
+    expected_urls["bandwidth_consumption_page"] += 15
     expected_urls["node_page"] += 1
     assert dict(actual["url_for_endpoints"]) == expected_urls
 
@@ -124,7 +125,7 @@ def test_agent_matches_pinned_release_contract():
 
 
 def test_existing_postgresql_sql_is_byte_for_byte_unchanged():
-    paths = [path for path in (ROOT / "postgres" / "sql").glob("*.sql") if path.name not in {"011_node_groups.sql", "012_node_groups_r6_safety.sql", "013_maintenance_queue_boolean.sql", "014_node_vm_consumption_rollups.sql"}]
+    paths = [path for path in (ROOT / "postgres" / "sql").glob("*.sql") if path.name not in {"011_node_groups.sql", "012_node_groups_r6_safety.sql", "013_maintenance_queue_boolean.sql", "014_node_vm_consumption_rollups.sql", "015_consumption_ingest_preaggregation.sql"}]
     assert digest_tree(paths) == CONTRACT["postgres_sql_tree_sha256"]
 
 

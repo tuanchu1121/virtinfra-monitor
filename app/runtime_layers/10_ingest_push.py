@@ -17,7 +17,7 @@ def add_bandwidth_rollup(conn, data_time, node, vm_uuid, bridge,
         data_time,
     )
     conn.execute("""
-        INSERT INTO bandwidth_hourly(
+        INSERT INTO vm_consumption_hourly(
             hour_start, node, vm_uuid, bridge,
             rx_bytes, tx_bytes, rx_packets, tx_packets,
             rx_drops, tx_drops, rx_errors, tx_errors,
@@ -26,19 +26,19 @@ def add_bandwidth_rollup(conn, data_time, node, vm_uuid, bridge,
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
         ON CONFLICT(hour_start, node, vm_uuid, bridge)
         DO UPDATE SET
-            rx_bytes=bandwidth_hourly.rx_bytes + excluded.rx_bytes,
-            tx_bytes=bandwidth_hourly.tx_bytes + excluded.tx_bytes,
-            rx_packets=bandwidth_hourly.rx_packets + excluded.rx_packets,
-            tx_packets=bandwidth_hourly.tx_packets + excluded.tx_packets,
-            rx_drops=bandwidth_hourly.rx_drops + excluded.rx_drops,
-            tx_drops=bandwidth_hourly.tx_drops + excluded.tx_drops,
-            rx_errors=bandwidth_hourly.rx_errors + excluded.rx_errors,
-            tx_errors=bandwidth_hourly.tx_errors + excluded.tx_errors,
-            sample_count=bandwidth_hourly.sample_count + 1,
-            last_push=MAX(bandwidth_hourly.last_push, excluded.last_push)
+            rx_bytes=vm_consumption_hourly.rx_bytes + excluded.rx_bytes,
+            tx_bytes=vm_consumption_hourly.tx_bytes + excluded.tx_bytes,
+            rx_packets=vm_consumption_hourly.rx_packets + excluded.rx_packets,
+            tx_packets=vm_consumption_hourly.tx_packets + excluded.tx_packets,
+            rx_drops=vm_consumption_hourly.rx_drops + excluded.rx_drops,
+            tx_drops=vm_consumption_hourly.tx_drops + excluded.tx_drops,
+            rx_errors=vm_consumption_hourly.rx_errors + excluded.rx_errors,
+            tx_errors=vm_consumption_hourly.tx_errors + excluded.tx_errors,
+            sample_count=vm_consumption_hourly.sample_count + 1,
+            last_push=MAX(vm_consumption_hourly.last_push, excluded.last_push)
     """, (hour_start,) + values)
     conn.execute("""
-        INSERT INTO bandwidth_daily(
+        INSERT INTO vm_consumption_daily(
             day_start, node, vm_uuid, bridge,
             rx_bytes, tx_bytes, rx_packets, tx_packets,
             rx_drops, tx_drops, rx_errors, tx_errors,
@@ -47,16 +47,16 @@ def add_bandwidth_rollup(conn, data_time, node, vm_uuid, bridge,
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
         ON CONFLICT(day_start, node, vm_uuid, bridge)
         DO UPDATE SET
-            rx_bytes=bandwidth_daily.rx_bytes + excluded.rx_bytes,
-            tx_bytes=bandwidth_daily.tx_bytes + excluded.tx_bytes,
-            rx_packets=bandwidth_daily.rx_packets + excluded.rx_packets,
-            tx_packets=bandwidth_daily.tx_packets + excluded.tx_packets,
-            rx_drops=bandwidth_daily.rx_drops + excluded.rx_drops,
-            tx_drops=bandwidth_daily.tx_drops + excluded.tx_drops,
-            rx_errors=bandwidth_daily.rx_errors + excluded.rx_errors,
-            tx_errors=bandwidth_daily.tx_errors + excluded.tx_errors,
-            sample_count=bandwidth_daily.sample_count + 1,
-            last_push=MAX(bandwidth_daily.last_push, excluded.last_push)
+            rx_bytes=vm_consumption_daily.rx_bytes + excluded.rx_bytes,
+            tx_bytes=vm_consumption_daily.tx_bytes + excluded.tx_bytes,
+            rx_packets=vm_consumption_daily.rx_packets + excluded.rx_packets,
+            tx_packets=vm_consumption_daily.tx_packets + excluded.tx_packets,
+            rx_drops=vm_consumption_daily.rx_drops + excluded.rx_drops,
+            tx_drops=vm_consumption_daily.tx_drops + excluded.tx_drops,
+            rx_errors=vm_consumption_daily.rx_errors + excluded.rx_errors,
+            tx_errors=vm_consumption_daily.tx_errors + excluded.tx_errors,
+            sample_count=vm_consumption_daily.sample_count + 1,
+            last_push=MAX(vm_consumption_daily.last_push, excluded.last_push)
     """, (day_start,) + values)
 
 def _delete_in_batches(conn, table, where_sql, params, batch_rows=RETENTION_BATCH_ROWS):
@@ -101,7 +101,7 @@ def _rollup_and_delete_legacy_usage(conn, raw_cutoff):
         conn.execute("BEGIN IMMEDIATE")
         try:
             conn.execute("""
-                INSERT INTO bandwidth_hourly(
+                INSERT INTO vm_consumption_hourly(
                     hour_start, node, vm_uuid, bridge,
                     rx_bytes, tx_bytes, rx_packets, tx_packets,
                     rx_drops, tx_drops, rx_errors, tx_errors,
@@ -118,21 +118,21 @@ def _rollup_and_delete_legacy_usage(conn, raw_cutoff):
                 GROUP BY node, vm_uuid, COALESCE(NULLIF(bridge,''), '-')
                 ON CONFLICT(hour_start, node, vm_uuid, bridge)
                 DO UPDATE SET
-                    rx_bytes=bandwidth_hourly.rx_bytes + excluded.rx_bytes,
-                    tx_bytes=bandwidth_hourly.tx_bytes + excluded.tx_bytes,
-                    rx_packets=bandwidth_hourly.rx_packets + excluded.rx_packets,
-                    tx_packets=bandwidth_hourly.tx_packets + excluded.tx_packets,
-                    rx_drops=bandwidth_hourly.rx_drops + excluded.rx_drops,
-                    tx_drops=bandwidth_hourly.tx_drops + excluded.tx_drops,
-                    rx_errors=bandwidth_hourly.rx_errors + excluded.rx_errors,
-                    tx_errors=bandwidth_hourly.tx_errors + excluded.tx_errors,
-                    sample_count=bandwidth_hourly.sample_count + excluded.sample_count,
-                    last_push=MAX(bandwidth_hourly.last_push, excluded.last_push)
+                    rx_bytes=vm_consumption_hourly.rx_bytes + excluded.rx_bytes,
+                    tx_bytes=vm_consumption_hourly.tx_bytes + excluded.tx_bytes,
+                    rx_packets=vm_consumption_hourly.rx_packets + excluded.rx_packets,
+                    tx_packets=vm_consumption_hourly.tx_packets + excluded.tx_packets,
+                    rx_drops=vm_consumption_hourly.rx_drops + excluded.rx_drops,
+                    tx_drops=vm_consumption_hourly.tx_drops + excluded.tx_drops,
+                    rx_errors=vm_consumption_hourly.rx_errors + excluded.rx_errors,
+                    tx_errors=vm_consumption_hourly.tx_errors + excluded.tx_errors,
+                    sample_count=vm_consumption_hourly.sample_count + excluded.sample_count,
+                    last_push=MAX(vm_consumption_hourly.last_push, excluded.last_push)
             """, (hour_start, hour_start, chunk_end))
 
             day_start = local_day_start(hour_start)
             conn.execute("""
-                INSERT INTO bandwidth_daily(
+                INSERT INTO vm_consumption_daily(
                     day_start, node, vm_uuid, bridge,
                     rx_bytes, tx_bytes, rx_packets, tx_packets,
                     rx_drops, tx_drops, rx_errors, tx_errors,
@@ -149,16 +149,16 @@ def _rollup_and_delete_legacy_usage(conn, raw_cutoff):
                 GROUP BY node, vm_uuid, COALESCE(NULLIF(bridge,''), '-')
                 ON CONFLICT(day_start, node, vm_uuid, bridge)
                 DO UPDATE SET
-                    rx_bytes=bandwidth_daily.rx_bytes + excluded.rx_bytes,
-                    tx_bytes=bandwidth_daily.tx_bytes + excluded.tx_bytes,
-                    rx_packets=bandwidth_daily.rx_packets + excluded.rx_packets,
-                    tx_packets=bandwidth_daily.tx_packets + excluded.tx_packets,
-                    rx_drops=bandwidth_daily.rx_drops + excluded.rx_drops,
-                    tx_drops=bandwidth_daily.tx_drops + excluded.tx_drops,
-                    rx_errors=bandwidth_daily.rx_errors + excluded.rx_errors,
-                    tx_errors=bandwidth_daily.tx_errors + excluded.tx_errors,
-                    sample_count=bandwidth_daily.sample_count + excluded.sample_count,
-                    last_push=MAX(bandwidth_daily.last_push, excluded.last_push)
+                    rx_bytes=vm_consumption_daily.rx_bytes + excluded.rx_bytes,
+                    tx_bytes=vm_consumption_daily.tx_bytes + excluded.tx_bytes,
+                    rx_packets=vm_consumption_daily.rx_packets + excluded.rx_packets,
+                    tx_packets=vm_consumption_daily.tx_packets + excluded.tx_packets,
+                    rx_drops=vm_consumption_daily.rx_drops + excluded.rx_drops,
+                    tx_drops=vm_consumption_daily.tx_drops + excluded.tx_drops,
+                    rx_errors=vm_consumption_daily.rx_errors + excluded.rx_errors,
+                    tx_errors=vm_consumption_daily.tx_errors + excluded.tx_errors,
+                    sample_count=vm_consumption_daily.sample_count + excluded.sample_count,
+                    last_push=MAX(vm_consumption_daily.last_push, excluded.last_push)
             """, (day_start, hour_start, chunk_end))
 
             cur = conn.execute(
@@ -328,7 +328,7 @@ def run_retention(dry_run=False):
             GROUP BY node, ((bucket + {RETENTION_TZ_OFFSET_SECONDS}) / {hour_div})
         """, (hourly_cutoff, raw_cutoff))
         # v48: metric snapshots older than HOURLY_RETENTION_DAYS are deleted.
-        # Exact bandwidth billing in bandwidth_daily remains untouched.
+        # Exact bandwidth billing in vm_consumption_daily remains untouched.
         keep_count = conn.execute("SELECT COUNT(*) FROM retention_keep_buckets").fetchone()[0]
         stats["kept_sparse_buckets"] = int(keep_count or 0)
 
@@ -355,8 +355,8 @@ def run_retention(dry_run=False):
             stats["deleted"]["usage"] = int(conn.execute(
                 "SELECT COUNT(*) FROM usage WHERE time<?", (raw_cutoff,)
             ).fetchone()[0] or 0)
-            stats["deleted"]["bandwidth_hourly"] = int(conn.execute(
-                "SELECT COUNT(*) FROM bandwidth_hourly WHERE hour_start<?", (hourly_cutoff,)
+            stats["deleted"]["vm_consumption_hourly"] = int(conn.execute(
+                "SELECT COUNT(*) FROM vm_consumption_hourly WHERE hour_start<?", (hourly_cutoff,)
             ).fetchone()[0] or 0)
             return stats
 
@@ -404,8 +404,8 @@ def run_retention(dry_run=False):
         )
         # Both hourly and daily bandwidth history follow the same hard 7-day
         # retention window. Current counters and inventory remain untouched.
-        stats["deleted"]["bandwidth_hourly"] = _delete_in_batches(
-            conn, "bandwidth_hourly", "hour_start<?", (hourly_cutoff,)
+        stats["deleted"]["vm_consumption_hourly"] = _delete_in_batches(
+            conn, "vm_consumption_hourly", "hour_start<?", (hourly_cutoff,)
         )
 
         if snapshot_backfill_needed:

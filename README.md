@@ -1,6 +1,6 @@
 # VirtInfra Monitor
 
-**Release:** `50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix`
+**Release:** `50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix`
 
 VirtInfra Monitor is a PostgreSQL 17 and TimescaleDB monitoring platform for KVM/libvirt nodes and virtual machines. PostgreSQL is the authoritative datastore for inventory, users, settings, current metrics, historical metrics, Abuse events, Storage I/O and Consumption.
 
@@ -97,11 +97,11 @@ Core retention contracts:
 
 - `vm_chart_5m` and `node_chart_5m`: exact five-minute points for seven days;
 - `vm_raw_detail_5m`: per-interface raw detail for 48 hours;
-- `bandwidth_hourly` / `bandwidth_daily`: per-VM Consumption rollups for fast 24-hour and 7-day filters;
-- `node_consumption_hourly` / `node_consumption_daily`: compact physical Node rollups;
-- `node_vm_consumption_hourly` / `node_vm_consumption_daily`: compact totals of all VMs per Node;
-- `node_bandwidth_consumption_2h`: dormant legacy compatibility table; its writer endpoint returns HTTP 410;
-- `/bandwidth-consumption`: VM, Node and Node Group views with Physical, All VM and observed-difference columns;
+- `vm_consumption_hourly` / `vm_consumption_daily`: canonical per-VM Consumption pipeline for fast VM history queries;
+- `node_consumption_5m`: compact node-level five-minute rows used only for the two incomplete range edges;
+- `node_consumption_hourly` / `node_consumption_daily`: ingest-time Node rollups containing both Physical and All-VM totals;
+- `node_bandwidth_consumption_2h`: dormant upgrade-compatibility table only; its retired writer endpoint returns HTTP 410;
+- `/bandwidth-consumption`: separate VM and Node pipelines. Node, Node Group and Consumption Summary read only node-level 5m/hour/day rollups, never per-VM history;
 - `VIRTINFRA_READ_CHART_V2` and `VIRTINFRA_RAW_V2`: controlled Storage V2 readers and raw detail switches.
 
 The application keeps the existing CPU, RAM, network, PPS, disk, bandwidth, Abuse, retention and queue calculations unchanged.

@@ -60,20 +60,18 @@ virtinfra-monitorctl psql -c "SELECT hypertable_name,num_chunks FROM timescaledb
 
 | Table | Grain | Purpose | Retention |
 |---|---|---|---:|
-| `node_stats` | VM interface / five-minute bucket | Recent raw VM network detail | 48 hours |
-| `node_physical_net_stats` | Physical interface / five-minute bucket | Recent raw physical network detail | 48 hours |
-| `bandwidth_hourly` | VM + bridge + hour | Fast per-VM rolling queries | 7 days |
-| `bandwidth_daily` | VM + bridge + day | Fast 2D–7D per-VM queries | 7 days |
-| `node_consumption_hourly` | Node + hour | Physical Public/Private totals | 7 days |
-| `node_consumption_daily` | Node + day | Physical daily totals | 7 days |
-| `node_vm_consumption_hourly` | Node + hour | Total of every VM on one Node | 7 days |
-| `node_vm_consumption_daily` | Node + day | Daily total of every VM on one Node | 7 days |
-| `node_bandwidth_consumption_2h` | Node + legacy two-hour bucket | Dormant upgrade compatibility only; no new Agent writes | legacy |
+| `node_stats` | VM interface / five-minute bucket | Recent raw VM edge detail for the VM pipeline only | 48 hours |
+| `node_physical_net_stats` | Physical interface / five-minute bucket | Recent physical source/recovery data | 48 hours |
+| `vm_consumption_hourly` | VM + bridge + hour | Canonical per-VM complete-hour rollup | 7 days |
+| `vm_consumption_daily` | VM + bridge + day | Canonical per-VM complete-day rollup | 7 days |
+| `node_consumption_5m` | Node + five-minute bucket | Pre-aggregated Physical + All-VM values for only incomplete range edges | 48 hours |
+| `node_consumption_hourly` | Node + hour | Pre-aggregated Physical + All-VM complete-hour totals | 7 days |
+| `node_consumption_daily` | Node + day | Pre-aggregated Physical + All-VM complete-day totals | 7 days |
+| `node_bandwidth_consumption_2h` | Node + legacy two-hour bucket | Dormant upgrade compatibility; no active writes or reads | legacy |
 
-The active data path is the normal five-minute `/push`. The retired
-`/push/bandwidth-consumption` endpoint returns HTTP 410 and does not write data.
-Node and Node Group pages compare compact Physical totals with compact All-VM
-totals without scanning the high-cardinality per-VM tables for every request.
+The active path is the normal five-minute `/push`. Node, Node Group and Consumption Summary read only `node_consumption_5m`, `node_consumption_hourly`, `node_consumption_daily` plus Node metadata. They never read `node_stats`, `vm_consumption_hourly`, `vm_consumption_daily` or group by `vm_uuid` while rendering. The VM tab has its own hybrid per-VM pipeline.
+
+The retired `/push/bandwidth-consumption` endpoint returns HTTP 410 and does not write data. Former `bandwidth_hourly` and `bandwidth_daily` names are read-only compatibility views after migration.
 
 ## VACUUM online
 

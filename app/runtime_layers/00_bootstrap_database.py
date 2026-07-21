@@ -785,6 +785,49 @@ def db():
     )
     """)
 
+    # Canonical per-VM Consumption tables are safe to create before migration.
+    # Migration 015 merges any pre-existing legacy tables and replaces their
+    # names with read-only compatibility views. Avoid exception-based table
+    # detection here because one PostgreSQL error aborts the whole transaction.
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS vm_consumption_hourly (
+        hour_start INTEGER NOT NULL,
+        node TEXT NOT NULL,
+        vm_uuid TEXT NOT NULL,
+        bridge TEXT NOT NULL,
+        rx_bytes INTEGER NOT NULL DEFAULT 0,
+        tx_bytes INTEGER NOT NULL DEFAULT 0,
+        rx_packets INTEGER NOT NULL DEFAULT 0,
+        tx_packets INTEGER NOT NULL DEFAULT 0,
+        rx_drops INTEGER NOT NULL DEFAULT 0,
+        tx_drops INTEGER NOT NULL DEFAULT 0,
+        rx_errors INTEGER NOT NULL DEFAULT 0,
+        tx_errors INTEGER NOT NULL DEFAULT 0,
+        sample_count INTEGER NOT NULL DEFAULT 0,
+        last_push INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (hour_start, node, vm_uuid, bridge)
+    )
+    """)
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS vm_consumption_daily (
+        day_start INTEGER NOT NULL,
+        node TEXT NOT NULL,
+        vm_uuid TEXT NOT NULL,
+        bridge TEXT NOT NULL,
+        rx_bytes INTEGER NOT NULL DEFAULT 0,
+        tx_bytes INTEGER NOT NULL DEFAULT 0,
+        rx_packets INTEGER NOT NULL DEFAULT 0,
+        tx_packets INTEGER NOT NULL DEFAULT 0,
+        rx_drops INTEGER NOT NULL DEFAULT 0,
+        tx_drops INTEGER NOT NULL DEFAULT 0,
+        rx_errors INTEGER NOT NULL DEFAULT 0,
+        tx_errors INTEGER NOT NULL DEFAULT 0,
+        sample_count INTEGER NOT NULL DEFAULT 0,
+        last_push INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (day_start, node, vm_uuid, bridge)
+    )
+    """)
+
     conn.execute("""
     CREATE TABLE IF NOT EXISTS retention_runs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -930,10 +973,11 @@ def db():
     conn.execute("CREATE INDEX IF NOT EXISTS idx_node_missed_node_time ON node_missed_events(node, recovered_at DESC)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_push_snapshots_node_tier_bucket ON node_push_snapshots(node, retention_tier, bucket)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_push_receipts_received ON push_receipts(received_at)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_bw_hourly_vm_time ON bandwidth_hourly(vm_uuid, hour_start)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_bw_hourly_node_time ON bandwidth_hourly(node, hour_start)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_bw_daily_vm_time ON bandwidth_daily(vm_uuid, day_start)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_bw_daily_node_time ON bandwidth_daily(node, day_start)")
+    
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_vm_consumption_hourly_vm_time ON vm_consumption_hourly(vm_uuid, hour_start)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_vm_consumption_hourly_node_time ON vm_consumption_hourly(node, hour_start)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_vm_consumption_daily_vm_time ON vm_consumption_daily(vm_uuid, day_start)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_vm_consumption_daily_node_time ON vm_consumption_daily(node, day_start)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_maintenance_jobs_created ON maintenance_jobs(created_at DESC)")
     # Fast bounded current-state tables. One row per VM/interface/node.
     conn.executescript("""

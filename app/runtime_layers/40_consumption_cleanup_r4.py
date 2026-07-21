@@ -27,6 +27,15 @@ def _v5058r4_ensure_schema(conn):
       physical_private_tx_bytes INTEGER NOT NULL DEFAULT 0,
       coverage_seconds INTEGER NOT NULL DEFAULT 0,
       sample_count INTEGER NOT NULL DEFAULT 0,
+      vm_public_rx_bytes INTEGER NOT NULL DEFAULT 0,
+      vm_public_tx_bytes INTEGER NOT NULL DEFAULT 0,
+      vm_private_rx_bytes INTEGER NOT NULL DEFAULT 0,
+      vm_private_tx_bytes INTEGER NOT NULL DEFAULT 0,
+      physical_coverage_seconds INTEGER NOT NULL DEFAULT 0,
+      vm_coverage_seconds INTEGER NOT NULL DEFAULT 0,
+      physical_sample_count INTEGER NOT NULL DEFAULT 0,
+      vm_sample_count INTEGER NOT NULL DEFAULT 0,
+      vm_count INTEGER NOT NULL DEFAULT 0,
       last_push INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY(hour_start,node)
     );
@@ -39,9 +48,38 @@ def _v5058r4_ensure_schema(conn):
       physical_private_tx_bytes INTEGER NOT NULL DEFAULT 0,
       coverage_seconds INTEGER NOT NULL DEFAULT 0,
       sample_count INTEGER NOT NULL DEFAULT 0,
+      vm_public_rx_bytes INTEGER NOT NULL DEFAULT 0,
+      vm_public_tx_bytes INTEGER NOT NULL DEFAULT 0,
+      vm_private_rx_bytes INTEGER NOT NULL DEFAULT 0,
+      vm_private_tx_bytes INTEGER NOT NULL DEFAULT 0,
+      physical_coverage_seconds INTEGER NOT NULL DEFAULT 0,
+      vm_coverage_seconds INTEGER NOT NULL DEFAULT 0,
+      physical_sample_count INTEGER NOT NULL DEFAULT 0,
+      vm_sample_count INTEGER NOT NULL DEFAULT 0,
+      vm_count INTEGER NOT NULL DEFAULT 0,
       last_push INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY(day_start,node)
     );
+    CREATE TABLE IF NOT EXISTS node_consumption_5m (
+      bucket_start INTEGER NOT NULL,node TEXT NOT NULL,
+      physical_public_rx_bytes INTEGER NOT NULL DEFAULT 0,
+      physical_public_tx_bytes INTEGER NOT NULL DEFAULT 0,
+      physical_private_rx_bytes INTEGER NOT NULL DEFAULT 0,
+      physical_private_tx_bytes INTEGER NOT NULL DEFAULT 0,
+      vm_public_rx_bytes INTEGER NOT NULL DEFAULT 0,
+      vm_public_tx_bytes INTEGER NOT NULL DEFAULT 0,
+      vm_private_rx_bytes INTEGER NOT NULL DEFAULT 0,
+      vm_private_tx_bytes INTEGER NOT NULL DEFAULT 0,
+      physical_coverage_seconds INTEGER NOT NULL DEFAULT 0,
+      vm_coverage_seconds INTEGER NOT NULL DEFAULT 0,
+      physical_sample_count INTEGER NOT NULL DEFAULT 0,
+      vm_sample_count INTEGER NOT NULL DEFAULT 0,
+      vm_count INTEGER NOT NULL DEFAULT 0,
+      last_push INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY(bucket_start,node)
+    );
+    CREATE INDEX IF NOT EXISTS idx_node_consumption_5m_node_time
+      ON node_consumption_5m(node,bucket_start);
     CREATE INDEX IF NOT EXISTS idx_node_consumption_hourly_node_time
       ON node_consumption_hourly(node,hour_start);
     CREATE INDEX IF NOT EXISTS idx_node_consumption_daily_node_time
@@ -369,7 +407,7 @@ def _v5058r4_vm_hourly_branch(start, end, selected_node=""):
     node_clause = " AND node=?" if selected_node else ""
     sql = """
       SELECT node,vm_uuid,bridge,rx_bytes,tx_bytes,sample_count,last_push
-        FROM bandwidth_hourly
+        FROM vm_consumption_hourly
        WHERE hour_start>=? AND hour_start<?%s
     """ % node_clause
     params = [start, end]
@@ -383,7 +421,7 @@ def _v5058r4_vm_daily_branch(start, end, selected_node=""):
     node_clause = " AND node=?" if selected_node else ""
     sql = """
       SELECT node,vm_uuid,bridge,rx_bytes,tx_bytes,sample_count,last_push
-        FROM bandwidth_daily
+        FROM vm_consumption_daily
        WHERE day_start>=? AND day_start<?%s
     """ % node_clause
     params = [start, end]
@@ -396,7 +434,7 @@ def _v5058c_vm_source_sql(start, end, selected_node=""):
     start = safe_int(start, 0)
     end = safe_int(end, 0)
     if end <= start:
-        return "SELECT node,vm_uuid,bridge,rx_bytes,tx_bytes,sample_count,last_push FROM bandwidth_hourly WHERE 1=0", []
+        return "SELECT node,vm_uuid,bridge,rx_bytes,tx_bytes,sample_count,last_push FROM vm_consumption_hourly WHERE 1=0", []
 
     first_day = local_day_start(start)
     full_day_start = first_day if start == first_day else first_day + 86400

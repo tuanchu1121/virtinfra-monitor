@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix`
+Release: `50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix`
 
 ## Final data path
 

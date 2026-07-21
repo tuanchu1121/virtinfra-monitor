@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app"
-VERSION = "50.5.9-prod-r20-consumption-node-vm-rollup-alignment-hotfix"
+VERSION = "50.5.9-prod-r21-consumption-ingest-preaggregation-hotfix"
 
 
 def test_release_identity() -> None:
@@ -16,31 +16,20 @@ def test_release_identity() -> None:
 
 def test_clear_monitoring_covers_current_consumption_rollups() -> None:
     maintenance = (APP / "maintenance_native.py").read_text(encoding="utf-8")
-    assert '"node_consumption_hourly"' in maintenance
-    assert '"node_consumption_daily"' in maintenance
-    tree = ast.parse(maintenance)
-    monitoring = next(
-        node for node in tree.body
-        if isinstance(node, ast.AnnAssign) and getattr(node.target, "id", "") == "MONITORING_TABLES"
-    )
-    values = {elt.value for elt in monitoring.value.elts if isinstance(elt, ast.Constant)}
-    assert {"node_consumption_hourly", "node_consumption_daily", "node_vm_consumption_hourly", "node_vm_consumption_daily"} <= values
+    layer = (APP / "runtime_layers/45_consumption_ingest_preaggregation.py").read_text(encoding="utf-8")
+    for table in ("node_consumption_5m", "node_consumption_hourly", "node_consumption_daily", "vm_consumption_hourly", "vm_consumption_daily"):
+        assert table in maintenance or table in layer
+    assert "Clear All Monitoring Data" in (APP / "runtime_layers/34_bandwidth_consumption.py").read_text(encoding="utf-8")
 
 
 def test_consumption_maintenance_card_uses_current_rollups() -> None:
-    route = (APP / "runtime_layers/44_consumption_node_vm_rollup.py").read_text(encoding="utf-8")
-    action = (APP / "runtime_layers/34_bandwidth_consumption.py").read_text(encoding="utf-8")
-    assert "Consumption Rollup Storage" in route
-    assert "PHYSICAL HOURLY" in route and "VM NODE HOURLY" in route
-    assert "MISSING RECENT ROLLUP" in route
-    assert "2-hour Node Accounting Storage" not in route
-    assert "Consumption has no separate clear button" in route
-    assert "CLEAR CONSUMPTION HISTORY" not in route
-    assert 'DELETE FROM node_consumption_hourly' in action
-    assert 'DELETE FROM node_consumption_daily' in action
-    assert 'DELETE FROM node_vm_consumption_hourly' in action
-    assert 'DELETE FROM node_vm_consumption_daily' in action
-    assert "Use Clear All Monitoring Data" in action
+    layer = (APP / "runtime_layers/45_consumption_ingest_preaggregation.py").read_text(encoding="utf-8")
+    assert "Consumption Pre-aggregation Storage" in layer
+    assert "NODE 5M" in layer and "NODE HOURLY" in layer and "NODE DAILY" in layer
+    assert "VM HOURLY" in layer and "VM DAILY" in layer
+    assert "planner estimates" in layer
+    assert "Consumption has no separate clear action" in layer
+    assert 'app.view_functions["admin_bandwidth_consumption_action"]' in layer
 
 
 def test_custom_theme_controller_is_pjax_safe() -> None:
@@ -63,7 +52,7 @@ def test_updater_quiesces_runtime_before_schema_and_backfill() -> None:
     installer = (ROOT / "deploy/postgres/provision-postgres-native.sh").read_text(encoding="utf-8")
     quiesce = installer.index('log "Quiesce web, maintenance and cleanup services for schema update"')
     install_code = installer.index('log "Install full application code"')
-    backfill = installer.index('log "Backfill recent physical Consumption rollups"')
+    backfill = installer.index('log "Backfill recent Consumption pre-aggregates"')
     assert quiesce < install_code < backfill
     assert "Active maintenance job services detected" in installer
     assert "resume_update_services" in installer

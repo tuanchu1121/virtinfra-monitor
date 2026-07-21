@@ -424,7 +424,7 @@ def _r20_rebuild_node_vm_rollups(conn, nodes):
         SUM(CASE WHEN bridge=? THEN rx_bytes ELSE 0 END),
         LEAST(3600,COALESCE(MAX(sample_count),0)*300),
         COALESCE(MAX(sample_count),0),COUNT(DISTINCT vm_uuid),MAX(last_push)
-      FROM bandwidth_hourly WHERE node IN (%s) GROUP BY hour_start,node"""%placeholders,bridge_params)
+      FROM vm_consumption_hourly WHERE node IN (%s) GROUP BY hour_start,node"""%placeholders,bridge_params)
     conn.execute("""INSERT INTO node_vm_consumption_daily(
       day_start,node,vm_public_rx_bytes,vm_public_tx_bytes,vm_private_rx_bytes,
       vm_private_tx_bytes,coverage_seconds,sample_count,vm_count,last_push)
@@ -435,14 +435,14 @@ def _r20_rebuild_node_vm_rollups(conn, nodes):
         SUM(CASE WHEN bridge=? THEN rx_bytes ELSE 0 END),
         LEAST(86400,COALESCE(MAX(sample_count),0)*300),
         COALESCE(MAX(sample_count),0),COUNT(DISTINCT vm_uuid),MAX(last_push)
-      FROM bandwidth_daily WHERE node IN (%s) GROUP BY day_start,node"""%placeholders,bridge_params)
+      FROM vm_consumption_daily WHERE node IN (%s) GROUP BY day_start,node"""%placeholders,bridge_params)
 
 _r20_purge_vm_base=purge_vm_data
 def purge_vm_data(conn,node,vm_uuid,refresh_snapshots=True):
     affected={str(node or "").strip()}
     try:
-        rows=conn.execute("""SELECT DISTINCT node FROM bandwidth_hourly WHERE vm_uuid=?
-          UNION SELECT DISTINCT node FROM bandwidth_daily WHERE vm_uuid=?
+        rows=conn.execute("""SELECT DISTINCT node FROM vm_consumption_hourly WHERE vm_uuid=?
+          UNION SELECT DISTINCT node FROM vm_consumption_daily WHERE vm_uuid=?
           UNION SELECT DISTINCT node FROM node_stats WHERE vm_uuid=?""",(vm_uuid,vm_uuid,vm_uuid)).fetchall()
         affected.update(str(row[0] or "").strip() for row in rows)
     except Exception:

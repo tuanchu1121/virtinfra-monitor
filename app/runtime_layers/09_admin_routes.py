@@ -794,9 +794,9 @@ def _collect_node_vm_uuids(conn, node):
             UNION
             SELECT vm_uuid FROM usage WHERE node=:node
             UNION
-            SELECT vm_uuid FROM bandwidth_hourly WHERE node=:node
+            SELECT vm_uuid FROM vm_consumption_hourly WHERE node=:node
             UNION
-            SELECT vm_uuid FROM bandwidth_daily WHERE node=:node
+            SELECT vm_uuid FROM vm_consumption_daily WHERE node=:node
             UNION
             SELECT vm_uuid FROM vm_location_latest
             WHERE node=:node OR previous_node=:node
@@ -975,11 +975,11 @@ def purge_all_vms_for_node(conn, node):
     )
 
     # VM billing history for this node.
-    deleted["bandwidth_hourly"] = _delete_count(
-        conn, "DELETE FROM bandwidth_hourly WHERE node=?", (node,)
+    deleted["vm_consumption_hourly"] = _delete_count(
+        conn, "DELETE FROM vm_consumption_hourly WHERE node=?", (node,)
     )
-    deleted["bandwidth_daily"] = _delete_count(
-        conn, "DELETE FROM bandwidth_daily WHERE node=?", (node,)
+    deleted["vm_consumption_daily"] = _delete_count(
+        conn, "DELETE FROM vm_consumption_daily WHERE node=?", (node,)
     )
 
     # VM lifecycle/inventory state.

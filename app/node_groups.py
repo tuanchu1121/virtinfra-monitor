@@ -1,4 +1,4 @@
-"""50.5.9-prod-r22.12-vm-consumption-shared-snapshot.
+"""50.5.9-prod-r22.12.1-preflight-contract-hotfix.
 
 Operations single-shell, Node flag scope and user/RBAC/session hardening.
 

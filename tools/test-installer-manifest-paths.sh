@@ -25,6 +25,8 @@ create_fixture() {
     app/runtime_layers/43_node_groups_loader.py
     app/runtime_layers/44_consumption_node_vm_rollup.py
     app/runtime_layers/45_consumption_ingest_preaggregation.py
+    app/runtime_layers/48_vm_consumption_shared_snapshot.py
+    app/vm_consumption_snapshot.py
     app/node_groups.py
     app/static/vendor/flag-icons/node-groups.css
     app/static/vendor/flag-icons/LICENSE
@@ -52,6 +54,7 @@ create_fixture() {
     postgres/sql/016_configuration_backup_nuclear.sql
     postgres/sql/017_vm_consumption_5m_slots.sql
     postgres/sql/018_vm_consumption_slot_boundary_semantics.sql
+    postgres/sql/019_vm_consumption_shared_snapshot.sql
     tools/validate-consumption-query-plans.py
     tools/benchmark-r22-top-vm.py
     requirements.txt

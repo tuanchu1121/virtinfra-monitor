@@ -1,4 +1,12 @@
-# 50.5.9-prod-r22.12-vm-consumption-shared-snapshot
+# VirtInfra Monitor Changelog
+
+## 50.5.9-prod-r22.12.1-preflight-contract-hotfix
+
+- Fixed the R22.12 legacy contract preflight so the internal VM snapshot sort allow-list is not mistaken for a public sort contract.
+- Approved the additive migration 019 in the feature-migration exclusion set without changing its SQL.
+- No runtime, schema, UI, API or Agent behavior changes.
+
+# 50.5.9-prod-r22.12.1-preflight-contract-hotfix
 
 - Moved high-cardinality VM Consumption aggregation completely outside web requests.
 - Added PostgreSQL `UNLOGGED` shared snapshots with one compact row per VM, period and five-minute generation.

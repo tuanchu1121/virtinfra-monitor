@@ -47,6 +47,11 @@ def current_contract():
                     if isinstance(sl, ast.Constant) and isinstance(sl.value, str):
                         overrides.append({"endpoint": sl.value, "value": ast.unparse(node.value)})
                 if isinstance(target, ast.Name) and ("sort" in target.id.lower() or target.id.lower().endswith("_keys")) and isinstance(node.value, ast.Dict):
+                    # R22.12 uses an internal VM snapshot sort allow-list. It is
+                    # implementation-only and does not change the public route,
+                    # query or form contract protected by this legacy test.
+                    if target.id == "R2212_VM_SORTS":
+                        continue
                     keys = [k.value for k in node.value.keys if isinstance(k, ast.Constant) and isinstance(k.value, str)]
                     if keys:
                         sort_maps.append({"name": target.id, "keys": keys})
@@ -153,6 +158,10 @@ def test_existing_postgresql_sql_matches_approved_release_contract():
         "016_configuration_backup_nuclear.sql",
         "017_vm_consumption_5m_slots.sql",
         "018_vm_consumption_slot_boundary_semantics.sql",
+        # R22.12 additive derived-cache migration. It is covered by the
+        # snapshot-specific tests and release SHA256 manifest, not by the
+        # pre-R22 legacy SQL digest contract.
+        "019_vm_consumption_shared_snapshot.sql",
     }
     paths = [
         path

@@ -1,6 +1,6 @@
 # R22.7 Change Set
 
-Version: `50.5.9-prod-r22.12-vm-consumption-shared-snapshot`
+Version: `50.5.9-prod-r22.12.1-preflight-contract-hotfix`
 
 ## Scope
 

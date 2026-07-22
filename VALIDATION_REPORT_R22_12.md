@@ -1,6 +1,6 @@
 # R22.12 Validation Report
 
-Release: `50.5.9-prod-r22.12-vm-consumption-shared-snapshot`
+Release: `50.5.9-prod-r22.12.1-preflight-contract-hotfix`
 
 ## Source verification performed
 

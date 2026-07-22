@@ -15,6 +15,8 @@ echo "Backing up PostgreSQL/TimescaleDB..."
 docker exec bw-timescaledb pg_dump \
   -U "$BW_PG_USER" -d "$BW_PG_DATABASE" \
   --format=custom --compress=6 --no-owner --no-privileges \
+  --exclude-table-data=public.vm_consumption_snapshot_rows \
+  --exclude-table-data=public.vm_consumption_snapshot_batches \
   > "$OUT/database.dump"
 [[ -s "$OUT/database.dump" ]] || { echo "pg_dump produced an empty file" >&2; exit 1; }
 docker exec -i bw-timescaledb pg_restore --list < "$OUT/database.dump" > "$OUT/database.list"

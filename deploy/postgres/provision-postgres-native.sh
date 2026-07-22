@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE="50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix"
+RELEASE="50.5.9-prod-r22.12-vm-consumption-shared-snapshot"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 APP_SRC="$REPO_ROOT/app"
@@ -37,7 +37,7 @@ resume_update_services(){
   warn "Update aborted after services were quiesced; restarting the installed services best-effort."
   systemctl daemon-reload >/dev/null 2>&1 || true
   systemctl start bw-monitor.service >/dev/null 2>&1 || true
-  systemctl start bw-monitor-maintenance-watchdog.timer bw-monitor-retention.timer bw-monitor-backup.timer bw-monitor-inventory-cleanup.timer virtinfra-monitor-health-watch.timer >/dev/null 2>&1 || true
+  systemctl start bw-monitor-maintenance-watchdog.timer bw-monitor-retention.timer bw-monitor-backup.timer bw-monitor-inventory-cleanup.timer bw-monitor-vm-consumption-snapshot.timer virtinfra-monitor-health-watch.timer >/dev/null 2>&1 || true
 }
 update_exit_handler(){
   status=$?
@@ -314,6 +314,7 @@ install -m 0644 "$PG_SRC/sql/015_consumption_ingest_preaggregation.sql" "$APP_DI
 install -m 0644 "$PG_SRC/sql/016_configuration_backup_nuclear.sql" "$APP_DIR/postgres/sql/016_configuration_backup_nuclear.sql"
 install -m 0644 "$PG_SRC/sql/017_vm_consumption_5m_slots.sql" "$APP_DIR/postgres/sql/017_vm_consumption_5m_slots.sql"
 install -m 0644 "$PG_SRC/sql/018_vm_consumption_slot_boundary_semantics.sql" "$APP_DIR/postgres/sql/018_vm_consumption_slot_boundary_semantics.sql"
+install -m 0644 "$PG_SRC/sql/019_vm_consumption_shared_snapshot.sql" "$APP_DIR/postgres/sql/019_vm_consumption_shared_snapshot.sql"
 
 log "Start PostgreSQL 17 + TimescaleDB"
 "${COMPOSE[@]}" --env-file "$PG_ENV" -f "$APP_DIR/postgres/docker-compose.yml" pull
@@ -365,8 +366,8 @@ if [[ "$MODE" == "update" ]]; then
   RUNNING_MAINTENANCE="$(systemctl list-units 'bw-monitor-maintenance@*.service' --state=running --no-legend --plain 2>/dev/null | awk 'NF{print $1}' | paste -sd, -)"
   [[ -z "$RUNNING_MAINTENANCE" ]] || die "Active maintenance job services detected: $RUNNING_MAINTENANCE. Wait for them to finish before updating."
   log "Quiesce web, maintenance and cleanup services for schema update"
-  systemctl stop virtinfra-monitor-health-watch.timer bw-monitor-maintenance-watchdog.timer bw-monitor-retention.timer bw-monitor-backup.timer bw-monitor-inventory-cleanup.timer 2>/dev/null || true
-  systemctl stop virtinfra-monitor-health-watch.service bw-monitor-retention.service bw-monitor-backup.service bw-monitor-inventory-cleanup.service bw-monitor-maintenance-dispatch.service bw-monitor.service 2>/dev/null || true
+  systemctl stop virtinfra-monitor-health-watch.timer bw-monitor-maintenance-watchdog.timer bw-monitor-retention.timer bw-monitor-backup.timer bw-monitor-inventory-cleanup.timer bw-monitor-vm-consumption-snapshot.timer 2>/dev/null || true
+  systemctl stop virtinfra-monitor-health-watch.service bw-monitor-retention.service bw-monitor-backup.service bw-monitor-inventory-cleanup.service bw-monitor-vm-consumption-snapshot.service bw-monitor-maintenance-dispatch.service bw-monitor.service 2>/dev/null || true
   UPDATE_QUIESCED=1
 fi
 
@@ -398,6 +399,7 @@ install -m 0755 "$APP_SRC/maintenance.py" "$APP_DIR/maintenance.py"
 install -m 0755 "$APP_SRC/retention.py" "$APP_DIR/retention.py"
 install -m 0755 "$APP_SRC/inventory_cleanup.py" "$APP_DIR/inventory_cleanup.py"
 install -m 0755 "$APP_SRC/consumption_rollup.py" "$APP_DIR/consumption_rollup.py"
+install -m 0755 "$APP_SRC/vm_consumption_snapshot.py" "$APP_DIR/vm_consumption_snapshot.py"
 install -m 0755 "$REPO_ROOT/tools/storage-v2-status.py" "$APP_DIR/tools/storage-v2-status.py"
 install -m 0755 "$REPO_ROOT/tools/validate-storage-v2.py" "$APP_DIR/tools/validate-storage-v2.py"
 install -m 0755 "$REPO_ROOT/tools/benchmark-storage-v2.py" "$APP_DIR/tools/benchmark-storage-v2.py"
@@ -547,6 +549,8 @@ log "Apply packed five-minute VM Consumption slots"
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/017_vm_consumption_5m_slots.sql"
 log "Apply corrected VM five-minute slot boundary semantics"
 docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/018_vm_consumption_slot_boundary_semantics.sql"
+log "Create shared VM Consumption snapshot cache"
+docker exec -i bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DATABASE" < "$APP_DIR/postgres/sql/019_vm_consumption_shared_snapshot.sql"
 QUEUE_CANCEL_TYPE="$(docker exec bw-timescaledb psql -U "$PG_USER" -d "$PG_DATABASE" -Atqc "SELECT data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='maintenance_jobs' AND column_name='cancel_requested'")"
 [[ "$QUEUE_CANCEL_TYPE" == "boolean" ]] || die "maintenance_jobs.cancel_requested must be boolean; found ${QUEUE_CANCEL_TYPE:-missing}"
 log "Verify maintenance Queue accepts PostgreSQL BOOLEAN values"
@@ -568,6 +572,8 @@ if ! "$APP_DIR/venv/bin/python3" "$APP_DIR/consumption_rollup.py" --hours 168; t
   warn "Consumption backfill did not complete. New 5-minute pushes will populate rollups automatically."
 fi
 
+log "Shared VM Consumption snapshots will warm asynchronously after service startup"
+
 log "Install services and management tools"
 install -m 0644 "$SCRIPT_DIR/bw-monitor.service" "$SERVICE_FILE"
 install -m 0644 "$SCRIPT_DIR/bw-monitor-maintenance@.service" /etc/systemd/system/bw-monitor-maintenance@.service
@@ -577,6 +583,8 @@ install -m 0644 "$SCRIPT_DIR/bw-monitor-retention.service" /etc/systemd/system/b
 install -m 0644 "$SCRIPT_DIR/bw-monitor-retention.timer" /etc/systemd/system/bw-monitor-retention.timer
 install -m 0644 "$SCRIPT_DIR/bw-monitor-inventory-cleanup.service" /etc/systemd/system/bw-monitor-inventory-cleanup.service
 install -m 0644 "$SCRIPT_DIR/bw-monitor-inventory-cleanup.timer" /etc/systemd/system/bw-monitor-inventory-cleanup.timer
+install -m 0644 "$SCRIPT_DIR/bw-monitor-vm-consumption-snapshot.service" /etc/systemd/system/bw-monitor-vm-consumption-snapshot.service
+install -m 0644 "$SCRIPT_DIR/bw-monitor-vm-consumption-snapshot.timer" /etc/systemd/system/bw-monitor-vm-consumption-snapshot.timer
 install -m 0755 "$SCRIPT_DIR/virtinfra-monitor-health-watch.sh" "$APP_DIR/virtinfra-monitor-health-watch.sh"
 install -m 0644 "$SCRIPT_DIR/virtinfra-monitor-health-watch.service" /etc/systemd/system/virtinfra-monitor-health-watch.service
 install -m 0644 "$SCRIPT_DIR/virtinfra-monitor-health-watch.timer" /etc/systemd/system/virtinfra-monitor-health-watch.timer
@@ -621,8 +629,8 @@ systemctl reset-failed bw-monitor-maintenance-dispatch.service bw-monitor-mainte
 systemctl enable --now bw-monitor-maintenance-watchdog.timer
 systemctl restart bw-monitor-maintenance-watchdog.timer
 systemctl --no-block start bw-monitor-maintenance-dispatch.service || true
-systemctl enable bw-monitor.service bw-monitor-retention.timer bw-monitor-backup.timer virtinfra-monitor-health-watch.timer bw-monitor-inventory-cleanup.timer
-systemctl restart bw-monitor-retention.timer bw-monitor-backup.timer virtinfra-monitor-health-watch.timer
+systemctl enable bw-monitor.service bw-monitor-retention.timer bw-monitor-backup.timer virtinfra-monitor-health-watch.timer bw-monitor-inventory-cleanup.timer bw-monitor-vm-consumption-snapshot.timer
+systemctl restart bw-monitor-retention.timer bw-monitor-backup.timer virtinfra-monitor-health-watch.timer bw-monitor-vm-consumption-snapshot.timer
 
 if [[ -n "$DOMAIN" && $NO_NGINX -eq 0 ]]; then
   log "Configure Nginx for $DOMAIN"
@@ -668,6 +676,10 @@ for i in $(seq 1 60); do
   sleep 2
 done
 systemctl is-active --quiet bw-monitor.service || die "bw-monitor.service inactive"
+# Do not block install/update while seven shared periods warm. The dedicated
+# worker commits each period independently and the timer keeps them current.
+systemctl --no-block start bw-monitor-vm-consumption-snapshot.service || \
+  warn "Unable to queue initial VM Consumption snapshot build; timer will retry."
 systemctl restart bw-monitor-inventory-cleanup.timer
 UPDATE_QUIESCED=0
 UPDATE_SNAPSHOT_DIR=""

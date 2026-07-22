@@ -27,6 +27,7 @@ repo_complete() {
     app/runtime_layers/manifest.json \
     app/runtime_layers/00_bootstrap_database.py \
     app/runtime_layers/43_node_groups_loader.py \
+    app/runtime_layers/48_vm_consumption_shared_snapshot.py \
     app/node_groups.py \
     app/static/vendor/flag-icons/node-groups.css \
     app/static/vendor/flag-icons/LICENSE \
@@ -41,6 +42,7 @@ repo_complete() {
     app/configuration_backup.py app/emergency_backup.py \
     app/maintenance_queue.py \
     app/maintenance_dispatch.py \
+    app/vm_consumption_snapshot.py \
     postgres/docker-compose.yml \
     postgres/sql/004_storage_v2.sql \
     postgres/sql/006_postgres_native_maintenance.sql \
@@ -53,6 +55,7 @@ repo_complete() {
     postgres/sql/016_configuration_backup_nuclear.sql \
     postgres/sql/017_vm_consumption_5m_slots.sql \
     postgres/sql/018_vm_consumption_slot_boundary_semantics.sql \
+    postgres/sql/019_vm_consumption_shared_snapshot.sql \
     tools/validate-consumption-query-plans.py \
     tools/benchmark-r22-top-vm.py \
     requirements.txt \

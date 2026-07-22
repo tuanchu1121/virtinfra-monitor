@@ -1,4 +1,4 @@
-"""50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix.
+"""50.5.9-prod-r22.12-vm-consumption-shared-snapshot.
 
 Operations single-shell, Node flag scope and user/RBAC/session hardening.
 

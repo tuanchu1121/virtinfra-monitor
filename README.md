@@ -1,6 +1,6 @@
 # VirtInfra Monitor
 
-**Release:** `50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix`
+**Release:** `50.5.9-prod-r22.12-vm-consumption-shared-snapshot`
 
 VirtInfra Monitor is a PostgreSQL 17 and TimescaleDB monitoring platform for KVM/libvirt nodes and virtual machines. PostgreSQL is the authoritative datastore for inventory, users, settings, current metrics, historical metrics, Abuse events, Storage I/O and Consumption.
 
@@ -23,6 +23,14 @@ There is no automatic install-to-update fallback.
 - The final enabled Super Admin cannot be downgraded, disabled or deleted from the web UI. If an older release already left zero enabled Super Admin accounts, recover one from the server console; `/admin/setup` is reserved for a true first-user installation.
 
 
+## R22.12 shared VM Consumption snapshot
+
+- A dedicated systemd worker aggregates canonical hourly/daily rollups and packed five-minute slots once per settled five-minute boundary.
+- PostgreSQL stores one `UNLOGGED` snapshot row per VM and period. It is derived cache, not a new source of truth.
+- VM web requests read only the compact snapshot plus current visibility/Group metadata, then run `COUNT`, sort and pagination over roughly one row per VM.
+- The request path contains no rollup CTE, no raw VM/NIC history and no `COUNT(*) OVER()`.
+- The default `24H` snapshot is built first. Install/update warm-up runs asynchronously, and PostgreSQL advisory locks prevent duplicate builders.
+
 ## R22.11 slot-boundary hotfix
 
 - Agent timestamps are interpreted as interval-end timestamps, matching how deltas are collected.
@@ -33,9 +41,9 @@ There is no automatic install-to-update fallback.
 ## R22 hardening highlights
 
 - Consumption business logic is canonical in runtime Layer 44; Layer 45 is only a compatibility marker.
-- Node, Node Group and Summary continue to read only compact Node rollups. VM Consumption remains separate and reads only canonical hourly/daily VM rollups.
+- Node, Node Group and Summary continue to read only compact Node rollups. VM Consumption remains separate; the web page reads shared one-row-per-VM snapshots generated from canonical hourly/daily rollups and packed slots.
 - Top VM RAM and disk sorting now ranks the complete filtered VM set in PostgreSQL before `LIMIT`; no second current-state table or dual-write path was added.
-- VM Consumption caches are isolated by Group, Node and visibility generation.
+- VM Consumption sorting, paging and search reuse the shared one-row-per-VM aggregate snapshot instead of rebuilding rollups per cache key.
 - Future-dated Agent payloads are bounded, older retries cannot rewind current tables, and partial payloads without VM metrics preserve the last valid VM current state.
 
 See [R22 validation](VALIDATION_REPORT_R22.md), [benchmark status](BENCHMARK_REPORT_R22.md), [query-plan status](QUERY_PLAN_REPORT_R22.md) and [migration/rollback](docs/R22_MIGRATION_ROLLBACK.md).
@@ -115,11 +123,12 @@ Core retention contracts:
 
 - `vm_chart_5m` and `node_chart_5m`: exact five-minute points for seven days;
 - `vm_raw_detail_5m`: per-interface raw detail for 48 hours;
-- `vm_consumption_hourly` / `vm_consumption_daily`: canonical per-VM Consumption pipeline for fast VM history queries;
+- `vm_consumption_hourly` / `vm_consumption_daily`: canonical per-VM Consumption source of truth;
+- `vm_consumption_snapshot_rows` / `vm_consumption_snapshot_batches`: derived UNLOGGED shared read cache rebuilt by systemd timer;
 - `node_consumption_5m`: compact node-level five-minute rows used only for the two incomplete range edges;
 - `node_consumption_hourly` / `node_consumption_daily`: ingest-time Node rollups containing both Physical and All-VM totals;
 - `node_bandwidth_consumption_2h`: dormant upgrade-compatibility table only; its retired writer endpoint returns HTTP 410;
-- `/bandwidth-consumption`: separate VM and Node pipelines. Node, Node Group and Consumption Summary read only node-level 5m/hour/day rollups, never per-VM history;
+- `/bandwidth-consumption`: separate VM and Node pipelines. Node, Node Group and Summary read node-level rollups; the VM table reads shared aggregate snapshots and never rebuilds high-cardinality rollups inside the request;
 - `VIRTINFRA_READ_CHART_V2` and `VIRTINFRA_RAW_V2`: controlled Storage V2 readers and raw detail switches.
 
 The application keeps the existing CPU, RAM, network, PPS, disk, bandwidth, Abuse, retention and queue calculations unchanged.
@@ -170,6 +179,7 @@ bw-monitor-retention.timer
 bw-monitor-backup.timer
 virtinfra-monitor-health-watch.timer
 bw-monitor-inventory-cleanup.timer
+bw-monitor-vm-consumption-snapshot.timer
 virtinfra-agent.service
 ```
 

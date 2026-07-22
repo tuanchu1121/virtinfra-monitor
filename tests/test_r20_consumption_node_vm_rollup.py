@@ -9,7 +9,7 @@ CANONICAL_LAYER = APP / "runtime_layers/44_consumption_node_vm_rollup.py"
 SHIM_LAYER = APP / "runtime_layers/45_consumption_ingest_preaggregation.py"
 R20_LAYER = CANONICAL_LAYER
 R21_LAYER = CANONICAL_LAYER
-RELEASE = "50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix"
+RELEASE = "50.5.9-prod-r22.12-vm-consumption-shared-snapshot"
 
 
 def text(path: Path) -> str:
@@ -22,7 +22,7 @@ def test_r22_consumption_is_canonical_in_layer44_and_layer45_is_a_shim() -> None
     names = [item["file"] for item in manifest]
     assert CANONICAL_LAYER.name in names
     assert names.index(SHIM_LAYER.name) == names.index(CANONICAL_LAYER.name) + 1
-    assert names[-1] == "47_vm_5m_slot_rolling_window.py"
+    assert names[-1] == "48_vm_consumption_shared_snapshot.py"
     assert names.index(CANONICAL_LAYER.name) < names.index(SHIM_LAYER.name)
     shim = text(SHIM_LAYER)
     assert "R22_CONSUMPTION_CANONICAL_LAYER = 44" in shim

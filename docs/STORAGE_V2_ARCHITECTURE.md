@@ -1,6 +1,6 @@
 # Storage V2 architecture
 
-Release: `50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix`
+Release: `50.5.9-prod-r22.12-vm-consumption-shared-snapshot`
 
 ## Final data path
 

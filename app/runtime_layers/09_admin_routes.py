@@ -981,6 +981,9 @@ def purge_all_vms_for_node(conn, node):
     deleted["vm_consumption_daily"] = _delete_count(
         conn, "DELETE FROM vm_consumption_daily WHERE node=?", (node,)
     )
+    deleted["vm_consumption_snapshot_rows"] = _delete_count(
+        conn, "DELETE FROM vm_consumption_snapshot_rows WHERE node=?", (node,)
+    )
 
     # VM lifecycle/inventory state.
     deleted["vm_node_presence"] = _delete_count(

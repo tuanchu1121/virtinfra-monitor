@@ -1,6 +1,6 @@
 # Update an existing installation
 
-Release: `50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix`
+Release: `50.5.9-prod-r22.12-vm-consumption-shared-snapshot`
 Use this path only when VirtInfra Monitor is already installed. The updater requires both `/etc/default/bw-monitor` and `/etc/default/bw-monitor-postgres`.
 
 ```bash

@@ -1,6 +1,6 @@
 # Tài liệu VirtInfra Monitor
 
-Release: `50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix`
+Release: `50.5.9-prod-r22.12-vm-consumption-shared-snapshot`
 
 Runtime dùng PostgreSQL 17 + TimescaleDB làm nguồn dữ liệu duy nhất.
 

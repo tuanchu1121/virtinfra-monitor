@@ -107,6 +107,8 @@ MONITORING_DATA_TABLES = (
     "push_receipts",
     "node_push_snapshots",
     # Rollups and raw history.
+    "vm_consumption_snapshot_rows",
+    "vm_consumption_snapshot_batches",
     "vm_consumption_daily",
     "vm_consumption_hourly",
     "usage",

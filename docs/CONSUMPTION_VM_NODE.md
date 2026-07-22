@@ -1,6 +1,6 @@
 # Consumption architecture
 
-**Release:** `50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix`
+**Release:** `50.5.9-prod-r22.12-vm-consumption-shared-snapshot`
 
 R21 introduced high-cardinality network aggregation from page render time to the accepted five-minute `/push` transaction. Dashboard snapshots, Agent cadence and all non-Consumption features remain unchanged.
 
@@ -78,20 +78,25 @@ The slot arrays are updated inside the existing hourly `INSERT ... ON CONFLICT` 
 
 Rows created before migration 017 do not contain packed slots. During the bounded warm-up period, only the still-unpacked residual of an edge hour is proportionally estimated. Exact five-minute edges replace that estimate as new pushes arrive. No production raw-history backfill runs automatically.
 
-The VM pipeline runs only when the VM tab is opened. Node and Group tabs do not call it. Search, global sorting and pagination remain server-side.
+A dedicated `bw-monitor-vm-consumption-snapshot.service` now runs the VM aggregate pipeline outside Gunicorn. For each supported range and settled five-minute boundary it materializes one compact row per visible VM into `vm_consumption_snapshot_rows`. The tables are `UNLOGGED` because they are disposable derived cache; canonical data remains in the hourly/daily rollups and packed slots.
+
+The default `24H` generation is built first, followed by `1H`, `2H`, `6H`, `12H`, `2D` and `7D`. Each range commits independently. PostgreSQL advisory transaction locks guarantee one builder per period across the timer, installer and any crash-recovery refresh.
+
+The VM web request no longer calls `_v5058c_vm_ctes`. It performs only:
+
+```text
+select latest ready generation
+        -> current Node/VM visibility and Group filter
+        -> separate COUNT(*) over compact snapshot rows
+        -> ORDER BY metric
+        -> LIMIT / OFFSET
+```
+
+There is no `COUNT(*) OVER()`, no inventory join repeated inside a web-request rollup aggregation and no rebuild when sort or page changes. Search and coverage operate on roughly one row per VM. A missing UNLOGGED cache after an unclean PostgreSQL restart triggers an advisory-locked asynchronous rebuild instead of falling back to the legacy heavy request query.
 
 ## Request reuse and cache
 
-One Node dataset is computed for a normalized range and reused for:
-
-- Physical totals;
-- All-VM totals;
-- Node rows;
-- Node Group rows;
-- Summary;
-- observed differences.
-
-A short in-process cache is bounded to 5–15 seconds, default 10 seconds. Destructive actions and retention cleanup clear the cache generation.
+One compact Node dataset is still computed for a normalized range and reused by Node, Group and Summary. VM sorting, paging, Group/Node scope and search reuse the shared PostgreSQL aggregate generation. The snapshot worker waits for a short settled-boundary delay so normal Agent delivery jitter is included before a generation is frozen.
 
 ## Observed difference
 

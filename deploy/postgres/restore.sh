@@ -35,10 +35,13 @@ echo "Creating pre-restore PostgreSQL backup: $PRE"
 docker exec bw-timescaledb pg_dump \
   -U "$BW_PG_USER" -d "$BW_PG_DATABASE" \
   --format=custom --compress=6 --no-owner --no-privileges \
+  --exclude-table-data=public.vm_consumption_snapshot_rows \
+  --exclude-table-data=public.vm_consumption_snapshot_batches \
   > "$PRE/database.dump"
 
+systemctl stop bw-monitor-vm-consumption-snapshot.timer bw-monitor-vm-consumption-snapshot.service 2>/dev/null || true
 systemctl stop bw-monitor.service
-trap 'systemctl start bw-monitor.service >/dev/null 2>&1 || true' EXIT
+trap 'systemctl start bw-monitor.service >/dev/null 2>&1 || true; systemctl start bw-monitor-vm-consumption-snapshot.timer >/dev/null 2>&1 || true' EXIT
 
 # Recreate the database to avoid stale objects from a newer or partial schema.
 docker exec bw-timescaledb psql -v ON_ERROR_STOP=1 -U "$BW_PG_USER" -d postgres \
@@ -71,6 +74,8 @@ if ((RESTORE_CONFIG)); then
 fi
 
 systemctl start bw-monitor.service
+systemctl start bw-monitor-vm-consumption-snapshot.timer 2>/dev/null || true
+systemctl --no-block start bw-monitor-vm-consumption-snapshot.service 2>/dev/null || true
 port="${BW_PUBLIC_PORT:-8080}"
 for i in $(seq 1 60); do
   code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:$port/login" 2>/dev/null || true)"

@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh shared VM Consumption snapshots after each five-minute Agent bucket
+
+[Timer]
+OnCalendar=*-*-* *:02/5:00
+RandomizedDelaySec=20
+AccuracySec=1s
+Persistent=true
+Unit=bw-monitor-vm-consumption-snapshot.service
+
+[Install]
+WantedBy=timers.target

@@ -47,6 +47,8 @@ MONITORING_TABLES: tuple[str, ...] = (
     "node_missed_events",
     "push_receipts",
     "node_push_snapshots",
+    "vm_consumption_snapshot_rows",
+    "vm_consumption_snapshot_batches",
     "vm_consumption_daily",
     "vm_consumption_hourly",
     "usage",

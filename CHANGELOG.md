@@ -1,3 +1,15 @@
+# 50.5.9-prod-r22.12-vm-consumption-shared-snapshot
+
+- Moved high-cardinality VM Consumption aggregation completely outside web requests.
+- Added PostgreSQL `UNLOGGED` shared snapshots with one compact row per VM, period and five-minute generation.
+- Added `bw-monitor-vm-consumption-snapshot.timer`; the worker builds `24H` first, then short and long ranges, using a cross-process PostgreSQL advisory lock.
+- VM page requests now run only a snapshot `COUNT`, filtered `ORDER BY`, `LIMIT` and `OFFSET`; they do not build rollup CTEs and do not use `COUNT(*) OVER()`.
+- Preserved canonical `vm_consumption_hourly`, `vm_consumption_daily`, packed five-minute slots, rolling windows, RX/TX formulas, UI, routes and Agent payload.
+- Added settled-boundary refresh to avoid freezing a generation before normal Agent delivery jitter has arrived.
+- Snapshot warm-up is asynchronous during install/update; the web service is not blocked by seven aggregate builds.
+- Full backups exclude derived snapshot data, while restore restarts the timer and queues a rebuild.
+- Clear Monitoring, Nuclear Reset and Node purge remove matching derived snapshot rows.
+
 # 50.5.9-prod-r22.11-vm-slot-boundary-coverage-hotfix
 
 - Fixed the R22.10 five-minute slot off-by-one: Agent `data_time` is treated as the end of the sampled interval.

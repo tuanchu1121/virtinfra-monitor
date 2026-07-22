@@ -1,6 +1,6 @@
 # Tài liệu VirtInfra Monitor
 
-Release: `50.5.9-prod-r22.12.1-preflight-contract-hotfix`
+Release: `50.5.9-prod-r22.12.2-preflight-contract-hotfix`
 
 Runtime dùng PostgreSQL 17 + TimescaleDB làm nguồn dữ liệu duy nhất.
 

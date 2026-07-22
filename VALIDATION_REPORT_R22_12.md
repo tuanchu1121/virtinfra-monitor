@@ -1,6 +1,6 @@
 # R22.12 Validation Report
 
-Release: `50.5.9-prod-r22.12.1-preflight-contract-hotfix`
+Release: `50.5.9-prod-r22.12.2-preflight-contract-hotfix`
 
 ## Source verification performed
 

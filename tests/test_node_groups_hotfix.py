@@ -18,7 +18,7 @@ MIGRATION = ROOT / "postgres" / "sql" / "011_node_groups.sql"
 R6_MIGRATION = ROOT / "postgres" / "sql" / "012_node_groups_r6_safety.sql"
 QUEUE_BOOLEAN_MIGRATION = ROOT / "postgres" / "sql" / "013_maintenance_queue_boolean.sql"
 RUNTIME_TOOL = ROOT / "tools" / "node-groups-runtime-validation.py"
-EXPECTED_RELEASE = "50.5.9-prod-r22.12.1-preflight-contract-hotfix"
+EXPECTED_RELEASE = "50.5.9-prod-r22.12.2-preflight-contract-hotfix"
 
 
 @pytest.fixture(scope="module")
@@ -71,7 +71,20 @@ def test_node_groups_loader_and_required_runtime_sections_are_present():
 def test_existing_postgresql_migrations_are_byte_identical():
     baseline = _manifest_entries()
     for path in sorted((ROOT / "postgres/sql").glob("0[0-1][0-9]_*.sql")):
-        if path.name in {"011_node_groups.sql", "012_node_groups_r6_safety.sql", "013_maintenance_queue_boolean.sql", "014_node_vm_consumption_rollups.sql", "015_consumption_ingest_preaggregation.sql", "016_configuration_backup_nuclear.sql", "017_vm_consumption_5m_slots.sql", "018_vm_consumption_slot_boundary_semantics.sql"}:
+        if path.name in {
+            "011_node_groups.sql",
+            "012_node_groups_r6_safety.sql",
+            "013_maintenance_queue_boolean.sql",
+            "014_node_vm_consumption_rollups.sql",
+            "015_consumption_ingest_preaggregation.sql",
+            "016_configuration_backup_nuclear.sql",
+            "017_vm_consumption_5m_slots.sql",
+            "018_vm_consumption_slot_boundary_semantics.sql",
+            # R22.12 additive derived-cache migration. It is validated by the
+            # snapshot-specific tests and the release SHA256 manifest, not by
+            # the pre-R22 protected migration digest set.
+            "019_vm_consumption_shared_snapshot.sql",
+        }:
             continue
         rel = path.relative_to(ROOT).as_posix()
         assert rel in baseline, rel

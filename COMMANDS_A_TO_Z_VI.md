@@ -1,6 +1,6 @@
 # VirtInfra Monitor - Toàn bộ command triển khai và bảo trì từ A đến Z
 
-> Release: `50.5.9-prod-r22.12.2-preflight-contract-hotfix`
+> Release: `50.5.9-prod-r22.12.3-slim-current-only`
 >
 > Chạy command Monitor bằng `root`. Với node KVM, chạy Agent bằng `root` để Agent đọc được libvirt, interface, disk và host metrics.
 
@@ -105,7 +105,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Kết quả mong đợi:
 
 ```text
-50.5.9-prod-r22.12.2-preflight-contract-hotfix
+50.5.9-prod-r22.12.3-slim-current-only
 ```
 
 ## 2.2 Update chuẩn, có backup trước
@@ -1115,7 +1115,7 @@ Chỉ chạy trên PostgreSQL thử nghiệm, không dùng database production l
 ```bash
 BW_TEST_DATABASE_URL='postgresql://USER:PASS@127.0.0.1:5432/DISPOSABLE_DB' \
 python3 tools/validate-consumption-query-plans.py \
-  --output EXPLAIN_ANALYZE_R21.json
+  --output EXPLAIN_ANALYZE_CURRENT.json
 ```
 
 Kết quả phải có `forbidden_relations_seen: []` và `contains_vm_uuid: false`.

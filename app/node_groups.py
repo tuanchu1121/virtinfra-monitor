@@ -1,4 +1,4 @@
-"""50.5.9-prod-r22.12.2-preflight-contract-hotfix.
+"""50.5.9-prod-r22.12.3-slim-current-only.
 
 Operations single-shell, Node flag scope and user/RBAC/session hardening.
 

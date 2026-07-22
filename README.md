@@ -1,6 +1,6 @@
 # VirtInfra Monitor
 
-**Release:** `50.5.9-prod-r22.12.2-preflight-contract-hotfix`
+**Release:** `50.5.9-prod-r22.12.3-slim-current-only`
 
 VirtInfra Monitor is a PostgreSQL 17 and TimescaleDB monitoring platform for KVM/libvirt nodes and virtual machines. PostgreSQL is the authoritative datastore for inventory, users, settings, current metrics, historical metrics, Abuse events, Storage I/O and Consumption.
 
@@ -46,7 +46,7 @@ There is no automatic install-to-update fallback.
 - VM Consumption sorting, paging and search reuse the shared one-row-per-VM aggregate snapshot instead of rebuilding rollups per cache key.
 - Future-dated Agent payloads are bounded, older retries cannot rewind current tables, and partial payloads without VM metrics preserve the last valid VM current state.
 
-See [R22 validation](VALIDATION_REPORT_R22.md), [benchmark status](BENCHMARK_REPORT_R22.md), [query-plan status](QUERY_PLAN_REPORT_R22.md) and [migration/rollback](docs/R22_MIGRATION_ROLLBACK.md).
+See [Consumption architecture](docs/CONSUMPTION_VM_NODE.md) and [migration/rollback](docs/R22_MIGRATION_ROLLBACK.md).
 
 
 ## Fresh installation

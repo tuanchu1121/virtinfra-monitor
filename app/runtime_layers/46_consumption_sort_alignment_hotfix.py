@@ -1,4 +1,4 @@
-# Release: 50.5.9-prod-r22.12.2-preflight-contract-hotfix
+# Release: 50.5.9-prod-r22.12.3-slim-current-only
 # Focused Consumption regression hotfix:
 # - authorize every Node sort key already rendered by the R22 table
 # - make text sorts default to ascending order
@@ -6,7 +6,7 @@
 # No ingest, schema, formula, endpoint, payload, retention or non-Consumption
 # behavior is changed.
 
-V5090_RELEASE = "50.5.9-prod-r22.12.2-preflight-contract-hotfix"
+V5090_RELEASE = "50.5.9-prod-r22.12.3-slim-current-only"
 
 # Layer 44 already implements these values in Python. Layer 39's allow-list was
 # not extended when the columns were added, so requests silently fell back to

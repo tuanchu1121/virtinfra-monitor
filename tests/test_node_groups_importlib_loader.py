@@ -2,6 +2,9 @@ import importlib.util
 import sys
 import types
 from pathlib import Path
+import pytest
+
+pytest.importorskip("flask")
 from runtime_source import read_app_source
 
 

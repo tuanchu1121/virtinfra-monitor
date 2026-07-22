@@ -89,6 +89,6 @@ need(routes == ["admin_theme_manager"], f"expected one /admin/theme route, got {
 need('all(ch in "0123456789abcdef"' in block, "hex validation missing")
 need("_v48140_bump_cache_generation()" in block, "page cache invalidation missing")
 need("set_admin_setting(V5049_THEME_SETTING_KEY" in block, "PostgreSQL persistence missing")
-need("V5049_LEGACY_PRESET_MAP" in block, "v50.4.8 preset migration missing")
+need("V5049_LEGACY_PRESET_MAP" in block, "legacy preset compatibility map missing")
 
 print("PASS: original VirtInfra presets, professional responsive styling, one Custom and protected core modes")

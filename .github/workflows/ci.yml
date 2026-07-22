@@ -1,4 +1,4 @@
-name: VirtInfra Monitor v50 CI
+name: VirtInfra Monitor Current CI
 
 on:
   push:
@@ -46,7 +46,7 @@ jobs:
       - name: Full PostgreSQL application integration
         env:
           BW_TEST_DATABASE_URL: postgresql://bw_monitor:bw_monitor_test_password@127.0.0.1:55432/bw_monitor_test
-        run: python tests/test_v50_postgres_integration.py
+        run: python -m pytest -q tests/test_current_postgres_integration.py
 
       - name: Validate Timescale schema on a fresh full app schema
         env:

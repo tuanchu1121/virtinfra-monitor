@@ -5,7 +5,7 @@
 # the compact totals; only the two partial hour edges read array elements from
 # at most two hourly rows per VM/bridge.
 
-R2210_RELEASE = "50.5.9-prod-r22.12.2-preflight-contract-hotfix"
+R2210_RELEASE = "50.5.9-prod-r22.12.3-slim-current-only"
 R2210_SLOT_SECONDS = max(1, safe_int(CACHE_BUCKET_SECONDS, 300))
 R2210_SLOTS_PER_HOUR = 12
 

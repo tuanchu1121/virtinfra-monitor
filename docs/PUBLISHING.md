@@ -11,7 +11,7 @@ Copy the complete extracted release into the repository working tree, excluding 
 ./tools/release-audit.sh
 git status --short
 git add -A
-git commit -m 'Release VirtInfra Monitor 50.5.9-prod-r22.12.2-preflight-contract-hotfix'
+git commit -m 'Release VirtInfra Monitor 50.5.9-prod-r22.12.3-slim-current-only'
 git push origin main
 ```
 
@@ -25,7 +25,7 @@ https://raw.githubusercontent.com/tuanchu1121/virtinfra-monitor/main/VERSION
 Expected:
 
 ```text
-50.5.9-prod-r22.12.2-preflight-contract-hotfix
+50.5.9-prod-r22.12.3-slim-current-only
 ```
 
 Never commit production credentials, environment files, database dumps, private SSH keys, real inventories or Vault password files.

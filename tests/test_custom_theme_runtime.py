@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pure runtime smoke test for v50.4.9 professional theme helpers."""
+"""Pure runtime smoke test for the current professional theme helpers."""
 from __future__ import annotations
 
 import ast

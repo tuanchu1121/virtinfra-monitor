@@ -33,8 +33,9 @@ postgres/sql/003_native_indexes.sql
 ## Tests
 
 ```text
-tests/test_v50_contract.py
-tests/test_v50_postgres_integration.py
+tests/test_current_release_contract.py
+tests/test_current_vm_consumption_shared_snapshot.py
+tests/test_current_postgres_integration.py
 ```
 
 Run `./preflight.sh` before every release. The live integration test requires a disposable PostgreSQL database because it drops the public schema.

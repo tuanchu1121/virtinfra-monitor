@@ -1,6 +1,6 @@
 # Update an existing installation
 
-Release: `50.5.9-prod-r22.12.2-preflight-contract-hotfix`
+Release: `50.5.9-prod-r22.12.3-slim-current-only`
 Use this path only when VirtInfra Monitor is already installed. The updater requires both `/etc/default/bw-monitor` and `/etc/default/bw-monitor-postgres`.
 
 ```bash

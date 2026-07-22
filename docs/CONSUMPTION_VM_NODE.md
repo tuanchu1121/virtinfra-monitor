@@ -1,6 +1,6 @@
 # Consumption architecture
 
-**Release:** `50.5.9-prod-r22.12.2-preflight-contract-hotfix`
+**Release:** `50.5.9-prod-r22.12.3-slim-current-only`
 
 R21 introduced high-cardinality network aggregation from page render time to the accepted five-minute `/push` transaction. Dashboard snapshots, Agent cadence and all non-Consumption features remain unchanged.
 
@@ -116,4 +116,4 @@ The Maintenance card uses PostgreSQL planner row estimates instead of exact `COU
 EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ...
 ```
 
-The validator fails if the plan scans a per-VM relation or if the SQL contains `vm_uuid`. `EXPLAIN_ANALYZE_R21.json` remains the historical R21 baseline; R22 live-plan output is generated separately with `--output`.
+The validator fails if the plan scans a per-VM relation or if the SQL contains `vm_uuid`. Live-plan output is generated on demand with `--output`; historical plan artifacts are not shipped in the production package.

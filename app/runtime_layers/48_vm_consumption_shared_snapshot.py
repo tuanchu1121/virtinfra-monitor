@@ -1,4 +1,4 @@
-# Release: 50.5.9-prod-r22.12.2-preflight-contract-hotfix
+# Release: 50.5.9-prod-r22.12.3-slim-current-only
 #
 # Definitive VM Consumption read-path hotfix.
 #
@@ -15,7 +15,7 @@ import time as _r2212_time
 
 import node_groups as _r2212_node_groups
 
-R2212_RELEASE = "50.5.9-prod-r22.12.2-preflight-contract-hotfix"
+R2212_RELEASE = "50.5.9-prod-r22.12.3-slim-current-only"
 R2212_SLOT_SECONDS = max(60, safe_int(CACHE_BUCKET_SECONDS, 300))
 R2212_MAX_STALE_SECONDS = max(
     R2212_SLOT_SECONDS,
